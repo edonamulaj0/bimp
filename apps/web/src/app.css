@@ -134,6 +134,11 @@ details { margin-top: .4rem; } details ul { margin: .3rem 0 0; padding-left: 1.1
 .sw { display: inline-block; width: .7rem; height: .7rem; border-radius: 2px; margin-right: .35rem; vertical-align: -1px; }
 .legend { display: flex; flex-wrap: wrap; gap: .3rem .9rem; padding: .45rem .75rem; border-top: 1px solid var(--line); text-transform: capitalize; }
 .legend .muted { text-transform: none; }
+.checks-btn { text-transform: none; padding: 0; } .checks-btn.has { color: #b45309; font-weight: 600; }
+.checks { position: absolute; left: .75rem; bottom: 2.6rem; width: min(440px, calc(100% - 1.5rem)); max-height: 60%; overflow: auto; background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 4px 16px rgb(0 0 0 / .12); padding: .6rem; z-index: 3; }
+.checks-head { display: flex; justify-content: space-between; margin-bottom: .4rem; }
+.check { display: flex; flex-direction: column; gap: .15rem; width: 100%; text-align: left; background: none; border: 0; border-top: 1px solid var(--line); padding: .45rem .1rem; cursor: pointer; font-size: .85rem; }
+.check.warn span { color: #b45309; }
 
 @media (max-width: 760px) {
   .login { grid-template-columns: 1fr; }

@@ -1,5 +1,6 @@
 import { type Plan, area, roomStats, round } from '../../shared/plan';
 import { calculate } from './calc';
+import { BED, CORRIDOR, DOOR, PLAN_SCALES, ROOM_STANDARDS, STAIR, TURNING, checkPlan } from '../../shared/standards';
 import { type Content, generate } from './gemini';
 import type { Env } from './util';
 
@@ -19,6 +20,8 @@ const TOOLS = [
   { name: 'list_rooms', description: 'All rooms with id, name, type, area_m2 and perimeter_m (computed from geometry).', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'get_room', description: 'One room by id: area, perimeter, bounding dimensions, doors and windows on its boundary.', parameters: S('OBJECT', undefined, { properties: { id: S('STRING') }, required: ['id'] }) },
   { name: 'count', description: 'Count doors, windows, or rooms of a type.', parameters: S('OBJECT', undefined, { properties: { what: S('STRING', 'door | window | room'), room_type: S('STRING', 'optional room type filter') }, required: ['what'] }) },
+  { name: 'check_plan', description: 'Plausibility checks of the plan against design standards (room minimum sizes, corridor and door widths, scale). Each check cites its source.', parameters: S('OBJECT', undefined, { properties: {} }) },
+  { name: 'space_standard', description: 'Design standard figures with their source: room minimum areas by type, door, corridor, stair, bed, wheelchair turning, preferred plan scales.', parameters: S('OBJECT', undefined, { properties: { topic: S('STRING', 'room type (bedroom, living, kitchen...), or door | corridor | stair | bed | turning | scale') }, required: ['topic'] }) },
   { name: 'calculate', description: 'Evaluate arithmetic exactly. Supports + - * / ^ ( ) ceil floor round sqrt min max abs.', parameters: S('OBJECT', undefined, { properties: { expression: S('STRING') }, required: ['expression'] }) },
   {
     name: 'final_answer',
@@ -39,7 +42,9 @@ const TOOLS = [
 const SYSTEM = `You are BIMP, a BIM pilot. You answer questions about the floor plan of the user's project.
 Rules: every fact must come from a tool result. Never estimate numbers yourself; do all arithmetic with calculate.
 If the plan does not contain the answer, set not_found and say what you looked at. When the plan is not measured,
-say that dimensions are approximate. Cite the rooms each claim comes from by id. Finish by calling final_answer.
+say that dimensions are approximate. Cite the rooms each claim comes from by id. For questions about sizes being
+adequate, compliance or "is this right", use check_plan and space_standard and name the standard's source in the answer;
+standards are guidance, not a legal verdict. Finish by calling final_answer.
 Answer in the language of the question.`;
 
 function runTool(plan: Plan, name: string, args: any): unknown {
@@ -72,6 +77,16 @@ function runTool(plan: Plan, name: string, args: any): unknown {
       if (args.what === 'door' || args.what === 'window') return { what: args.what, count: plan.openings.filter((o) => o.kind === args.what).length };
       const rs = plan.rooms.filter((r) => !args.room_type || r.type === args.room_type);
       return { what: 'room', room_type: args.room_type ?? null, count: rs.length, room_ids: rs.map((r) => r.id) };
+    }
+    case 'check_plan':
+      return checkPlan(plan);
+    case 'space_standard': {
+      const t = String(args.topic ?? '').toLowerCase();
+      const room = ROOM_STANDARDS[t as keyof typeof ROOM_STANDARDS];
+      if (room) return { topic: t, ...room };
+      const table: Record<string, unknown> = { door: DOOR, corridor: CORRIDOR, stair: STAIR, bed: BED, turning: TURNING,
+        scale: { plan_scales: PLAN_SCALES, ref: 'Metric Handbook, 4th ed. Ch. 1 Table III' } };
+      return table[t] ? { topic: t, ...(table[t] as object) } : { error: `No standard stored for "${t}". Known: ${[...Object.keys(ROOM_STANDARDS), ...Object.keys(table)].join(', ')}` };
     }
     case 'calculate':
       try { return { expression: args.expression, result: round(calculate(String(args.expression)), 4) }; }

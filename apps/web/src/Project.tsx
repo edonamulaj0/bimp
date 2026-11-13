@@ -4,6 +4,7 @@ import { api } from './api';
 import { Plan2D } from './canvas/Plan2D';
 import { Plan3D } from './canvas/Plan3D';
 import { ROOM_COLORS } from './canvas/colors';
+import { checkPlan } from '../../shared/standards';
 import { hoverRoom, selectedRooms } from './state';
 import { Topbar } from './Topbar';
 
@@ -174,6 +175,7 @@ function CanvasPane({ plan, projectId, name }: { plan: Plan | null; projectId: s
   const [inset, setInset] = useState(true);
   const [source, setSource] = useState(false);
   const [cut, setCut] = useState(true);
+  const [showChecks, setShowChecks] = useState(false);
   if (!plan) return <section class="canvas empty-canvas"><p class="muted">No plan yet. Upload a floor plan in the chat to see it here in 2D and 3D.</p></section>;
 
   const sourceUrl = !source || !plan.source ? null
@@ -182,6 +184,8 @@ function CanvasPane({ plan, projectId, name }: { plan: Plan | null; projectId: s
   const show3d = mode !== '2d' || inset;
   const focus = plan.rooms.find((r) => r.id === (hoverRoom.value ?? selectedRooms.value[0]));
   const types = ROOM_TYPES.filter((t) => plan.rooms.some((r) => r.type === t));
+  const checks = checkPlan(plan);
+  const warns = checks.filter((c) => c.level === 'warn').length;
 
   return (
     <section class="canvas" aria-label="Canvas">
@@ -219,6 +223,17 @@ function CanvasPane({ plan, projectId, name }: { plan: Plan | null; projectId: s
             {inset && (mode === '2d' ? <Plan3D plan={plan} compact rotation={rot} cutaway={cut} /> : <Plan2D plan={plan} compact />)}
           </div>
         )}
+        {showChecks && (
+          <div class="checks" role="dialog" aria-label="Plan checks">
+            <div class="checks-head"><b>Checks against design standards</b><button class="link" onClick={() => setShowChecks(false)} aria-label="Close">✕</button></div>
+            {!checks.length && <p class="muted small">Nothing unusual found.</p>}
+            {checks.map((c, i) => (
+              <button key={i} class={`check ${c.level}`} onClick={() => c.room_id && (selectedRooms.value = [c.room_id])}>
+                <span>{c.level === 'warn' ? '⚠' : 'ℹ'} {c.text}</span><small class="muted">{c.ref}</small>
+              </button>
+            ))}
+          </div>
+        )}
         <div class="info">
           {focus
             ? <><i class="sw" style={{ background: ROOM_COLORS[focus.type] }} /><b>{focus.name}</b> · {focus.type} · {round(area(focus.polygon), 1)} m²</>
@@ -227,6 +242,9 @@ function CanvasPane({ plan, projectId, name }: { plan: Plan | null; projectId: s
       </div>
 
       <div class="legend small">
+        <button class={`link small checks-btn${warns ? ' has' : ''}`} onClick={() => setShowChecks(!showChecks)}>
+          {warns ? `⚠ ${warns} check${warns > 1 ? 's' : ''}` : `Checks (${checks.length})`}
+        </button>
         {types.map((t) => <span key={t}><i class="sw" style={{ background: ROOM_COLORS[t] }} />{t}</span>)}
         <span class="muted">· {plan.rooms.length} rooms · {plan.width} × {plan.height} m · scale: {plan.scale.source}</span>
       </div>

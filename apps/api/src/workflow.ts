@@ -2,6 +2,7 @@ import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep, type Workflo
 import { NonRetryableError } from 'cloudflare:workflows';
 import { buildPlan, readDrawing, type Raw } from './extract';
 import { analyze, type Analysis } from './ingest';
+import { checkPlan } from '../../shared/standards';
 import { type Env, now, sha256, toBase64 } from './util';
 
 export type IngestParams = { jobId: string; projectId: string; fileId: string };
@@ -57,9 +58,10 @@ export class IngestWorkflow extends WorkflowEntrypoint<Env, IngestParams> {
         catch (e) { throw new NonRetryableError((e as Error).message); }
         const f = await db.prepare('SELECT filename FROM files WHERE id = ?').bind(fileId).first<{ filename: string }>();
         const doors = plan.openings.filter((o) => o.kind === 'door').length, windows = plan.openings.length - doors;
+        const warns = checkPlan(plan).filter((c) => c.level === 'warn').length;
         const note = {
           kind: 'system', claims: [], assumptions: plan.assumptions,
-          text: `Read ${f?.filename ?? 'the drawing'}: ${plan.rooms.length} rooms, ${doors} doors, ${windows} windows. Scale: ${plan.scale.source}. ${plan.measured ? 'Measured from the drawing.' : 'Preview, not measured.'}`,
+          text: `Read ${f?.filename ?? 'the drawing'}: ${plan.rooms.length} rooms, ${doors} doors, ${windows} windows. Scale: ${plan.scale.source}. ${plan.measured ? 'Measured from the drawing.' : 'Preview, not measured.'}${warns ? ` ${warns} check${warns > 1 ? 's' : ''} to review in the canvas.` : ''}`,
         };
         // Idempotent: the plan id is the job id, and the message is written only by the run that flips the job to done.
         await db.prepare('INSERT OR REPLACE INTO plans (id, project_id, file_id, data, created_at) VALUES (?,?,?,?,?)').bind(jobId, projectId, fileId, JSON.stringify(plan), now()).run();

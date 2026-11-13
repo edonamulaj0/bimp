@@ -15,6 +15,8 @@ export type Analysis = {
   segments: [number, number, number, number][];
   texts: { text: string; bbox: [number, number, number, number] }[];
   scale: { meters_per_px: number; source: string; ratio?: number; all_ratios?: number[] } | null;
+  /** Size of one render pixel on the paper sheet (PDF page size, image DPI); null when unknown. */
+  paper_mm_per_px?: number | null;
 };
 
 export async function analyze(env: Env, data: ArrayBuffer, mime: string): Promise<Analysis> {

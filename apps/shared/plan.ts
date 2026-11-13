@@ -1,6 +1,6 @@
 // Plan model shared by API and web. All geometry is in metres, origin top-left, y down.
 export type Pt = [number, number];
-export const ROOM_TYPES = ['living', 'bedroom', 'kitchen', 'bathroom', 'circulation', 'storage', 'office', 'outdoor', 'other'] as const;
+export const ROOM_TYPES = ['living', 'dining', 'bedroom', 'kitchen', 'bathroom', 'wc', 'utility', 'circulation', 'stair', 'lift', 'storage', 'office', 'garage', 'plant', 'outdoor', 'other'] as const;
 export type RoomType = (typeof ROOM_TYPES)[number];
 
 export interface Room { id: string; name: string; type: RoomType; polygon: Pt[] }

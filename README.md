@@ -26,7 +26,7 @@ npm run ingest:dev               # ingestion service on :8090 (stands in for the
 npm run dev                      # http://localhost:5173 (marketing) and /app/ (app); runs both Workers
 ```
 
-Without a Gemini key, everything works except reading new drawings and chat. Every new account gets a
+`npm test` checks the drawing-convention and standards rules. Without a Gemini key, everything works except reading new drawings and chat. Every new account gets a
 "Sample house" project. `npm run ingest:fixtures` writes test drawings (vector PDF at 1:100, a scan, a DXF) to `evals/fixtures/`.
 
 ## Deploy

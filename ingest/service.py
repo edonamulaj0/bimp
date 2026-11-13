@@ -6,6 +6,8 @@ POST /analyze (body = file bytes, Content-Type = mime) returns, in one pixel spa
   segments  [[x1, y1, x2, y2], ...]   line work for snapping (vector lines, or wall strokes found by OpenCV)
   texts     [{text, bbox: [x0, y0, x1, y1]}]  exact vector/DXF text, none for scans
   scale     {meters_per_px, source, ratio?} when the drawing states it exactly (1:N on a vector sheet, DXF units), else null
+  paper_mm_per_px  size of one render pixel on the paper sheet when known (PDF page size; image DPI metadata), else null.
+            Lets the Worker turn a measured dimension into a drawing scale and round it to a preferred one.
 The model never measures; this service and the Worker do.
 """
 import base64
@@ -17,6 +19,7 @@ from collections import Counter
 import cv2
 import ezdxf
 import numpy as np
+from PIL import Image
 import pymupdf
 from ezdxf import path as dxfpath
 from ezdxf import recover
@@ -73,17 +76,29 @@ def fit(img: np.ndarray):
     f = min(1.0, MAX_SIDE / max(w, h))
     if f < 1:
         img = cv2.resize(img, (round(w * f), round(h * f)), interpolation=cv2.INTER_AREA)
-    return img
+    return img, f
+
+
+def image_dpi(data: bytes):
+    """Scanner DPI from PNG pHYs / JPEG JFIF / TIFF metadata; None when absent or implausible."""
+    try:
+        dpi = Image.open(io.BytesIO(data)).info.get("dpi")
+        x = float(dpi[0]) if dpi else 0
+        return x if 50 <= x <= 2400 else None
+    except Exception:
+        return None
 
 
 def analyze_image(data: bytes):
     img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError("unreadable image")
-    img = fit(img)
+    img, f = fit(img)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     h, w = gray.shape
-    return {"kind": "image", "width": w, "height": h, "render_png": png_b64(img), "segments": wall_segments(gray), "texts": [], "scale": None}
+    dpi = image_dpi(data)
+    return {"kind": "image", "width": w, "height": h, "render_png": png_b64(img), "segments": wall_segments(gray), "texts": [], "scale": None,
+            "paper_mm_per_px": 25.4 / (dpi * f) if dpi else None}
 
 
 def analyze_pdf(data: bytes):
@@ -121,7 +136,7 @@ def analyze_pdf(data: bytes):
     size = max(pix.width, pix.height)
     vector = len(segs) > 50 and len(texts) > 3
     out = {"kind": "pdf-vector" if vector else "pdf-scan", "pages": doc.page_count, "width": pix.width, "height": pix.height,
-           "render_png": png_b64(img), "texts": texts, "scale": None}
+           "render_png": png_b64(img), "texts": texts, "scale": None, "paper_mm_per_px": 25.4 / 72 / k}
     if vector:
         out["segments"] = keep_longest(segs, size * 0.004)
         n, all_ratios = scale_from_texts(texts)
@@ -193,7 +208,7 @@ def analyze_dxf(data: bytes):
     if unit_m:
         scale = {"meters_per_px": unit_m / s, "source": f"DXF drawing units ({ {1: 'in', 2: 'ft', 4: 'mm', 5: 'cm', 6: 'm', 14: 'dm'}[units] })"}
     return {"kind": "dxf", "width": W, "height": H, "render_png": png_b64(img), "segments": keep_longest(segs, MAX_SIDE * 0.004),
-            "texts": out_texts, "scale": scale, "units_known": bool(unit_m)}
+            "texts": out_texts, "scale": scale, "units_known": bool(unit_m), "paper_mm_per_px": None}
 
 
 async def analyze(request: Request):

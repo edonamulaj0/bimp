@@ -263,6 +263,30 @@ Examples: "How many tiles do I need for the bathroom on level 2?", "How many win
 - Checked on generated fixtures with ±0.4 % position noise on the model output: vector PDF at 1:100 → all 8 areas
   exact, measured; 150 dpi scan → within ~2–4 %, preview.
 
+## 5.6 Design knowledge (built) — Metric Handbook, 4th ed. (Littlefield, 2012)
+
+Reference book supplied by the team (parts 1–5 so far: Ch. 1–26). Figures are encoded as facts with citations in
+`apps/shared/standards.ts`; the book's text is not copied into the product.
+
+| Source | Used for |
+|---|---|
+| Ch. 1 Table III preferred scales; plans at 1:50 / 1:100 / 1:200 | Scale from a dimension is rounded to the nearest preferred scale when the paper size is known (PDF page, image DPI); non-preferred stated scales are flagged |
+| Ch. 1 §2 notation: mm without decimals or m; decimal comma; no thousands marker | `parseDimension` — code, not the model, converts dimension text to metres |
+| Ch. 1 drawing conventions (levels FFL/SSL/TBM, grid lines, dashed = overhead) | Reading prompt: levels and grids are not dimensions or walls; title-block scale is read as `stated_scale` |
+| Ch. 1 §3.2 inclined lines at multiples of 15° | `regularize`: preview and raster outlines straightened to the room's axes |
+| Ch. 2 §4.6, §4.9 doorsets 800/900/1000 mm | Door-width scale fallback (0.9 m) and a check that flags implausible door widths as a likely scale error |
+| Ch. 2 Fig. 2.35 corridor widths; §4.5 wheelchair turning 1.4 m; §5.2 / Table X stairs | Corridor check; `space_standard` tool |
+| Ch. 8 Table IV room minimums; Table III bed sizes; net area to inside wall faces | Room-size checks; bedroom width check; `space_standard` tool; outlines follow inside faces |
+
+- Scale order for non-vector sources: sheet `1:N` read by the model and confirmed by a dimension (≤ 5 %) > dimension
+  rounded to a preferred scale (paper size known) > raw dimension > stated scale alone > door width > assumed.
+  Disagreements are reported as conflicts.
+- Checks (`checkPlan`) are shown in the canvas ("Checks" in the legend bar) and available to the agent (`check_plan`).
+  They are plausibility flags that point at misreadings, not compliance verdicts.
+- Fixture results (`npm test` for the rules; ingestion with ±0.4 % model noise): vector PDF exact and measured; scanned
+  PDF and PNG with DPI now get the exact 1:100 scale, remaining area differences ≤ ~4 % are outline position on raster
+  strokes (inside-face net area vs the fixture's centreline areas).
+
 ## 6. Data model (PostgreSQL)
 
 ```sql
@@ -462,4 +486,5 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 | 2026-11-13 | Ingestion: Cloudflare Workflow + Python Container (PyMuPDF, OpenCV, ezdxf) in a separate `bimp-ingest` Worker so `bimp` keeps preview URLs |
 | 2026-11-13 | "Measured" requires an exact stated scale and ≥ 90 % of corners snapped to vector line work |
 | 2026-11-13 | Plan scale: nominal 1:x on screen + scale bar; exact 1:x only via print in mm |
+| 2026-11-13 | Metric Handbook (4th ed.) adopted as the design-knowledge reference; rules encoded with citations in `apps/shared/standards.ts` |
 | 2026-11-13 | Marketing page v1: plain static HTML + one CSS file in `apps/web/`, system fonts, no build step, default styling; focus stays on functionality. Results section is a placeholder until evals run. Demo CTA points to `/app` |

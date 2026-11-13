@@ -26,7 +26,13 @@ page.insert_text(pymupdf.Point(900, 800), "GROUND FLOOR PLAN  M 1:100", fontsize
 for i in range(30):                                         # furniture-ish clutter
     page.draw_line(P(0.5 + i * 0.1, 1), P(0.5 + i * 0.1, 1.4), width=0.2)
 doc.save(out / "plan-vector.pdf")
-page.get_pixmap(dpi=150).save(out / "plan-scan.png")
+pix = page.get_pixmap(dpi=150)
+pix.set_dpi(150, 150)
+pix.save(out / "plan-scan.png")                             # raster with DPI metadata
+scan = pymupdf.open()                                        # scanned PDF: same sheet, image only, no vector text
+sp = scan.new_page(width=page.rect.width, height=page.rect.height)
+sp.insert_image(sp.rect, filename=str(out / "plan-scan.png"))
+scan.save(out / "plan-scan.pdf")
 
 # DXF in millimetres
 d = ezdxf.new(units=4)
