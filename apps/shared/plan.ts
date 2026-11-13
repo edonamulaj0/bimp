@@ -57,7 +57,73 @@ export function bounds(pts: Pt[]) {
   return { x0, y0, x1, y1 };
 }
 
-/** Walls from room edges: collinear overlapping edges are merged so no wall is drawn twice. */
+/**
+ * Walls from rooms whose outlines follow the inside faces of walls (plans read from drawings). Facing edges of two
+ * rooms separated by a plausible wall thickness (75–600 mm: bricks and blocks, Metric Handbook Ch. 37) become one
+ * wall of exactly that thickness on their centreline; remaining edges get a wall outside the room, so room areas stay net.
+ */
+export function wallsFromFaces(rooms: Room[], exterior = 0.3, interior = 0.12, minT = 0.075, maxT = 0.6): Wall[] {
+  type E = { a: Pt; u: Pt; n: Pt; L: number; room: string; used: [number, number][] };
+  const edges: E[] = [];
+  for (const r of rooms) {
+    let sgn = 0;
+    r.polygon.forEach((p, i) => { const q = r.polygon[(i + 1) % r.polygon.length]; sgn += p[0] * q[1] - q[0] * p[1]; });
+    r.polygon.forEach((a, i) => {
+      const b = r.polygon[(i + 1) % r.polygon.length], L = dist(a, b);
+      if (L < 0.1) return;
+      const u: Pt = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
+      edges.push({ a, u, L, room: r.id, n: sgn > 0 ? [u[1], -u[0]] : [-u[1], u[0]], used: [] });
+    });
+  }
+  const proj = (e: E, p: Pt) => (p[0] - e.a[0]) * e.u[0] + (p[1] - e.a[1]) * e.u[1];
+  const pairs: { i: number; j: number; d: number; s: number; t: number }[] = [];
+  edges.forEach((ei, i) => edges.forEach((ej, j) => {
+    if (j <= i || ei.room === ej.room || ei.n[0] * ej.n[0] + ei.n[1] * ej.n[1] > -0.995) return;
+    const d = (ej.a[0] - ei.a[0]) * ei.n[0] + (ej.a[1] - ei.a[1]) * ei.n[1];
+    if (d < -0.1 || d > maxT) return; // closer than a real wall (or overlapping by a stroke width on raster scans): the same wall
+    const p0 = proj(ei, ej.a), p1 = proj(ei, [ej.a[0] + ej.u[0] * ej.L, ej.a[1] + ej.u[1] * ej.L]);
+    const s = Math.max(0, Math.min(p0, p1)), t = Math.min(ei.L, Math.max(p0, p1));
+    if (t - s >= 0.2) pairs.push({ i, j, d, s, t });
+  }));
+  pairs.sort((x, y) => x.d - y.d); // the thinnest gap is the real wall
+  const covered = (e: E, s: number, t: number) => e.used.reduce((c, [a, b]) => c + Math.max(0, Math.min(b, t) - Math.max(a, s)), 0) / (t - s);
+  const walls: Wall[] = [];
+  const add = (a: Pt, b: Pt, thickness: number) => walls.push({ id: `w${walls.length + 1}`, a, b, thickness: round(thickness, 3) });
+  for (const { i, j, d, s, t } of pairs) {
+    const ei = edges[i], ej = edges[j];
+    const pj = [proj(ej, [ei.a[0] + ei.u[0] * s, ei.a[1] + ei.u[1] * s]), proj(ej, [ei.a[0] + ei.u[0] * t, ei.a[1] + ei.u[1] * t])].sort((x, y) => x - y) as [number, number];
+    if (covered(ei, s, t) > 0.5 || covered(ej, pj[0], pj[1]) > 0.5) continue;
+    const off = (k: number): Pt => [ei.a[0] + ei.u[0] * k + ei.n[0] * d / 2, ei.a[1] + ei.u[1] * k + ei.n[1] * d / 2];
+    add(off(s), off(t), d >= minT ? d : interior);
+    ei.used.push([s, t]); ej.used.push(pj);
+  }
+  const insideAny = (p: Pt) => rooms.some((r) => {
+    let c = false;
+    for (let a = 0, b = r.polygon.length - 1; a < r.polygon.length; b = a++) {
+      const [xi, yi] = r.polygon[a], [xj, yj] = r.polygon[b];
+      if (yi > p[1] !== yj > p[1] && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  });
+  for (const e of edges) {
+    e.used.sort((x, y) => x[0] - y[0]);
+    const free: [number, number][] = [];
+    let cur = 0;
+    for (const [a, b] of e.used) { if (a > cur) free.push([cur, a]); cur = Math.max(cur, b); }
+    if (cur < e.L) free.push([cur, e.L]);
+    for (const [a, b] of free) {
+      if (b - a < 0.2) continue;
+      const mid = (a + b) / 2;
+      const probe: Pt = [e.a[0] + e.u[0] * mid + e.n[0] * 1.0, e.a[1] + e.u[1] * mid + e.n[1] * 1.0];
+      const T = insideAny(probe) ? interior : exterior;
+      const at = (k: number): Pt => [e.a[0] + e.u[0] * k + e.n[0] * T / 2, e.a[1] + e.u[1] * k + e.n[1] * T / 2];
+      add(at(a), at(b), T);
+    }
+  }
+  return walls;
+}
+
+/** Walls from room edges drawn on wall centrelines (the sample plan): collinear overlapping edges are merged. */
 export function wallsFromRooms(rooms: Room[], exterior = 0.3, interior = 0.12): Wall[] {
   const all = rooms.flatMap((r) => r.polygon);
   const bb = bounds(all);

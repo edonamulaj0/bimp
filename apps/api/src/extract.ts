@@ -1,5 +1,5 @@
 // Drawing -> Plan. The model reads (labels, room outlines, openings); code measures (snapping, scale, areas).
-import { type Plan, type Pt, type Room, type Opening, ROOM_TYPES, bounds, dist, wallsFromRooms, round } from '../../shared/plan';
+import { type Plan, type Pt, type Room, type Opening, ROOM_TYPES, bounds, dist, wallsFromFaces, wallsFromRooms, round } from '../../shared/plan';
 import { generate, textOf } from './gemini';
 import type { Analysis } from './ingest';
 import { BOOK, nearestPreferredScale, parseDimension } from '../../shared/standards';
@@ -278,7 +278,7 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     measured
       ? `Room outlines read by AI and snapped to the drawing's line work (${Math.round(snapRatio * 100)}% of corners); scale from the drawing`
       : `Preview, not measured: ${!exact ? 'no exact scale on the drawing' : `only ${Math.round(snapRatio * 100)}% of corners matched line work`}`,
-    'Wall height 2.7 m (assumed)', 'Exterior walls 0.30 m, interior 0.12 m (assumed)',
+    'Wall height 2.7 m (assumed)', `Wall thickness measured between neighbouring rooms where they face each other; otherwise exterior 0.30 m, interior 0.12 m (assumed, typical masonry: ${BOOK} Ch. 37)`,
   );
 
   const m = mpp!;
@@ -291,7 +291,9 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     polygon: r.poly.map(toM),
   }));
   const openings: Opening[] = openings0.map((o, i) => ({ id: `${o.kind[0]}${i + 1}`, kind: o.kind, a: toM(o.a), b: toM(o.b) }));
-  const walls = wallsFromRooms(rooms);
+  // Vector outlines snap to wall faces (inside-face rooms); fall back to centreline merging if no wall gaps are found.
+  const faceWalls = wallsFromFaces(rooms);
+  const walls = faceWalls.some((w) => w.thickness !== 0.3 && w.thickness !== 0.12) ? faceWalls : wallsFromRooms(rooms);
   const bb = bounds([...rooms.flatMap((r) => r.polygon), ...walls.flatMap((w) => [w.a, w.b])]);
 
   return {

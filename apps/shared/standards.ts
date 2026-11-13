@@ -1,6 +1,7 @@
 // Design knowledge used for reading drawings and checking plans. Every figure cites its source so answers stay verifiable.
 // Source: Metric Handbook: Planning and Design Data, 4th ed. (D. Littlefield, ed., Architectural Press 2012).
-import { type Plan, type Pt, type Room, area, dist, round } from './plan';
+import { type Plan, type Pt, type Room, type Opening, area, dist, round } from './plan';
+import { escapeRoutes } from './escape';
 
 export const BOOK = 'Metric Handbook, 4th ed.';
 
@@ -51,6 +52,48 @@ export const STAIR = { twoRPlusG: [0.55, 0.7], maxRise: 0.22, minGoing: 0.22, re
 /** Ch. 2 §4.5: wheelchair turning space 1.4 m square. */
 export const TURNING = { side: 1.4, ref: `${BOOK} Ch. 2 §4.5` };
 
+/** Ch. 41 Figs. 41.16–41.21: in a flat without an alternative exit, every point within 9 m of the entrance door. */
+export const FLAT_TRAVEL = { max: 9, ref: `${BOOK} Ch. 41 Figs. 41.16–41.21` };
+/** Ch. 41 Table XV (Approved Document B vol. 2 Table 2): maximum travel distance, one direction / more than one (m). */
+export const TRAVEL: Record<string, [number, number]> = {
+  institutional: [9, 18], 'residential bedrooms': [9, 18], 'residential elsewhere': [18, 35], office: [18, 45], shop: [18, 45],
+  'assembly seating in rows': [15, 32], assembly: [18, 45], industrial: [25, 45], storage: [25, 45], 'plant room': [9, 35],
+};
+export const TRAVEL_REF = `${BOOK} Ch. 41 Table XV (direct distance may be taken as 2/3 of travel distance)`;
+/** Ch. 41 Table XI (Approved Document B vol. 2 Table C1): floor space per person, m². */
+export const OCCUPANCY: Record<string, number> = {
+  'standing / bar': 0.3, 'assembly hall / dance': 0.5, concourse: 0.7, 'meeting / dining / restaurant': 1.0, exhibition: 1.5,
+  'shop sales': 2.0, 'gallery / dormitory / workshop': 5.0, office: 6.0, 'shop (bulky goods)': 7.0, 'kitchen / library': 7.0,
+  'bedroom / study-bedroom': 8.0, 'bed-sitting room': 10.0, 'storage / warehouse': 30.0,
+};
+export const OCCUPANCY_REF = `${BOOK} Ch. 41 Table XI`;
+/** Ch. 41 Table XIV: minimum width of escape routes and exits by number of people. */
+export function escapeWidth(people: number) {
+  const mm = people <= 50 ? 750 : people <= 110 ? 850 : people <= 220 ? 1050 : 5 * people;
+  return { people, min_width_mm: mm, ref: `${BOOK} Ch. 41 Table XIV` };
+}
+/** Ch. 42 §5.2: stairs ≥ 1000 mm clear between handrails, ≤ 12 steps a flight, ramps no steeper than 1:12 (1:20 preferred). */
+export const ACCESS = { stairWidth: 1.0, stepsPerFlight: 12, ramp: '1:12 max, 1:20 preferred', level: '1:60', ref: `${BOOK} Ch. 42 §5.2, Tables V–VI` };
+/** Ch. 31 Fig. 31.30: smallest single domestic garage 2400 × 4900 mm inside. */
+export const GARAGE = { width: 2.4, length: 4.9, ref: `${BOOK} Ch. 31 Fig. 31.30` };
+/** Ch. 37 §4: brick 215 × 102.5 × 65 mm, blocks 90–100 mm thick: plausible wall thicknesses for reading plans. */
+export const WALL = { min: 0.075, max: 0.6, interior: 0.12, exterior: 0.3, ref: `${BOOK} Ch. 37 §4` };
+
+const HABITABLE: Room['type'][] = ['living', 'dining', 'bedroom', 'kitchen', 'office'];
+
+/** Openings lying on a room's boundary (within a wall's thickness). */
+export function openingsOf(r: Room, openings: Opening[]) {
+  return openings.filter((o) => {
+    const m: Pt = [(o.a[0] + o.b[0]) / 2, (o.a[1] + o.b[1]) / 2];
+    return r.polygon.some((p, i) => {
+      const q = r.polygon[(i + 1) % r.polygon.length];
+      const L2 = (q[0] - p[0]) ** 2 + (q[1] - p[1]) ** 2 || 1;
+      const t = Math.max(0, Math.min(1, ((m[0] - p[0]) * (q[0] - p[0]) + (m[1] - p[1]) * (q[1] - p[1])) / L2));
+      return dist(m, [p[0] + t * (q[0] - p[0]), p[1] + t * (q[1] - p[1])]) < 0.4;
+    });
+  });
+}
+
 export type Check = { level: 'warn' | 'info'; text: string; ref: string; room_id?: string };
 
 /** Shortest side of the room's minimum-area bounding rectangle (rotating calipers over the hull edges). */
@@ -81,6 +124,33 @@ export function checkPlan(plan: Plan): Check[] {
     // A 900 mm bed plus a 600 mm access strip (our assumption) needs 1.5 m of clear width.
     if (r.type === 'bedroom' && w < BED.single[1] + 0.6) out.push({ level: 'info', room_id: r.id, ref: BED.ref, text: `${r.name}: ${round(w, 2)} m wide, too narrow for a 2000 × 900 mm bed plus access. Is it really a bedroom?` });
     if (r.type === 'circulation' && w < CORRIDOR.min) out.push({ level: 'warn', room_id: r.id, ref: CORRIDOR.ref, text: `${r.name}: ${round(w, 2)} m wide, under the 900 mm a corridor normally needs.` });
+  }
+  // With fewer than two windows found the reading is probably incomplete; don't flag every room.
+  const hasWindows = plan.openings.filter((o) => o.kind === 'window').length >= 2;
+  for (const r of plan.rooms) {
+    const w = minWidth(r.polygon);
+    if (r.type === 'garage') {
+      const xs = r.polygon.map((p) => p[0]), ys = r.polygon.map((p) => p[1]);
+      const len = Math.max(Math.max(...xs) - Math.min(...xs), Math.max(...ys) - Math.min(...ys));
+      if (w < GARAGE.width || len < GARAGE.length) out.push({ level: 'warn', room_id: r.id, ref: GARAGE.ref, text: `${r.name}: ${round(w, 2)} × ${round(len, 2)} m, smaller than the 2.4 × 4.9 m minimum single garage.` });
+    }
+    if (r.type === 'stair' && w < ACCESS.stairWidth) out.push({ level: 'info', room_id: r.id, ref: ACCESS.ref, text: `${r.name}: ${round(w, 2)} m wide; accessible stairs need 1000 mm clear between handrails.` });
+    if (hasWindows && HABITABLE.includes(r.type) && !openingsOf(r, plan.openings).some((o) => o.kind === 'window'))
+      out.push({ level: 'info', room_id: r.id, ref: `${BOOK} Ch. 39`, text: `${r.name}: no window found. Habitable rooms need daylight; check the drawing.` });
+  }
+  const hasDoors = plan.openings.some((o) => o.kind === 'door');
+  const esc = hasDoors ? escapeRoutes(plan) : null;
+  if (hasDoors && !esc) out.push({ level: 'info', ref: `${BOOK} Ch. 41`, text: 'No exit door found (a door with outside space on one side). Escape distances cannot be estimated; check the drawing.' });
+  if (esc) {
+    const worst = esc.routes.reduce((a, b) => (b.distance_m > a.distance_m ? b : a), esc.routes[0]);
+    if (worst && worst.distance_m > FLAT_TRAVEL.max) {
+      const r = plan.rooms.find((x) => x.id === worst.room_id)!;
+      out.push({ level: 'info', room_id: r.id, ref: FLAT_TRAVEL.ref, text: `Furthest point (in ${r.name}) is about ${worst.distance_m} m from an exit door. A flat without an alternative exit is limited to 9 m unless it has a protected entrance hall.` });
+    }
+    for (const id of esc.unreachable) {
+      const r = plan.rooms.find((x) => x.id === id)!;
+      out.push({ level: 'info', room_id: id, ref: `${BOOK} Ch. 41`, text: `${r.name}: no door found leading out of it. Check the drawing for a missing door.` });
+    }
   }
   const doors = plan.openings.filter((o) => o.kind === 'door').map((o) => dist(o.a, o.b)).sort((x, y) => x - y);
   if (doors.length >= 3) {

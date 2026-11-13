@@ -2,7 +2,9 @@
 import { parseDimension, nearestPreferredScale, checkPlan } from '../apps/shared/standards';
 import { regularize, snapPolygon } from '../apps/api/src/extract';
 import { samplePlan } from '../apps/shared/sample-plan';
-import { area, type Plan } from '../apps/shared/plan';
+import { area, wallsFromFaces, type Plan } from '../apps/shared/plan';
+import { escapeRoutes } from '../apps/shared/escape';
+import { escapeWidth } from '../apps/shared/standards';
 
 let fail = 0;
 const eq = (name: string, got: unknown, want: unknown) => {
@@ -43,6 +45,28 @@ const big = samplePlan();
 const doubled: Plan = { ...big, openings: big.openings.map((o) => ({ ...o, a: [o.a[0] * 2, o.a[1] * 2], b: [o.b[0] * 2, o.b[1] * 2] })) };
 eq('doors twice too wide -> scale warning', checkPlan(doubled).some((c) => /scale is probably off/.test(c.text)), true);
 near('sample area unchanged', area(big.rooms[0].polygon), 32.5);
+
+// Ch. 41 escape routes on the sample house: one exit (hall door), living room's far corner via the hall door
+const esc = escapeRoutes(samplePlan())!;
+eq('one exit door', esc.exits, ['d1']);
+eq('every room reachable', esc.unreachable, []);
+near('living room worst distance ≈ 7.92 + 5.5 m', esc.routes.find((r) => r.room_id === 'r1')!.distance_m, 13.42, 0.02);
+eq('sample flags > 9 m travel (info)', checkPlan(samplePlan()).some((c) => /9 m/.test(c.text) && c.level === 'info'), true);
+// Ch. 41 Table XIV
+eq('escape width 100 people', escapeWidth(100).min_width_mm, 850);
+eq('escape width 300 people', escapeWidth(300).min_width_mm, 1500);
+// Ch. 37 walls from inside faces: a 200 mm gap between two rooms becomes one 200 mm wall on its centreline
+const fw = wallsFromFaces([
+  { id: 'a', name: 'A', type: 'other', polygon: [[0, 0], [4, 0], [4, 3], [0, 3]] },
+  { id: 'b', name: 'B', type: 'other', polygon: [[4.2, 0], [8, 0], [8, 3], [4.2, 3]] },
+]);
+const party = fw.filter((w) => Math.abs(w.a[0] - 4.1) < 1e-9 && Math.abs(w.b[0] - 4.1) < 1e-9);
+eq('shared wall: one wall at x = 4.1', party.length, 1);
+eq('shared wall thickness 0.2', party[0]?.thickness, 0.2);
+eq('outer walls outside the rooms (net areas kept)', fw.filter((w) => w.thickness === 0.3).every((w) => w.a[0] <= 0 || w.a[0] >= 8 || w.a[1] <= 0 || w.a[1] >= 3), true);
+// Ch. 31 garage
+const gar: Plan = { ...samplePlan(), openings: [], rooms: [{ id: 'g', name: 'Garage', type: 'garage', polygon: [[0, 0], [2.2, 0], [2.2, 4.5], [0, 4.5]] }] };
+eq('2.2 × 4.5 m garage flagged (Fig. 31.30)', checkPlan(gar).some((c) => c.room_id === 'g' && c.level === 'warn'), true);
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');
 process.exit(fail ? 1 : 0);

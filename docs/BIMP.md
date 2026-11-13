@@ -265,7 +265,7 @@ Examples: "How many tiles do I need for the bathroom on level 2?", "How many win
 
 ## 5.6 Design knowledge (built) — Metric Handbook, 4th ed. (Littlefield, 2012)
 
-Reference book supplied by the team (parts 1–5 so far: Ch. 1–26). Figures are encoded as facts with citations in
+Reference book supplied by the team (all parts: Ch. 1–42 and appendices). Figures are encoded as facts with citations in
 `apps/shared/standards.ts`; the book's text is not copied into the product.
 
 | Source | Used for |
@@ -277,6 +277,11 @@ Reference book supplied by the team (parts 1–5 so far: Ch. 1–26). Figures ar
 | Ch. 2 §4.6, §4.9 doorsets 800/900/1000 mm | Door-width scale fallback (0.9 m) and a check that flags implausible door widths as a likely scale error |
 | Ch. 2 Fig. 2.35 corridor widths; §4.5 wheelchair turning 1.4 m; §5.2 / Table X stairs | Corridor check; `space_standard` tool |
 | Ch. 8 Table IV room minimums; Table III bed sizes; net area to inside wall faces | Room-size checks; bedroom width check; `space_standard` tool; outlines follow inside faces |
+| Ch. 41 Figs. 41.16–41.21 (flat: 9 m to the entrance door without an alternative exit); Table XV travel distances; Tables XI, XIV occupancy and escape widths | `apps/shared/escape.ts`: door graph, exits = doors with open air on one side, worst-point travel distance per room; 2D **Escape** overlay; check; `escape_route` and `occupancy` tools |
+| Ch. 42 §5.2 stairs ≥ 1000 mm between handrails, ≤ 12 steps a flight, ramps ≤ 1:12; Tables V–VI wheelchair turning | Stair-width check; `space_standard` (access) |
+| Ch. 37 §4 bricks 215 × 102.5 × 65, blocks 90–100 mm | `wallsFromFaces`: facing room edges 75–600 mm apart become one wall of the measured thickness on their centreline; edges closer than that (or overlapping by a raster stroke) are the same wall; unpaired edges get a wall outside the room so areas stay net |
+| Ch. 31 Fig. 31.30 smallest single garage 2400 × 4900 mm | Garage check |
+| Ch. 39 daylight | Habitable rooms with no window (only when ≥ 2 windows were found, to avoid noise from incomplete readings) |
 
 - Scale order for non-vector sources: sheet `1:N` read by the model and confirmed by a dimension (≤ 5 %) > dimension
   rounded to a preferred scale (paper size known) > raw dimension > stated scale alone > door width > assumed.
@@ -487,4 +492,5 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 | 2026-11-13 | "Measured" requires an exact stated scale and ≥ 90 % of corners snapped to vector line work |
 | 2026-11-13 | Plan scale: nominal 1:x on screen + scale bar; exact 1:x only via print in mm |
 | 2026-11-13 | Metric Handbook (4th ed.) adopted as the design-knowledge reference; rules encoded with citations in `apps/shared/standards.ts` |
+| 2026-11-13 | Fire escape distances and wall thickness from facing room edges added from Metric Handbook Ch. 31–42 |
 | 2026-11-13 | Marketing page v1: plain static HTML + one CSS file in `apps/web/`, system fonts, no build step, default styling; focus stays on functionality. Results section is a placeholder until evals run. Demo CTA points to `/app` |

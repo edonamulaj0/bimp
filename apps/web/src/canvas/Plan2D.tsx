@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { doorLinks, escapeRoutes } from '../../../shared/escape';
 import { type Plan, type Pt, area, centroid, dist, round } from '../../../shared/plan';
 import { hoverRoom, selectedRooms } from '../state';
 import { ROOM_COLORS } from './colors';
@@ -19,6 +20,9 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
   const drag = useRef<{ x: number; y: number; vb: typeof vb; moved: boolean } | null>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [typed, setTyped] = useState<string | null>(null);
+  const [showEscape, setShowEscape] = useState(false);
+  const escape = useMemo(() => (showEscape ? escapeRoutes(plan) : null), [plan, showEscape]);
+  const exits = useMemo(() => (showEscape ? doorLinks(plan).filter((d) => d.exit) : []), [plan, showEscape]);
   useEffect(() => setVb(home), [plan]);
   useEffect(() => {
     const ro = new ResizeObserver(([e]) => setSize({ w: e.contentRect.width, h: e.contentRect.height }));
@@ -63,6 +67,8 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
   });
 
   const hovered = hoverRoom.value, selected = selectedRooms.value;
+  const focusId = hovered ?? selected[0];
+  const route = escape && (escape.routes.find((r) => r.room_id === focusId) ?? escape.routes.reduce((a, b) => (b.distance_m > a.distance_m ? b : a), escape.routes[0]));
   const fs = Math.max(plan.width, plan.height) / 45;
 
   const drawing = (
@@ -118,6 +124,14 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
           );
         })}
       </g>
+      {route && (
+        <g pointer-events="none" class="escape">
+          <polyline points={route.path.map((p) => p.join(',')).join(' ')} fill="none" stroke="#dc2626" stroke-width={fs * 0.18} stroke-dasharray={`${fs * 0.6} ${fs * 0.35}`} stroke-linejoin="round" />
+          <circle cx={route.from[0]} cy={route.from[1]} r={fs * 0.35} fill="#dc2626" />
+          <text x={(route.path[0][0] + route.path[1][0]) / 2} y={(route.path[0][1] + route.path[1][1]) / 2 - fs * 0.5} font-size={fs * 1.1} text-anchor="middle" fill="#dc2626" font-weight="700" stroke="var(--paper)" stroke-width={fs * 0.25} paint-order="stroke">{route.distance_m} m to exit</text>
+        </g>
+      )}
+      {exits.map((d) => <g key={d.id} pointer-events="none"><circle cx={d.mid[0]} cy={d.mid[1]} r={fs * 0.6} fill="#15803d" /><text x={d.mid[0]} y={d.mid[1] + fs * 0.35} font-size={fs * 0.8} text-anchor="middle" fill="#fff" font-weight="700">EXIT</text></g>)}
       {!compact && (
         <g pointer-events="none" text-anchor="middle" class="labels">
           {plan.rooms.map((r) => {
@@ -149,6 +163,10 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
         <datalist id="std-scales">{STANDARD.map((x) => <option key={x} value={x} />)}</datalist>
         {plan.scale.ratio && <button class="link small" onClick={() => setRatio(plan.scale.ratio!)} title="The drawing's own scale">Drawing 1:{plan.scale.ratio}</button>}
         <button class="link small" onClick={() => setVb(home)}>Fit</button>
+        <button class="link small" aria-pressed={showEscape} onClick={() => setShowEscape(!showEscape)}
+          title="Escape routes: travel distance from the furthest point of the room to an exit (Metric Handbook Ch. 41). Hover a room.">
+          {showEscape ? '✓ ' : ''}Escape</button>
+        {showEscape && !escape && <span class="small muted">No exit door found</span>}
         <button class="link small" title={`Print to scale at 1:${printRatio}`}
           onClick={() => printPlan(svg.current!, plan, Number(prompt('Print at scale 1:', String(printRatio))) || printRatio, pad, title)}>Print…</button>
       </div>
