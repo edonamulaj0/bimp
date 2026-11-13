@@ -188,8 +188,9 @@ Examples: "How many tiles do I need for the bathroom on level 2?", "How many win
 
 | Layer | Choice | Notes |
 |---|---|---|
-| Frontend | Static app served by Workers static assets | Chat + canvas; 2D viewer on canvas/SVG; 3D via an IFC-capable three.js viewer (stretch) |
-| API / agent | Cloudflare Worker, TypeScript | Paid Workers plan available. Waiting on model calls doesn't count as CPU time |
+| Frontend | Preact + @preact/signals + three.js, built with Vite (`@cloudflare/vite-plugin`), served by Workers static assets | Chat + canvas; 2D plan in SVG; isometric 3D in three.js, lazy-loaded |
+| API / agent | Cloudflare Worker, TypeScript, Hono | Paid Workers plan available. Waiting on model calls doesn't count as CPU time |
+| App data | Cloudflare D1 | Users, sessions, projects, files, plans, chat, model cache. The drawing index (PostGIS/pgvector) stays in Postgres |
 | Ingestion | Python in Cloudflare Containers (fed by Queues), or a laptop script | Native libs don't run in Workers |
 | Files | Cloudflare R2 (private bucket) | Upload with rclone/S3 API, not through a Worker |
 | Images / crops | Pre-rendered pages + tiles in R2; crops via Cloudflare Images or Cloudinary | Cloudinary can render PDF pages (`pg_N`, `dn_DPI`, `c_crop`); **VERIFY** plan size limits |
@@ -208,6 +209,31 @@ Examples: "How many tiles do I need for the bathroom on level 2?", "How many win
 - **Grid references:** derived from grid line geometry; stored as labels on items for display.
 
 ---
+
+## 5.3 Auth (built)
+
+- Email + password. PBKDF2-SHA256, 100k iterations (Workers maximum), 16-byte salt, constant-time compare.
+- Session: 32 random bytes in an `HttpOnly; Secure; SameSite=Lax` `__Host-` cookie; only its SHA-256 is stored (D1 `sessions`), 7-day expiry.
+- CSRF: SameSite=Lax plus an Origin check on every non-GET API request.
+- Brute force: 8 failures per email or 30 per IP in 15 minutes → 429. Login doesn't reveal whether an email exists (sign-up does).
+- Headers: CSP, HSTS, frame-ancestors none, nosniff (`apps/web/public/_headers`).
+- Sign-up switch: `ALLOW_SIGNUP` var. Recommended for the public demo: Turnstile on the login form and/or Cloudflare Access in front.
+
+## 5.4 Plan extraction and the 2D/3D canvas (built, preview)
+
+- Upload PDF/PNG/JPG/WebP (≤ 20 MB) → R2, deduplicated by SHA-256 per project.
+- Gemini reads the drawing with a JSON schema: rooms (label as written, type, polygon), walls, doors/windows, and one
+  dimension string with its endpoints. Points are `[y, x]` normalised 0–1000 (Gemini's native convention).
+- Code does the measuring: scale = dimension value ÷ pixel length of that dimension line; fallback 0.9 m median door
+  width; last resort "12 m across", each fallback recorded in `assumptions`. Areas are computed in code (shoelace).
+- Stored `Plan` JSON (`apps/shared/plan.ts`): metres, origin top-left, y down. Always `measured: false` for AI
+  extraction, so the UI shows "Preview, not measured". Response cached in `model_cache` by file hash.
+- Canvas: 2D (SVG) / 3D (three.js, true isometric orthographic camera, 90° rotation steps, cutaway walls at 1.2 m by
+  default) / split. In 2D a minimisable 3D inset; in 3D a 2D inset at the bottom. Hover and selection are linked across
+  views and chat citations; rooms are coloured by type. Image sources can be overlaid under the 2D plan to check it.
+- Chat agent: Gemini function calling over plan tools (`plan_info`, `list_rooms`, `get_room`, `count`, `calculate`,
+  `final_answer`). Verifier: every number in the answer must appear in a tool result, the question, or a listed
+  assumption; cited rooms must exist; otherwise the answer is shown as "Unverified".
 
 ## 6. Data model (PostgreSQL)
 
@@ -400,4 +426,9 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 | 2026-11-13 | Stack: Cloudflare (Workers, R2, Queues, Containers, Hyperdrive, AI Gateway) + Aiven Postgres + Gemini (+ Cloudinary optional) |
 | 2026-11-13 | Ingestion in Python outside Workers; index once, answer from the index |
 | 2026-11-13 | Tinkercad-style editing and animations out of scope; 3D-from-2D only as labelled preview (stretch) |
+| 2026-11-13 | App data (users, sessions, projects, plans, chat) in D1; drawing index stays in Aiven Postgres when built |
+| 2026-11-13 | Frontend: Preact + signals + three.js via Vite; app at `/app/` with hash routing; three.js lazy-loaded |
+| 2026-11-13 | Login: two halves, single conversational input (email → password) with `bimp.` wordmark left; our own isometric render under a blueprint-blue overlay right. Blueprint blue is used only here (user request overrides §12 for the login) |
+| 2026-11-13 | Logo for now: lowercase wordmark `bimp.` |
+| 2026-11-13 | Floor plan → 2D + isometric 3D via Gemini extraction, labelled preview; cutaway walls default in 3D |
 | 2026-11-13 | Marketing page v1: plain static HTML + one CSS file in `apps/web/`, system fonts, no build step, default styling; focus stays on functionality. Results section is a placeholder until evals run. Demo CTA points to `/app` |
