@@ -5,7 +5,7 @@
   "compatibility_date": "2026-10-01",
   "workers_dev": false,
   // Same D1 database and R2 bucket as the web Worker (keep ids in sync with ../wrangler.jsonc).
-  "d1_databases": [{ "binding": "DB", "database_name": "bimp", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "../db/migrations" }],
+  "d1_databases": [{ "binding": "DB", "database_name": "bimp", "database_id": "07fca9b5-ac4a-463f-951d-a2c0e82f2e35", "migrations_dir": "../db/migrations" }],
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "bimp-files" }],
   "workflows": [{ "name": "bimp-ingest", "binding": "INGEST_WORKFLOW", "class_name": "IngestWorkflow" }],
   "containers": [{ "class_name": "IngestContainer", "image": "./Dockerfile", "max_instances": 3, "instance_type": "standard-1" }],
