@@ -1,0 +1,111 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>BIMP — your BIM Pilot</title>
+  <meta name="description" content="Ask your drawings. See the answer on the sheet. BIMP answers questions about construction drawings and BIM models, with the source highlighted.">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="wrap nav">
+    <strong>BIMP</strong>
+    <nav>
+      <a href="#how">How it works</a>
+      <a href="#trust">Trust</a>
+      <a href="/app/" class="btn">Try the demo</a>
+    </nav>
+  </header>
+
+  <main>
+    <section class="wrap hero">
+      <h1>Ask your drawings.<br>See the answer on the sheet.</h1>
+      <p class="lead">BIMP answers plain-language questions about construction drawings and building models — and shows the exact spot on the sheet each answer came from.</p>
+      <p><a href="/app/" class="btn">Try the demo</a> <a href="#how" class="btn ghost">See how it works</a></p>
+
+      <figure class="shot" aria-label="Example of the BIMP workspace">
+        <div class="pane chat">
+          <p class="q">What is the fire rating of door T1.04?</p>
+          <p class="a"><b>EI30</b> — from the door schedule.</p>
+          <span class="chip">A-601 · Door schedule</span>
+        </div>
+        <div class="pane canvas">
+          <table>
+            <tr><th>Door</th><th>Size</th><th>Fire rating</th></tr>
+            <tr><td>T1.03</td><td>900×2100</td><td>—</td></tr>
+            <tr class="hl"><td>T1.04</td><td>1000×2100</td><td>EI30</td></tr>
+            <tr><td>T1.05</td><td>900×2100</td><td>—</td></tr>
+          </table>
+          <small>Sheet A-601 · highlighted row</small>
+        </div>
+        <figcaption>Illustration of the workspace: chat on the left, sheet with evidence on the right.</figcaption>
+      </figure>
+    </section>
+
+    <section class="band">
+      <div class="wrap">
+        <h2>The problem</h2>
+        <p>Site engineers spend hours every day searching drawing sets for one number or note. General-purpose AI tools guess when they read complex technical drawings — and a guess you can't check is worse than no answer.</p>
+      </div>
+    </section>
+
+    <section class="wrap" id="how">
+      <h2>How it works</h2>
+      <ol class="steps">
+        <li><b>Upload</b> a drawing set — PDF, vector or scanned, in any language.</li>
+        <li><b>Ask</b> a question in plain words.</li>
+        <li><b>Get the answer with evidence</b> — sheet, grid location and a highlighted crop you can verify in seconds.</li>
+      </ol>
+    </section>
+
+    <section class="wrap">
+      <h2>Example questions</h2>
+      <div class="grid">
+        <article><h3>“What's the fire rating of door T1.04?”</h3><p>Answered from the door schedule; the row is highlighted on the sheet.</p></article>
+        <article><h3>“How many tiles for the level 2 bathroom?”</h3><p>Room outline shown, area × tile size + 10% waste, formula and assumptions listed.</p></article>
+        <article><h3>“How many windows on the north façade?”</h3><p>Each counted window is marked; schedule and plan counts are compared.</p></article>
+        <article><h3>“Which detail shows the parapet?”</h3><p>The callout is followed to the detail sheet and opened there.</p></article>
+      </div>
+    </section>
+
+    <section class="band" id="trust">
+      <div class="wrap">
+        <h2>Why you can trust it</h2>
+        <ul class="checks">
+          <li><b>No source, no answer.</b> Every claim cites a sheet and region. If nothing supports it, BIMP says “Not found in the drawings”.</li>
+          <li><b>Exact values from the drawing.</b> Numbers come from extracted text, tables and geometry — not estimated by a model.</li>
+          <li><b>Quantities show their working.</b> Inputs, formula, assumptions and result.</li>
+          <li><b>Conflicts are flagged.</b> When two sheets disagree, you see both.</li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="wrap two">
+      <div>
+        <h2>Formats and languages</h2>
+        <p>PDF and image floor plans today, turned into a 2D plan and an isometric 3D model (labelled as a preview until measured). DWG/DXF and IFC are planned. Questions in any language; drawing text quoted as written.</p>
+      </div>
+      <div>
+        <h2>Who it's for</h2>
+        <p><b>Site engineers</b> who need one number fast. <b>Project managers</b> checking quantities across sheets. <b>Estimators</b> who need take-offs they can defend.</p>
+      </div>
+    </section>
+
+    <section class="wrap">
+      <h2>Results</h2>
+      <p class="muted">Accuracy, citation accuracy and time-to-answer per question type will be published here from our evaluation runs.</p>
+    </section>
+
+    <section class="band center">
+      <div class="wrap">
+        <h2>Answers you can point to.</h2>
+        <p><a href="/app/" class="btn">Try the demo</a></p>
+      </div>
+    </section>
+  </main>
+
+  <footer class="wrap">
+    <p><strong>BIMP</strong> — BIM Pilot. Built with Gemini, Cloudflare, Aiven and Cloudinary.</p>
+  </footer>
+</body>
+</html>

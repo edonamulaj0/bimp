@@ -1,0 +1,19 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "bimp",
+  "main": "apps/api/src/index.ts",
+  "compatibility_date": "2026-10-01",
+  "assets": { "not_found_handling": "404-page", "run_worker_first": ["/api/*"] },
+  "d1_databases": [
+    // Create with `wrangler d1 create bimp` and paste the real id here before deploying.
+    { "binding": "DB", "database_name": "bimp", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "db/migrations" }
+  ],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "bimp-files" }],
+  "vars": {
+    "GEMINI_MODEL": "gemini-2.5-flash",
+    "ALLOW_SIGNUP": "true",
+    // Optional: https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>
+    "AI_GATEWAY_URL": ""
+  }
+  // Secrets (never commit): GEMINI_API_KEY via `wrangler secret put GEMINI_API_KEY`, locally in .dev.vars
+}
