@@ -1,0 +1,6 @@
+pymupdf==2.1
+opencv-python-headless==5.0.0.93
+ezdxf==1.4.5
+numpy==2.5.4
+starlette==1.10.0
+uvicorn==0.54.0

@@ -101,6 +101,7 @@ details { margin-top: .4rem; } details ul { margin: .3rem 0 0; padding-left: 1.1
 .seg button[aria-pressed="true"] { background: var(--fg); color: var(--bg); }
 .toggle { display: inline-flex; gap: .3rem; align-items: center; cursor: pointer; }
 .badge { font-size: .75rem; border: 1px solid #b45309; color: #b45309; border-radius: 999px; padding: .1rem .55rem; }
+.badge.ok { border-color: #15803d; color: #15803d; }
 
 .views { position: relative; flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); }
 .views.mode-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }

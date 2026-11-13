@@ -9,6 +9,9 @@
     { "binding": "DB", "database_name": "bimp", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "db/migrations" }
   ],
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "bimp-files" }],
+  // Ingestion runs in the separate "bimp-ingest" Worker (ingest/wrangler.jsonc); this binding points at its Workflow.
+  "workflows": [{ "name": "bimp-ingest", "binding": "INGEST_WORKFLOW", "class_name": "IngestWorkflow", "script_name": "bimp-ingest" }],
+  "preview_urls": true,
   "vars": {
     "GEMINI_MODEL": "gemini-2.5-flash",
     "ALLOW_SIGNUP": "true",

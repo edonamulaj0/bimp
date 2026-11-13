@@ -235,6 +235,25 @@ Examples: "How many tiles do I need for the bathroom on level 2?", "How many win
   `final_answer`). Verifier: every number in the answer must appear in a tool result, the question, or a listed
   assumption; cited rooms must exist; otherwise the answer is shown as "Unverified".
 
+## 5.5 Ingestion: Workflows + Containers (built)
+
+- Two Workers: `bimp` (site, app, API; gets preview URLs) and `bimp-ingest` (Workflow + Container). Split because
+  Cloudflare generates no version/preview URLs for Workers that contain Durable Objects, and Containers are Durable Objects.
+- Upload → R2 → `jobs` row → Workflow instance (same id). Steps, each retried on its own, big results kept in R2:
+  1. **analyze** (Container, `ingest/service.py`): PDF → render ≤ 3000 px + vector line segments + text spans with
+     boxes + sheet scale from `1:N` text (most frequent; others listed). Scans/images → render + OpenCV wall strokes
+     (Otsu, morphological opening, Hough). DXF → INSERTs expanded, curves flattened, rendered; scale exact from `$INSUNITS`.
+  2. **read** (Gemini, cached by render hash): room labels/types/outlines, openings, one dimension string.
+  3. **measure + save** (code): room outlines snapped **edge by edge** to the drawing's line work (parallel, overlapping
+     line within 1 % of the sheet; corners = intersections); labels replaced by the exact text inside the room when it
+     matches; scale = stated on the drawing > dimension string > door width > assumed; stated scale cross-checked
+     against the dimension, mismatch > 5 % reported as a conflict.
+- **Measured** only when the scale is stated exactly (vector sheet `1:N` or DXF units) AND ≥ 90 % of corners snapped,
+  for vector PDF or DXF. Everything else stays "Preview, not measured".
+- Formats: PDF (vector, scanned; page 1), PNG/JPG/WebP, DXF. DWG is rejected with "export to DXF".
+- Checked on generated fixtures with ±0.4 % position noise on the model output: vector PDF at 1:100 → all 8 areas
+  exact, measured; 150 dpi scan → within ~2–4 %, preview.
+
 ## 6. Data model (PostgreSQL)
 
 ```sql
@@ -412,7 +431,7 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 
 ## 16. Open questions
 
-- Exact format and language mix of the dataset; does it include IFC and DWG/DXF?
+- Exact format and language mix of the dataset; does it include IFC and DWG/DXF? (DWG: ask organizers for DXF/PDF exports.)
 - Judging on full set or hidden set? Is live ingestion expected?
 - Data storage permissions for each service.
 - Which sponsor integrations are scored?
@@ -431,4 +450,6 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 | 2026-11-13 | Login: two halves, single conversational input (email → password) with `bimp.` wordmark left; our own isometric render under a blueprint-blue overlay right. Blueprint blue is used only here (user request overrides §12 for the login) |
 | 2026-11-13 | Logo for now: lowercase wordmark `bimp.` |
 | 2026-11-13 | Floor plan → 2D + isometric 3D via Gemini extraction, labelled preview; cutaway walls default in 3D |
+| 2026-11-13 | Ingestion: Cloudflare Workflow + Python Container (PyMuPDF, OpenCV, ezdxf) in a separate `bimp-ingest` Worker so `bimp` keeps preview URLs |
+| 2026-11-13 | "Measured" requires an exact stated scale and ≥ 90 % of corners snapped to vector line work |
 | 2026-11-13 | Marketing page v1: plain static HTML + one CSS file in `apps/web/`, system fonts, no build step, default styling; focus stays on functionality. Results section is a placeholder until evals run. Demo CTA points to `/app` |

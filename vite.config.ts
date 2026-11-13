@@ -7,7 +7,7 @@ const r = (p: string) => resolve(__dirname, p);
 
 export default defineConfig({
   root: 'apps/web',
-  plugins: [preact(), cloudflare({ configPath: r('wrangler.jsonc'), persistState: { path: r('.wrangler/state') } })],
+  plugins: [preact(), cloudflare({ configPath: r('wrangler.jsonc'), auxiliaryWorkers: [{ configPath: r('ingest/wrangler.jsonc') }], persistState: { path: r('.wrangler/state') } })],
   environments: {
     client: { build: { chunkSizeWarningLimit: 700, rollupOptions: { input: { main: r('apps/web/index.html'), app: r('apps/web/app/index.html') } } } },
   },

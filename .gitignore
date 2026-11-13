@@ -3,3 +3,5 @@ dist
 .wrangler
 .dev.vars
 evals/reports
+evals/fixtures
+__pycache__

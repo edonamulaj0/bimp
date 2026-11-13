@@ -9,7 +9,7 @@ export interface Opening { id: string; kind: 'door' | 'window'; a: Pt; b: Pt }
 
 export interface Plan {
   version: 1;
-  method: 'sample' | 'gemini';
+  method: 'sample' | 'gemini' | 'hybrid';
   measured: boolean; // false = AI/sample preview; dimensions approximate
   width: number;
   height: number;
@@ -18,7 +18,10 @@ export interface Plan {
   walls: Wall[];
   openings: Opening[];
   scale: { metersPerPx: number | null; source: string };
-  source: { fileId: string; mime: string; imageWidth: number; imageHeight: number; offset: Pt } | null;
+  /** The drawing as rendered for reading; geometry maps onto it via scale.metersPerPx and offset. */
+  source: { fileId: string; mime: string; imageWidth: number; imageHeight: number; offset: Pt; renderSha?: string } | null;
+  /** How the geometry was obtained: input kind, whether the scale is stated exactly, share of corners snapped to line work. */
+  provenance?: { kind: string; scaleExact: boolean; snapped: number; segments: number };
   assumptions: string[];
 }
 

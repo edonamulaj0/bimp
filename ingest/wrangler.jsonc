@@ -1,0 +1,18 @@
+{
+  "$schema": "../node_modules/wrangler/config-schema.json",
+  "name": "bimp-ingest",
+  "main": "../apps/api/src/ingest-worker.ts",
+  "compatibility_date": "2026-10-01",
+  "workers_dev": false,
+  // Same D1 database and R2 bucket as the web Worker (keep ids in sync with ../wrangler.jsonc).
+  "d1_databases": [{ "binding": "DB", "database_name": "bimp", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "../db/migrations" }],
+  "r2_buckets": [{ "binding": "FILES", "bucket_name": "bimp-files" }],
+  "workflows": [{ "name": "bimp-ingest", "binding": "INGEST_WORKFLOW", "class_name": "IngestWorkflow" }],
+  "containers": [{ "class_name": "IngestContainer", "image": "./Dockerfile", "max_instances": 3, "instance_type": "standard-1" }],
+  "durable_objects": { "bindings": [{ "name": "INGEST", "class_name": "IngestContainer" }] },
+  "migrations": [{ "tag": "v1", "new_sqlite_classes": ["IngestContainer"] }],
+  "vars": { "GEMINI_MODEL": "gemini-2.5-flash", "AI_GATEWAY_URL": "" },
+  // Local dev without Docker: run `npm run ingest:dev` and set INGEST_URL in .dev.vars.
+  "dev": { "enable_containers": false }
+  // Secret: GEMINI_API_KEY (`wrangler secret put GEMINI_API_KEY -c ingest/wrangler.jsonc`)
+}

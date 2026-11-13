@@ -12,7 +12,8 @@ type Content = {
   assumptions?: string[]; not_found?: boolean; verified?: boolean; issues?: string[];
 };
 type Msg = { role: 'user' | 'assistant'; content: Content };
-type Data = { project: { id: string; name: string }; plan: Plan | null; messages: Msg[] };
+type Job = { id: string; status: string; stage: string; error?: string | null };
+type Data = { project: { id: string; name: string }; plan: Plan | null; messages: Msg[]; jobs: Job[] };
 
 export function ProjectPage({ id }: { id: string }) {
   const [data, setData] = useState<Data | null>(null);
@@ -44,7 +45,7 @@ export function ProjectPage({ id }: { id: string }) {
             <button role="tab" aria-selected={tab === 'canvas'} onClick={() => setTab('canvas')}>Canvas</button>
           </div>
           <div class={`ws show-${tab}`} style={{ '--chat-w': `${chatW}px` }}>
-            <Chat projectId={id} messages={data.messages} hasPlan={!!data.plan}
+            <Chat projectId={id} messages={data.messages} hasPlan={!!data.plan} resumeJob={data.jobs[0]?.id}
               onMessages={(messages) => setData((d) => d && { ...d, messages })}
               onPlan={(plan) => { setData((d) => d && { ...d, plan }); }} />
             <div class="ws-handle" onPointerDown={startResize} role="separator" aria-orientation="vertical" />
@@ -57,8 +58,8 @@ export function ProjectPage({ id }: { id: string }) {
 }
 
 // ---------------------------------------------------------------- chat
-function Chat({ projectId, messages, hasPlan, onMessages, onPlan }: {
-  projectId: string; messages: Msg[]; hasPlan: boolean; onMessages(m: Msg[]): void; onPlan(p: Plan): void;
+function Chat({ projectId, messages, hasPlan, resumeJob, onMessages, onPlan }: {
+  projectId: string; messages: Msg[]; hasPlan: boolean; resumeJob?: string; onMessages(m: Msg[]): void; onPlan(p: Plan): void;
 }) {
   const [text, setText] = useState('');
   const [status, setStatus] = useState('');
@@ -68,6 +69,19 @@ function Chat({ projectId, messages, hasPlan, onMessages, onPlan }: {
   const busy = !!status;
   const push = (...m: Msg[]) => { messages = [...messages, ...m]; onMessages(messages); };
   const fail = (e: unknown) => push({ role: 'assistant', content: { text: (e as Error).message, kind: 'system' } });
+  useEffect(() => { if (resumeJob) follow(resumeJob).catch(fail).finally(() => setStatus('')); }, []);
+
+  /** Polls an ingestion job (a Cloudflare Workflow) until it finishes, showing its stage. */
+  async function follow(jobId: string) {
+    for (let i = 0; i < 400; i++) {
+      const d = await api<{ job: Job; plan?: Plan; message?: Msg }>(`/projects/${projectId}/jobs/${jobId}`);
+      if (d.job.status === 'done') { if (d.plan) onPlan(d.plan); if (d.message) push(d.message); return; }
+      if (d.job.status === 'failed') throw new Error(`Couldn't read the drawing: ${d.job.error ?? 'unknown error'}`);
+      setStatus(d.job.stage);
+      await new Promise((r) => setTimeout(r, 1500));
+    }
+    throw new Error('Still working on the drawing. Reload the page later to see the result.');
+  }
 
   async function send(e: Event) {
     e.preventDefault();
@@ -84,7 +98,7 @@ function Chat({ projectId, messages, hasPlan, onMessages, onPlan }: {
   async function upload(f: File) {
     push({ role: 'user', content: { text: `Uploaded ${f.name}` } });
     try {
-      const headers: Record<string, string> = { 'x-filename': encodeURIComponent(f.name), 'content-type': f.type };
+      const headers: Record<string, string> = { 'x-filename': encodeURIComponent(f.name), 'content-type': f.type || 'application/octet-stream' };
       if (f.type.startsWith('image/')) {
         const bmp = await createImageBitmap(f);
         headers['x-image-width'] = String(bmp.width); headers['x-image-height'] = String(bmp.height);
@@ -92,10 +106,8 @@ function Chat({ projectId, messages, hasPlan, onMessages, onPlan }: {
       }
       setStatus('Uploading…');
       const up = await api(`/projects/${projectId}/files`, { body: f, headers });
-      setStatus('Reading the drawing and building the 2D and 3D plan…');
-      const d = await api(`/projects/${projectId}/files/${up.file.id}/extract`, { method: 'POST' });
-      onPlan(d.plan);
-      push(d.message);
+      setStatus('Queued…');
+      await follow(up.job.id);
     } catch (e) { fail(e); }
     finally { setStatus(''); if (file.current) file.current.value = ''; }
   }
@@ -106,14 +118,14 @@ function Chat({ projectId, messages, hasPlan, onMessages, onPlan }: {
         {!messages.length && (
           <div class="empty">
             <p><b>Ask about this plan.</b></p>
-            <p class="muted small">{hasPlan ? 'Try: "What is the area of the kitchen?", "How many windows are there?", "How many 30×30 cm tiles for the bathroom?"' : 'Upload a floor plan (PDF, PNG, JPG) with the paperclip. bimp builds a 2D and isometric 3D plan from it.'}</p>
+            <p class="muted small">{hasPlan ? 'Try: "What is the area of the kitchen?", "How many windows are there?", "How many 30×30 cm tiles for the bathroom?"' : 'Upload a floor plan (PDF, DXF, PNG, JPG) with the + button. bimp builds a 2D and isometric 3D plan from it.'}</p>
           </div>
         )}
         {messages.map((m, i) => <Message key={i} m={m} />)}
         {status && <p class="status muted small">{status}</p>}
       </div>
       <form class="composer" onSubmit={send}>
-        <input ref={file} type="file" accept=".pdf,.png,.jpg,.jpeg,.webp,application/pdf,image/png,image/jpeg,image/webp" hidden
+        <input ref={file} type="file" accept=".pdf,.dxf,.png,.jpg,.jpeg,.webp" hidden
           onChange={(e) => { const f = e.currentTarget.files?.[0]; if (f) upload(f); }} />
         <button type="button" class="icon" onClick={() => file.current?.click()} disabled={busy} title="Upload a floor plan" aria-label="Upload a floor plan">＋</button>
         <textarea rows={1} placeholder={hasPlan ? 'Ask about the plan…' : 'Upload a floor plan to start'} value={text} disabled={busy}
@@ -164,7 +176,9 @@ function CanvasPane({ plan, projectId }: { plan: Plan | null; projectId: string 
   const [cut, setCut] = useState(true);
   if (!plan) return <section class="canvas empty-canvas"><p class="muted">No plan yet. Upload a floor plan in the chat to see it here in 2D and 3D.</p></section>;
 
-  const sourceUrl = source && plan.source?.mime.startsWith('image/') ? `/api/projects/${projectId}/files/${plan.source.fileId}` : null;
+  const sourceUrl = !source || !plan.source ? null
+    : plan.source.renderSha ? `/api/projects/${projectId}/render/${plan.source.renderSha}`
+    : plan.source.mime.startsWith('image/') ? `/api/projects/${projectId}/files/${plan.source.fileId}` : null;
   const show3d = mode !== '2d' || inset;
   const focus = plan.rooms.find((r) => r.id === (hoverRoom.value ?? selectedRooms.value[0]));
   const types = ROOM_TYPES.filter((t) => plan.rooms.some((r) => r.type === t));
@@ -184,11 +198,13 @@ function CanvasPane({ plan, projectId }: { plan: Plan | null; projectId: string 
             <button aria-pressed={cut} onClick={() => setCut(!cut)} title="Cut walls at 1.2 m to see the rooms">Cutaway</button>
           </div>
         )}
-        {plan.source?.mime.startsWith('image/') && mode !== '3d' && (
+        {(plan.source?.renderSha || plan.source?.mime.startsWith('image/')) && mode !== '3d' && (
           <label class="small toggle"><input type="checkbox" checked={source} onChange={(e) => setSource(e.currentTarget.checked)} /> Show source drawing</label>
         )}
         <span class="spacer" />
-        {!plan.measured && <span class="badge" title={plan.assumptions.join('\n')}>Preview, not measured</span>}
+        <span class={`badge${plan.measured ? ' ok' : ''}`} title={plan.assumptions.join('\n')}>
+          {plan.measured ? `Measured · ${plan.scale.source}` : 'Preview, not measured'}
+        </span>
       </div>
 
       <div class={`views mode-${mode}`}>
