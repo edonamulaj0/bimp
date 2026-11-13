@@ -2,16 +2,42 @@ import { useEffect, useRef, useState } from 'preact/hooks';
 import { type Plan, type Pt, area, centroid, dist, round } from '../../../shared/plan';
 import { hoverRoom, selectedRooms } from '../state';
 import { ROOM_COLORS } from './colors';
+import { printPlan } from './print';
 
-type Props = { plan: Plan; compact?: boolean; sourceUrl?: string | null };
+/** CSS pixels per metre of screen (96 px per inch). Screens vary, so on-screen 1:x is nominal; print is exact. */
+const SCREEN_PX_PER_M = 96 / 0.0254;
+const STANDARD = [10, 20, 25, 50, 100, 200, 250, 500, 1000];
+const NICE = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200];
 
-export function Plan2D({ plan, compact, sourceUrl }: Props) {
+type Props = { plan: Plan; compact?: boolean; sourceUrl?: string | null; title?: string };
+
+export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
   const pad = Math.max(plan.width, plan.height) * 0.06;
   const home = { x: -pad, y: -pad, w: plan.width + 2 * pad, h: plan.height + 2 * pad };
   const [vb, setVb] = useState(home);
   const svg = useRef<SVGSVGElement>(null);
   const drag = useRef<{ x: number; y: number; vb: typeof vb; moved: boolean } | null>(null);
+  const [size, setSize] = useState({ w: 0, h: 0 });
+  const [typed, setTyped] = useState<string | null>(null);
   useEffect(() => setVb(home), [plan]);
+  useEffect(() => {
+    const ro = new ResizeObserver(([e]) => setSize({ w: e.contentRect.width, h: e.contentRect.height }));
+    ro.observe(svg.current!);
+    return () => ro.disconnect();
+  }, []);
+
+  // Screen scale: CSS px per metre of plan, and the equivalent 1:x ratio.
+  const pxPerM = size.w && size.h ? Math.min(size.w / vb.w, size.h / vb.h) : 0;
+  const ratio = pxPerM ? Math.round(SCREEN_PX_PER_M / pxPerM) : 0;
+  const setRatio = (x: number) => {
+    if (!(x >= 1 && x <= 100000) || !pxPerM) return;
+    const k = SCREEN_PX_PER_M / x;
+    const cx = vb.x + vb.w / 2, cy = vb.y + vb.h / 2;
+    const w = size.w / k, h = size.h / k;
+    setVb({ x: cx - w / 2, y: cy - h / 2, w, h });
+  };
+  const barM = NICE.find((m) => m * pxPerM >= 70) ?? NICE[NICE.length - 1];
+  const printRatio = plan.scale.ratio ?? STANDARD.find((x) => x >= ratio) ?? 1000;
 
   const scale = () => { const r = svg.current!.getBoundingClientRect(); return Math.max(vb.w / r.width, vb.h / r.height); };
   const toPlan = (cx: number, cy: number): Pt => {
@@ -39,7 +65,7 @@ export function Plan2D({ plan, compact, sourceUrl }: Props) {
   const hovered = hoverRoom.value, selected = selectedRooms.value;
   const fs = Math.max(plan.width, plan.height) / 45;
 
-  return (
+  const drawing = (
     <svg
       ref={svg}
       class={`plan2d${compact ? ' compact' : ''}`}
@@ -106,5 +132,32 @@ export function Plan2D({ plan, compact, sourceUrl }: Props) {
         </g>
       )}
     </svg>
+  );
+  if (compact) return drawing;
+
+  const apply = () => { if (typed !== null) setRatio(Number(typed)); setTyped(null); };
+  return (
+    <div class="plan2d-wrap">
+      {drawing}
+      <div class="scale-ctl" onPointerDown={(e) => e.stopPropagation()}>
+        <label class="small" title="Screen scale, nominal: assumes 96 px per inch. Use Print for an exact paper scale.">
+          1:<input type="number" min={1} list="std-scales" aria-label="Scale ratio"
+            value={typed ?? String(ratio || '')}
+            onInput={(e) => setTyped(e.currentTarget.value)}
+            onChange={apply} onBlur={apply} onKeyDown={(e) => e.key === 'Enter' && apply()} />
+        </label>
+        <datalist id="std-scales">{STANDARD.map((x) => <option key={x} value={x} />)}</datalist>
+        {plan.scale.ratio && <button class="link small" onClick={() => setRatio(plan.scale.ratio!)} title="The drawing's own scale">Drawing 1:{plan.scale.ratio}</button>}
+        <button class="link small" onClick={() => setVb(home)}>Fit</button>
+        <button class="link small" title={`Print to scale at 1:${printRatio}`}
+          onClick={() => printPlan(svg.current!, plan, Number(prompt('Print at scale 1:', String(printRatio))) || printRatio, pad, title)}>Print…</button>
+      </div>
+      {pxPerM > 0 && (
+        <div class="scalebar" aria-label={`Scale bar ${barM} m`}>
+          <div class="sb-bar" style={{ width: `${barM * pxPerM}px` }}><i /><i /><i /><i /></div>
+          <span>0</span><span style={{ left: `${barM * pxPerM}px` }}>{barM} m</span>
+        </div>
+      )}
+    </div>
   );
 }

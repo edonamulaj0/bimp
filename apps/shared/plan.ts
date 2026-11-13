@@ -17,7 +17,8 @@ export interface Plan {
   rooms: Room[];
   walls: Wall[];
   openings: Opening[];
-  scale: { metersPerPx: number | null; source: string };
+  /** ratio = the drawing's own stated scale (1:ratio) when known. */
+  scale: { metersPerPx: number | null; source: string; ratio?: number };
   /** The drawing as rendered for reading; geometry maps onto it via scale.metersPerPx and offset. */
   source: { fileId: string; mime: string; imageWidth: number; imageHeight: number; offset: Pt; renderSha?: string } | null;
   /** How the geometry was obtained: input kind, whether the scale is stated exactly, share of corners snapped to line work. */

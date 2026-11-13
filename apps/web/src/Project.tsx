@@ -49,7 +49,7 @@ export function ProjectPage({ id }: { id: string }) {
               onMessages={(messages) => setData((d) => d && { ...d, messages })}
               onPlan={(plan) => { setData((d) => d && { ...d, plan }); }} />
             <div class="ws-handle" onPointerDown={startResize} role="separator" aria-orientation="vertical" />
-            <CanvasPane plan={data.plan} projectId={id} />
+            <CanvasPane plan={data.plan} projectId={id} name={data.project.name} />
           </div>
         </>
       )}
@@ -168,7 +168,7 @@ function Message({ m }: { m: Msg }) {
 // ---------------------------------------------------------------- canvas
 type Mode = '2d' | '3d' | 'split';
 
-function CanvasPane({ plan, projectId }: { plan: Plan | null; projectId: string }) {
+function CanvasPane({ plan, projectId, name }: { plan: Plan | null; projectId: string; name: string }) {
   const [mode, setMode] = useState<Mode>('2d');
   const [rot, setRot] = useState(0);
   const [inset, setInset] = useState(true);
@@ -208,7 +208,7 @@ function CanvasPane({ plan, projectId }: { plan: Plan | null; projectId: string 
       </div>
 
       <div class={`views mode-${mode}`}>
-        {mode !== '3d' && <div class="view"><Plan2D plan={plan} sourceUrl={sourceUrl} /></div>}
+        {mode !== '3d' && <div class="view"><Plan2D plan={plan} sourceUrl={sourceUrl} title={name} /></div>}
         {mode !== '2d' && <div class="view"><Plan3D plan={plan} rotation={rot} cutaway={cut} /></div>}
         {mode !== 'split' && (
           <div class={`inset${inset ? '' : ' closed'} inset-${mode}`}>

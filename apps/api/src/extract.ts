@@ -233,7 +233,7 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     rooms,
     walls,
     openings,
-    scale: { metersPerPx: m, source: scaleSource },
+    scale: { metersPerPx: m, source: scaleSource, ...(exact && an.scale?.ratio ? { ratio: an.scale.ratio } : {}) },
     source: { fileId, renderSha, mime: 'image/png', imageWidth: W, imageHeight: H, offset: [round(-ox * m, 3), round(-oy * m, 3)] },
     provenance: { kind: an.kind, scaleExact: !!exact, snapped: round(snapRatio, 3), segments: an.segments.length },
     assumptions,

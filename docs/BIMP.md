@@ -235,6 +235,15 @@ Examples: "How many tiles do I need for the bathroom on level 2?", "How many win
   `final_answer`). Verifier: every number in the answer must appear in a tool result, the question, or a listed
   assumption; cited rooms must exist; otherwise the answer is shown as "Unverified".
 
+## 5.4.1 Plan scale (built)
+
+- 2D view shows the screen scale as `1:x` (editable; standard scales in a list; "Drawing 1:N" jumps to the drawing's own
+  scale when known) and a graphic scale bar that is always correct relative to the plan.
+- On-screen 1:x is nominal (assumes 96 CSS px per inch; real screens differ). **Print…** is exact: the SVG is sized
+  in millimetres at 1:x on the smallest ISO sheet (A4–A0) that fits, with scale bar and a title line stating the scale
+  and whether the plan is measured or a preview.
+- `Plan.scale.ratio` stores the drawing's stated scale (vector PDF `1:N`).
+
 ## 5.5 Ingestion: Workflows + Containers (built)
 
 - Two Workers: `bimp` (site, app, API; gets preview URLs) and `bimp-ingest` (Workflow + Container). Split because
@@ -452,4 +461,5 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 | 2026-11-13 | Floor plan → 2D + isometric 3D via Gemini extraction, labelled preview; cutaway walls default in 3D |
 | 2026-11-13 | Ingestion: Cloudflare Workflow + Python Container (PyMuPDF, OpenCV, ezdxf) in a separate `bimp-ingest` Worker so `bimp` keeps preview URLs |
 | 2026-11-13 | "Measured" requires an exact stated scale and ≥ 90 % of corners snapped to vector line work |
+| 2026-11-13 | Plan scale: nominal 1:x on screen + scale bar; exact 1:x only via print in mm |
 | 2026-11-13 | Marketing page v1: plain static HTML + one CSS file in `apps/web/`, system fonts, no build step, default styling; focus stays on functionality. Results section is a placeholder until evals run. Demo CTA points to `/app` |
