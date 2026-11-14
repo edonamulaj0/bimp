@@ -82,14 +82,9 @@ kbd { font: 500 11px/1 var(--font); padding: 2px 5px; border: 1px solid var(--li
   .login-foot { flex-direction: column; gap: var(--s2); margin-top: var(--s6); }
 }
 .login-switch .link { font: inherit; padding: var(--s2) 0; text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 2px; text-underline-offset: 3px; }
-.login-right { position: relative; overflow: hidden; background: var(--ink) url(/renders/aerial.png) center / 112% auto no-repeat; }
-.login-right.photo { background-size: cover; }
-.login-right.photo::before { background: linear-gradient(180deg, transparent 55%, rgb(30 29 27 / .7)); mix-blend-mode: normal; opacity: 1; }
-.login-right::before { content: ""; position: absolute; inset: 0; background: #1e1d1b; mix-blend-mode: multiply; opacity: .78; }
-.bp-grid { position: absolute; inset: 0; background-image:
-  linear-gradient(rgb(255 255 255 / .09) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / .09) 1px, transparent 1px),
-  linear-gradient(rgb(255 255 255 / .035) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / .035) 1px, transparent 1px);
-  background-size: 120px 120px, 120px 120px, 24px 24px, 24px 24px; }
+/* a real building, in greyscale so the panel stays charcoal and off-white */
+.login-right { position: relative; overflow: hidden; background: var(--paper-2) url(/photos/concrete.webp) center / cover no-repeat; filter: grayscale(1) contrast(1.05); }
+.login-right::before { content: ""; position: absolute; inset: 0; background: linear-gradient(180deg, transparent 55%, rgb(30 29 27 / .72)); }
 .bp-caption { position: absolute; left: var(--s6); right: var(--s6); bottom: var(--s5); margin: 0; display: flex; justify-content: space-between; gap: var(--s4); padding-top: var(--s2); border-top: 1px solid rgb(255 255 255 / .5); color: rgb(255 255 255 / .85); font-size: var(--t-sm); }
 
 /* ---------- app: denser type and controls than the marketing site ---------- */
