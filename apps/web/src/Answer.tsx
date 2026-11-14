@@ -59,6 +59,18 @@ export function AnswerBody({ c, badge }: { c: Content; badge?: boolean }) {
       <Markdown text={c.text} />
       <Citations claims={c.claims} />
       <Evidence claims={c.claims} />
+{(!!c.reasoning?.length || !!c.steps?.length) && (
+        <details class="why" open={!badge}>
+          <summary>How this was worked out</summary>
+          {!!c.reasoning?.length && <ol>{c.reasoning.map((s, i) => <li key={i}><Markdown text={s} /></li>)}</ol>}
+          {!!c.steps?.length && (
+            <>
+              <p class="why-h">Looked up on the plan</p>
+              <ul class="trace">{c.steps.map((s, i) => <li key={i}><b>{s.tool}</b><span>{s.found}</span></li>)}</ul>
+            </>
+          )}
+        </details>
+      )}
       {c.calculation && <pre class="calc">{c.calculation}</pre>}
       {!!c.assumptions?.length && (
         <details class="small muted"><summary>Assumptions ({c.assumptions.length})</summary><ul>{c.assumptions.map((a, i) => <li key={i}>{a}</li>)}</ul></details>

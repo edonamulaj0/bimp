@@ -12,6 +12,10 @@ export type Answer = {
   /** item_ids: the openings and fittings a claim counts; evidence: the crop of the source sheet that shows them. */
   claims: { text: string; room_ids: string[]; item_ids?: string[]; evidence?: Evidence }[];
   calculation: string | null;
+  /** How the answer follows from the plan, step by step, in words. */
+  reasoning: string[];
+  /** What was looked up to get there: each tool call and what it returned, written by code (the model cannot edit it). */
+  steps?: { tool: string; found: string }[];
   assumptions: string[];
   not_found: boolean;
   verified: boolean;
@@ -39,11 +43,12 @@ const TOOLS = [
       properties: {
         text: S('STRING', 'Answer in the user\'s language, short. Markdown: a blank line between paragraphs, a bullet list when listing several rooms or items, **bold** for the key figure, a small table only for comparing several rooms. No headings in a short answer.'),
         claims: S('ARRAY', 'Each factual claim with the room ids it comes from', { items: S('OBJECT', undefined, { properties: { text: S('STRING'), room_ids: S('ARRAY', undefined, { items: S('STRING') }) }, required: ['text', 'room_ids'] }) }),
+        reasoning: S('ARRAY', 'How the answer follows from the tool results, step by step, 3 to 7 short steps in the user\'s language: what was looked up and where (room names), each figure used with its unit, the formula and its result, any standard applied with its source, and what limits the answer (preview plan, assumed values). Only figures from tool results.', { items: S('STRING') }),
         calculation: S('STRING', 'Formula with inputs and result, if any arithmetic was done', { nullable: true }),
         assumptions: S('ARRAY', undefined, { items: S('STRING') }),
         not_found: S('BOOLEAN', 'True if the plan does not contain the answer'),
       },
-      required: ['text', 'claims', 'assumptions', 'not_found'],
+      required: ['text', 'reasoning', 'claims', 'assumptions', 'not_found'],
     }),
   },
 ];
@@ -56,7 +61,8 @@ say that dimensions are approximate. Cite the rooms each claim comes from by id.
 adequate, compliance or "is this right", use check_plan and space_standard and name the standard's source in the answer;
 standards are guidance, not a legal verdict. For fire escape and capacity questions use escape_route and occupancy. For an overview of a room or
 the home (size, light, feel), use room_info or plan_areas plus feng_shui, and write a short, warm, practical overview.
-Finish by calling final_answer.
+Finish by calling final_answer. Keep "text" short, and put the full working in "reasoning": a reader must be able to
+follow every step from the drawing to the answer and check it.
 Answer in the language of the question.`;
 
 export function runTool(plan: Plan, name: string, args: any): unknown {
@@ -163,7 +169,7 @@ export function verify(ans: Omit<Answer, 'verified' | 'issues'>, results: unknow
   // room names quoted in the answer ("Bedroom 2", "Flat 3 kitchen") are labels, not figures: taken out before the numbers are checked
   const names = plan.rooms.map((r) => r.name).filter((n) => /\d/.test(n)).sort((a, b) => b.length - a.length);
   const unnamed = (t: string) => names.reduce((x, n) => x.split(n).join(' '), t);
-  const said = unnamed([ans.text.replace(/^[ \t]*\d{1,3}[.)][ \t]+/gm, ''), ...ans.claims.map((c) => c.text), ans.calculation ?? ''].join(' '));
+  const said = unnamed([ans.text.replace(/^[ \t]*\d{1,3}[.)][ \t]+/gm, ''), ...(ans.reasoning ?? []), ...ans.claims.map((c) => c.text), ans.calculation ?? ''].join(' '));
   for (const n of new Set(nums(said))) {
     const d = n.split('.')[1]?.length ?? 0;
     if (!known.some((k) => Math.abs(round(k, d) - Number(n)) < 1e-9)) issues.push(`The number ${n} does not come from the plan or a calculation`);
@@ -181,10 +187,32 @@ export function verify(ans: Omit<Answer, 'verified' | 'issues'>, results: unknow
   return issues;
 }
 
+/** One line of the trail under an answer: what was looked up and what came back, in words. */
+export function traceStep(plan: Plan, tool: string, args: Record<string, unknown>, result: unknown): { tool: string; found: string } {
+  const r = (result ?? {}) as Record<string, any>, room = (id: unknown) => plan.rooms.find((x) => x.id === id)?.name ?? String(id ?? '');
+  const short = (v: unknown) => { const t = JSON.stringify(v) ?? ''; return t.length > 150 ? `${t.slice(0, 147)}…` : t; };
+  if (r.error) return { tool, found: String(r.error) };
+  switch (tool) {
+    case 'plan_info': return { tool: 'Plan overview', found: `${r.rooms} rooms, ${r.doors} doors, ${r.windows} windows; ${r.measured ? 'measured' : 'preview, not measured'}; scale: ${r.scale_source}` };
+    case 'list_rooms': return { tool: 'Room list', found: (result as { name: string; area_m2: number }[]).map((x) => `${x.name} ${x.area_m2} m²`).join(', ') };
+    case 'get_room': case 'room_info': return { tool: `Room: ${room(args.id)}`, found: [`${r.net_area_m2 ?? r.area_m2} m²`, r.length && `${r.length} × ${r.width} m`, r.perimeter_m && `perimeter ${r.perimeter_m} m`,
+      r.ceiling_height_m && `ceiling ${r.ceiling_height_m} m`, `${r.doors} doors`, `${r.windows} windows`].filter(Boolean).join(', ') };
+    case 'count': return { tool: `Count: ${args.what}${args.room_type ? ` (${args.room_type})` : ''}${args.room_id ? ` in ${room(args.room_id)}` : ''}`, found: `${r.count}${r.source ? `, by the ${r.source}` : ', from the plan model'}` };
+    case 'plan_areas': return { tool: 'Plan areas', found: `net ${r.net_floor_area_m2} m², walls ${r.wall_area_m2} m², gross ${r.gross_floor_area_m2} m², ceiling ${r.ceiling_height_m} m (${r.ceiling_source})` };
+    case 'calculate': return { tool: 'Calculation', found: `${r.expression} = ${r.result}` };
+    case 'check_plan': return { tool: 'Checks against design standards', found: `${(result as { level: string }[]).filter((x) => x.level === 'warn').length} to review of ${(result as unknown[]).length}` };
+    case 'space_standard': return { tool: `Standard: ${args.topic}`, found: short(result) };
+    case 'escape_route': return { tool: `Escape route${args.room_id ? ` from ${room(args.room_id)}` : 's'}`, found: (r.routes as { room_id: string; distance_m: number }[] ?? []).slice(0, 6).map((x) => `${room(x.room_id)} ${x.distance_m} m`).join(', ') };
+    case 'occupancy': return { tool: `Occupancy as ${args.use}`, found: `${r.area_m2} m² ÷ ${r.m2_per_person} m² per person = ${r.people} people` };
+    case 'feng_shui': return { tool: 'Placement guidance', found: `${(r.notes as unknown[] ?? []).length} notes` };
+    default: return { tool, found: short(result) };
+  }
+}
+
 /** `context` goes in front of the question: e.g. the drawing sheet and where on it a comment is pinned. */
 export async function ask(env: Env, plan: Plan, question: string, history: { role: 'user' | 'model'; text: string }[], context: Part[] = [], meter?: Meter): Promise<Answer> {
   const contents: Content[] = [...history.map((h) => ({ role: h.role, parts: [{ text: h.text }] })), { role: 'user', parts: [...context, { text: question }] }];
-  const results: unknown[] = [];
+  const results: unknown[] = [], steps: NonNullable<Answer['steps']> = [];
   for (let step = 0; step < 8; step++) {
     const reply = await generate(env, {
       systemInstruction: { parts: [{ text: SYSTEM }] },
@@ -199,16 +227,18 @@ export async function ask(env: Env, plan: Plan, question: string, history: { rol
     if (final) {
       const a = final.args ?? {};
       const ans = { text: String(a.text ?? ''), claims: Array.isArray(a.claims) ? a.claims : [], calculation: a.calculation ?? null,
+        reasoning: Array.isArray(a.reasoning) ? a.reasoning.filter((x: unknown): x is string => typeof x === 'string' && !!x.trim()).slice(0, 12) : [],
         assumptions: Array.isArray(a.assumptions) ? a.assumptions : [], not_found: !!a.not_found };
       const issues = verify(ans, results, question, plan);
-      return { ...ans, verified: issues.length === 0, issues };
+      return { ...ans, steps, verified: issues.length === 0, issues };
     }
     if (!calls.length) break;
     contents.push({ role: 'user', parts: calls.map((c) => {
       const result = runTool(plan, c.name, c.args ?? {});
       results.push(result);
+      steps.push(traceStep(plan, c.name, c.args ?? {}, result));
       return { functionResponse: { name: c.name, response: { result } } };
     }) });
   }
-  return { text: 'I could not finish answering this question. Try rephrasing it.', claims: [], calculation: null, assumptions: [], not_found: true, verified: false, issues: ['Agent did not finish'] };
+  return { text: 'I could not finish answering this question. Try rephrasing it.', claims: [], calculation: null, reasoning: [], steps, assumptions: [], not_found: true, verified: false, issues: ['Agent did not finish'] };
 }

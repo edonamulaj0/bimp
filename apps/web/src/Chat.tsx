@@ -107,7 +107,10 @@ export function Chat({ projectId, planId, messages, hasPlan, shared, resumeJob, 
       // the answer goes onto the plan too: the rooms or items it rests on are highlighted, with the answer beside them
       const c = d.message.content, rooms = [...new Set((c.claims ?? []).flatMap((cl) => cl.room_ids))], items = [...new Set((c.claims ?? []).flatMap((cl) => cl.item_ids ?? []))];
       if (alive.current && !c.not_found && (r || rooms.length || items.length)) {
-        answerNote.value = { key: Date.now(), planId: planId ?? null, question: q, text: c.text, rooms, items, region: r, verified: c.verified };
+        // the note beside the area is short: the claims themselves ("Kitchen 21.28 m²"), else the answer's first sentence
+        const plain = (t: string) => t.replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim();
+        const brief = (c.claims ?? []).map((cl) => plain(cl.text)).filter(Boolean).slice(0, 3).join(' · ') || plain(c.text).split(/(?<=[.!?])\s/)[0];
+        answerNote.value = { key: Date.now(), planId: planId ?? null, question: q, text: brief.length > 110 ? `${brief.slice(0, 108)}…` : brief, rooms, items, region: r, verified: c.verified };
         if (rooms.length) selectedRooms.value = rooms;
       }
     }

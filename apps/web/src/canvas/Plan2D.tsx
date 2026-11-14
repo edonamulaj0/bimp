@@ -8,7 +8,6 @@ import { hoverRoom, selectedRooms } from '../state';
 import { ROOM_COLORS } from './colors';
 import { type AnswerNote, noteArea, placeNote } from './note';
 import { Icon } from '../icons';
-import { Markdown } from '../Markdown';
 import { printPlan } from './print';
 import { FixtureSymbol } from './symbols';
 import { FLOOR_OF } from './floors-kind';
@@ -105,7 +104,7 @@ export function Plan2D({ plan, compact, note, onNoteClose, regionCard, sourceUrl
   // the side panel stands beside the marked region while there is one, else beside the area the answer is about
   const sideBox: [number, number, number, number] | null = region && regionCard ? [region.x0, region.y0, region.x1, region.y1] : noteAt?.box ?? null;
   const noteEl = useRef<HTMLDivElement>(null);
-  const [noteSize, setNoteSize] = useState({ w: 300, h: 150 });
+  const [noteSize, setNoteSize] = useState({ w: 220, h: 60 });
   useLayoutEffect(() => { const el = noteEl.current; if (el && (el.offsetWidth !== noteSize.w || el.offsetHeight !== noteSize.h)) setNoteSize({ w: el.offsetWidth, h: el.offsetHeight }); });
   // A new note brings its area into view, with room beside it for the note; if the area still fills the view when
   // the card has been measured, more of the plan is shown until the note fits clear of it.
@@ -425,12 +424,8 @@ export function Plan2D({ plan, compact, note, onNoteClose, regionCard, sourceUrl
               {region && regionCard}
               {note && noteAt && (
                 <div class="note-card" role="note" aria-label="Answer about the highlighted area">
-                  <div class="note-head">
-                    <span class="note-q" title={note.question}>{note.question}</span>
-                    <button type="button" class="icon-btn xs" aria-label="Close the note" onClick={onNoteClose}><Icon name="close" size={14} /></button>
-                  </div>
-                  <div class="note-body"><Markdown text={note.text} /></div>
-                  {note.verified === false && <p class="unverified small">Unverified: check the figures</p>}
+                  <span class="note-body" title={`Asked: ${note.question}`}>{note.text}{note.verified === false && <span class="unverified"> · unverified</span>}</span>
+                  <button type="button" class="icon-btn xs" aria-label="Close the note" onClick={onNoteClose}><Icon name="close" size={12} /></button>
                 </div>
               )}
             </div>
