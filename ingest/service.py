@@ -8,6 +8,9 @@ POST /analyze (body = file bytes, Content-Type = mime) returns, in one pixel spa
   scale     {meters_per_px, source, ratio?} when the drawing states it exactly (1:N on a vector sheet, DXF units), else null
   paper_mm_per_px  size of one render pixel on the paper sheet when known (PDF page size; image DPI metadata), else null.
             Lets the Worker turn a measured dimension into a drawing scale and round it to a preferred one.
+  detections [{kind, conf, bbox: [x0, y0, x1, y1]}] for scans and images: windows, doors, toilets, sinks, showers and
+            bathtubs found by the symbol detector (models/fixtures-v1.onnx, trained in ml/), or null when the model or
+            onnxruntime is not installed. Counting symbols is the detector's job, not the language model's.
 The model never measures; this service and the Worker do.
 
 Every parse runs in a child process with memory, CPU and wall-clock limits, and counts entities, points, drawing items
@@ -54,6 +57,14 @@ MEM_LIMIT = 3 * 1024 ** 3
 CPU_S, WALL_S = 90, 120
 Image.MAX_IMAGE_PIXELS = MAX_PIXELS
 
+# Symbol detector (YOLO11s exported to ONNX, see ml/). Thresholds are the ones tuned for exact counts on CubiCasa5K's
+# val split (models/fixtures-v1.report.json); change them together with the model.
+DET_MODEL = os.environ.get("BIMP_DETECTOR", os.path.join(os.path.dirname(os.path.abspath(__file__)), "models", "fixtures-v1.onnx"))
+DET_SIZE = 1024
+DET_KINDS = ["window", "door", "toilet", "sink", "shower_bath"]
+DET_THRESHOLD = {"window": 0.425, "door": 0.4, "toilet": 0.375, "sink": 0.35, "shower_bath": 0.2}
+DET_IOU = 0.5
+
 
 class TooLarge(ValueError):
     """A limit was hit; the message is safe to show to the user."""
@@ -96,6 +107,42 @@ def wall_segments(gray: np.ndarray):
     return keep_longest(segs, size * 0.02)
 
 
+def detect_symbols(img: np.ndarray):
+    """Windows, doors, toilets, sinks, showers/bathtubs on a BGR render, as boxes in its pixel space. None = no detector."""
+    if not os.path.exists(DET_MODEL):
+        return None
+    try:
+        import onnxruntime as ort
+    except ImportError:
+        return None
+    h, w = img.shape[:2]
+    r = DET_SIZE / max(h, w)  # letterbox: longest side to DET_SIZE, grey padding, as in training
+    nw, nh = max(1, round(w * r)), max(1, round(h * r))
+    left, top = (DET_SIZE - nw) // 2, (DET_SIZE - nh) // 2
+    canvas = np.full((DET_SIZE, DET_SIZE, 3), 114, np.uint8)
+    canvas[top:top + nh, left:left + nw] = cv2.resize(img, (nw, nh), interpolation=cv2.INTER_LINEAR)
+    x = np.ascontiguousarray(canvas[:, :, ::-1].transpose(2, 0, 1)[None], dtype=np.float32) / 255.0
+    opts = ort.SessionOptions()
+    opts.intra_op_num_threads = 2
+    sess = ort.InferenceSession(DET_MODEL, opts, providers=["CPUExecutionProvider"])
+    out = sess.run(None, {sess.get_inputs()[0].name: x})[0][0]  # (4 + classes, candidates): cx, cy, w, h, scores
+    boxes, scores = out[:4].T, out[4:].T
+    found = []
+    for k, kind in enumerate(DET_KINDS):
+        thr = DET_THRESHOLD[kind]
+        idx = np.nonzero(scores[:, k] >= thr)[0]
+        if not len(idx):
+            continue
+        b, sc = boxes[idx], scores[idx, k]
+        xywh = np.stack([b[:, 0] - b[:, 2] / 2, b[:, 1] - b[:, 3] / 2, b[:, 2], b[:, 3]], 1)
+        for i in np.array(cv2.dnn.NMSBoxes(xywh.tolist(), sc.tolist(), thr, DET_IOU)).reshape(-1):
+            x0, y0, bw, bh = xywh[i]
+            box = [(x0 - left) / r, (y0 - top) / r, (x0 + bw - left) / r, (y0 + bh - top) / r]
+            box = [round(float(min(max(v, 0), w if j % 2 == 0 else h)), 1) for j, v in enumerate(box)]
+            found.append({"kind": kind, "conf": round(float(sc[i]), 3), "bbox": box})
+    return found
+
+
 def fit(img: np.ndarray):
     h, w = img.shape[:2]
     f = min(1.0, MAX_SIDE / max(w, h))
@@ -131,7 +178,7 @@ def analyze_image(data: bytes):
     h, w = gray.shape
     dpi = image_dpi(data)
     return {"kind": "image", "width": w, "height": h, "render_png": png_b64(img), "segments": wall_segments(gray), "texts": [], "scale": None,
-            "paper_mm_per_px": 25.4 / (dpi * f) if dpi else None}
+            "paper_mm_per_px": 25.4 / (dpi * f) if dpi else None, "detections": detect_symbols(img)}
 
 
 def analyze_pdf(data: bytes):
@@ -175,7 +222,8 @@ def analyze_pdf(data: bytes):
     size = max(pix.width, pix.height)
     vector = len(segs) > 50 and len(texts) > 3
     out = {"kind": "pdf-vector" if vector else "pdf-scan", "pages": doc.page_count, "width": pix.width, "height": pix.height,
-           "render_png": png_b64(img), "texts": texts[:MAX_TEXTS], "scale": None, "paper_mm_per_px": 25.4 / 72 / k}
+           "render_png": png_b64(img), "texts": texts[:MAX_TEXTS], "scale": None, "paper_mm_per_px": 25.4 / 72 / k,
+           "detections": None if vector else detect_symbols(img)}  # vector sheets are read exactly; the detector is for scans
     if vector:
         out["segments"] = keep_longest(segs, size * 0.004)
         n, all_ratios = scale_from_texts(texts)

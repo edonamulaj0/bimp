@@ -1,7 +1,7 @@
 // Run: npm test. Checks the drawing-convention and standards logic (Metric Handbook rules) on known cases.
 import { parseDimension, nearestPreferredScale, checkPlan } from '../apps/shared/standards';
-import { regularize, snapPolygon, parseLevel, parseCeiling } from '../apps/api/src/extract';
-import { verify } from '../apps/api/src/agent';
+import { regularize, snapPolygon, parseLevel, parseCeiling, buildPlan } from '../apps/api/src/extract';
+import { verify, runTool } from '../apps/api/src/agent';
 import { calculate } from '../apps/api/src/calc';
 import { diffPlans } from '../apps/shared/diff';
 import { samplePlan } from '../apps/shared/sample-plan';
@@ -187,6 +187,27 @@ void doorSweep; void fixtureContains;
   eq('right count is verified', verify({ ...base, text: 'There are 2 bedrooms.' }, [rooms, cnt], 'How many bedrooms?', p), []);
   eq('model assumption is not evidence', verify({ ...base, text: 'The kitchen is 42 m².', assumptions: ['kitchen taken as 42 m²'] }, [rooms], 'How big is the kitchen?', p).length > 0, true);
   eq('number in a room name is not evidence', verify({ ...base, text: 'The living room is 99 m².' }, [[{ id: 'r1', name: 'LIVING 99 m2', area_m2: 20 }]], 'Living room size?', p).length > 0, true);
+}
+// Symbol detector: on a scan, its boxes become plan.detected and the count tool answers from them
+{
+  const sq = (x0: number, y0: number, x1: number, y1: number) => [[y0, x0], [y0, x1], [y1, x1], [y1, x0]]; // [y, x] in 0-1000, as the model returns
+  const raw = { scale_evidence: null, stated_scale: null, levels: null, rooms: [{ name: 'Bath', type: 'bathroom', polygon: sq(100, 100, 500, 900) }, { name: 'Bedroom', type: 'bedroom', polygon: sq(500, 100, 900, 900) }],
+    openings: [{ kind: 'door', a: [500, 500], b: [600, 500] }], fixtures: [{ kind: 'wc', box: [150, 150, 250, 220] }] } as never;
+  const an = { kind: 'image' as const, width: 1000, height: 1000, segments: [], texts: [], scale: null, paper_mm_per_px: null,
+    detections: [{ kind: 'toilet', conf: 0.9, bbox: [150, 150, 220, 250] as [number, number, number, number] }, { kind: 'toilet', conf: 0.6, bbox: [300, 150, 370, 250] as [number, number, number, number] },
+      { kind: 'window', conf: 0.7, bbox: [600, 95, 800, 105] as [number, number, number, number] }, { kind: 'bogus', conf: 0.9, bbox: [0, 0, 1, 1] as [number, number, number, number] }] };
+  const p = buildPlan(raw, an, 'f1', 'sha');
+  eq('detector: items kept by known kind', p.detected?.items.map((d) => d.kind), ['toilet', 'toilet', 'window']);
+  eq('detector: item lies in its room', p.detected?.items[0].room_id, p.rooms[0].id);
+  const wc = runTool(p, 'count', { what: 'wc' }) as { count: number; source: string; read_by_language_model: number };
+  eq('detector: wc count comes from the detector', [wc.count, wc.read_by_language_model, /detector/.test(wc.source)], [2, 1, true]);
+  eq('detector: window count comes from the detector', (runTool(p, 'count', { what: 'window' }) as { count: number }).count, 1);
+  eq('detector: a kind it found none of counts zero', (runTool(p, 'count', { what: 'sink' }) as { count: number }).count, 0);
+  eq('detector: other kinds still come from the plan', (runTool(p, 'count', { what: 'bed' }) as { count: number; source?: string }).source, undefined);
+  const v = buildPlan(raw, { ...an, kind: 'pdf-vector' as const }, 'f1', 'sha');
+  eq('detector: not used on vector sheets', v.detected, undefined);
+  const none = buildPlan(raw, { ...an, detections: null }, 'f1', 'sha');
+  eq('detector: absent service leaves the plan as read', [none.detected, (runTool(none, 'count', { what: 'wc' }) as { count: number }).count], [undefined, 1]);
 }
 // Level and ceiling strings (FN-13)
 eq('level "1.OG OKFF +3.05"', parseLevel('1.OG OKFF +3.05'), 3.05);
