@@ -1,4 +1,6 @@
+import type { ComponentChildren } from 'preact';
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import type { PlanDiff } from '../../../shared/diff';
 import { doorLinks, escapeRoutes } from '../../../shared/escape';
 import { type Footprint, labelPoint, wallFootprints } from '../../../shared/walls';
 import { type Plan, type Pt, area, centroid, dist, round } from '../../../shared/plan';
@@ -15,11 +17,25 @@ const SCREEN_PX_PER_M = 96 / 0.0254;
 const STANDARD = [10, 20, 25, 50, 100, 200, 250, 500, 1000];
 const NICE = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200];
 
-type Props = { plan: Plan; compact?: boolean; sourceUrl?: string | null; title?: string };
+/** A comment pinned to the plan (plan metres). */
+export type PinMark = { id: string; n: number; x: number; y: number; resolved: boolean; label: string };
+type Props = {
+  plan: Plan; compact?: boolean; sourceUrl?: string | null; title?: string;
+  /** Comment pins on this plan; drawn at a constant screen size. */
+  pins?: PinMark[]; activePin?: string | null; onPin?(id: string): void;
+  /** Comment tool: a click (or Enter on a room) drops a pin at that spot instead of selecting. */
+  placing?: boolean; onPlace?(p: Pt, roomId?: string): void;
+  /** A pin being written (not saved yet), and a popover (the composer) anchored next to it or to the active pin. */
+  draft?: Pt | null; popover?: ComponentChildren;
+  /** Comparing revisions: this plan is the newer one, the overlay shows what changed since the older. */
+  diff?: PlanDiff | null;
+  /** Pan to this point when key changes (e.g. a comment thread was chosen). */
+  focusAt?: { p: Pt; key: number } | null;
+};
 /** plan: the drawing with overall sizes; dims: every wall, opening and room dimensioned in millimetres. */
 export type PlanMode = 'plan' | 'dims';
 
-export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
+export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activePin, onPin, placing, onPlace, draft, popover, diff, focusAt }: Props) {
   const [mode, setMode] = useState<PlanMode>(() => { try { return localStorage.getItem('bimp.planMode') === 'dims' ? 'dims' : 'plan'; } catch { return 'plan'; } });
   // Dimension strings sit outside the building: three tiers on every side need about twice the margin.
   const pad = Math.max(plan.width, plan.height) * (mode === 'dims' && !compact ? 0.2 : 0.1), top = compact ? 0 : pad * 0.35; // room for the toolbar
@@ -52,6 +68,11 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
   })), [plan]);
   const exits = useMemo(() => (showEscape ? doorLinks(plan).filter((d) => d.exit) : []), [plan, showEscape]);
   useEffect(() => setVb(home), [plan, mode]);
+  useEffect(() => {
+    if (!focusAt) return;
+    const [x, y] = focusAt.p;
+    setVb((v) => (x > v.x + v.w * 0.1 && x < v.x + v.w * 0.9 && y > v.y + v.h * 0.1 && y < v.y + v.h * 0.9 ? v : { ...v, x: x - v.w / 2, y: y - v.h / 2 }));
+  }, [focusAt?.key]);
   useEffect(() => {
     const ro = new ResizeObserver(([e]) => setSize({ w: e.contentRect.width, h: e.contentRect.height }));
     ro.observe(svg.current!);
@@ -116,7 +137,8 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
   const drawing = (
     <svg
       ref={svg}
-      class={`plan2d${compact ? ' compact' : ''}`}
+      class={`plan2d${compact ? ' compact' : ''}${placing ? ' placing' : ''}`}
+      onClick={placing && onPlace ? (e) => { if (!drag.current?.moved) onPlace(toPlan(e.clientX, e.clientY)); } : undefined}
       viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
       onPointerDown={compact ? undefined : (e) => {
         ptrs.current.set(e.pointerId, [e.clientX, e.clientY]);
@@ -148,7 +170,9 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
       onPointerLeave={() => (hoverRoom.value = null)}
       onDblClick={() => setVb(home)}
       role={compact ? 'img' : 'group'}
-      aria-label={compact ? '2D floor plan' : `2D floor plan, ${plan.rooms.length} rooms. Tab to a room; arrow keys pan, plus and minus zoom.`}
+      aria-label={compact ? '2D floor plan' : placing
+        ? `2D floor plan. Comment tool: click a spot, or tab to a room and press Enter, to pin a comment there.`
+        : `2D floor plan, ${plan.rooms.length} rooms${pins?.length ? `, ${pins.length} comment pins` : ''}. Tab to a room; arrow keys pan, plus and minus zoom.`}
     >
       <defs aria-hidden="true">
         {/* poché: 45° diagonal = brick / masonry (envelope), cross-hatch = blockwork (load-bearing) */}
@@ -186,10 +210,14 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
               tabIndex: 0, role: 'button', 'aria-label': `${r.name}, ${round(area(r.polygon), 1)} m²`, 'aria-pressed': selected.includes(r.id),
               onFocus: (e: FocusEvent) => { hoverRoom.value = r.id; if ((e.currentTarget as Element).matches(':focus-visible')) setKbd(r.id); },
               onBlur: () => { hoverRoom.value = null; setKbd(null); },
-              onKeyDown: (e: KeyboardEvent) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggle(r.id); } },
+              onKeyDown: (e: KeyboardEvent) => {
+                if (e.key !== 'Enter' && e.key !== ' ') return;
+                e.preventDefault();
+                if (placing && onPlace) onPlace(labelAt.get(r.id) ?? centroid(r.polygon), r.id); else toggle(r.id);
+              },
             })}
             onPointerEnter={() => (hoverRoom.value = r.id)}
-            onClick={() => { if (!drag.current?.moved) toggle(r.id); }} />
+            onClick={() => { if (!placing && !drag.current?.moved) toggle(r.id); }} />
         );
       })}
       {!compact && !sourceUrl && mode === 'plan' && (
@@ -203,6 +231,7 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
       <Walls footprints={footprints} />
       <Openings plan={plan} thick={openingT} u={pxPerM ? 1 / pxPerM : 0.03} />
       {!compact && <Dimensions plan={plan} fs={fs} mode={mode} footprints={footprints} thick={openingT} />}
+      {diff && <DiffOverlay diff={diff} fs={fs} labelAt={labelAt} />}
       {kbd && (() => { const r = plan.rooms.find((x) => x.id === kbd); return r && <polygon class="focus-ring" aria-hidden="true" points={r.polygon.map((p) => p.join(',')).join(' ')} />; })()}
       {route && (
         <g pointer-events="none" class="escape" aria-hidden="true">
@@ -226,9 +255,32 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
           })}
         </g>
       )}
+      {!compact && pxPerM > 0 && (!!pins?.length || draft) && (
+        <g class="pins">
+          {pins?.map((p) => (
+            <g key={p.id} transform={`translate(${p.x} ${p.y}) scale(${1 / pxPerM})`} class={`pin${p.resolved ? ' resolved' : ''}${activePin === p.id ? ' active' : ''}`}
+              tabIndex={0} role="button" aria-label={p.label} aria-pressed={activePin === p.id} data-pin={p.id}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => { e.stopPropagation(); onPin?.(p.id); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); onPin?.(p.id); } }}>
+              <path d={PIN_PATH} />
+              <text y={-17.5} text-anchor="middle" dominant-baseline="central">{p.n}</text>
+            </g>
+          ))}
+          {draft && (
+            <g transform={`translate(${draft[0]} ${draft[1]}) scale(${1 / pxPerM})`} class="pin draft" aria-hidden="true">
+              <path d={PIN_PATH} /><text y={-17.5} text-anchor="middle" dominant-baseline="central">+</text>
+            </g>
+          )}
+        </g>
+      )}
     </svg>
   );
   if (compact) return drawing;
+  // Screen position (in the wrapper) of a plan point; the SVG is letterboxed (xMidYMid meet).
+  const toScreen = ([x, y]: Pt) => [(size.w - vb.w * pxPerM) / 2 + (x - vb.x) * pxPerM, (size.h - vb.h * pxPerM) / 2 + (y - vb.y) * pxPerM];
+  const anchor = draft ?? (activePin ? pins?.find((p) => p.id === activePin) : null);
+  const at = anchor && pxPerM ? toScreen(Array.isArray(anchor) ? anchor as Pt : [anchor.x, anchor.y]) : null;
 
   const apply = () => { if (typed !== null) setRatio(Number(typed)); setTyped(null); };
   const printN = Math.round(Number(printing));
@@ -236,6 +288,12 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
   return (
     <div class="plan2d-wrap">
       {drawing}
+      {popover && at && (
+        <div class={`pin-pop${size.w < 560 ? ' sheet-bottom' : ''}`} onPointerDown={(e) => e.stopPropagation()}
+          style={size.w < 560 ? undefined : { left: `${Math.max(8, Math.min(at[0] + 20, size.w - 328))}px`, top: `${Math.max(8, Math.min(at[1] - 40, size.h - 230))}px` }}>
+          {popover}
+        </div>
+      )}
       <div class="scale-ctl" onPointerDown={(e) => e.stopPropagation()}>
         <label class="small" title="Screen scale, nominal: assumes 96 px per inch. Use Print for an exact paper scale.">
           1:<input type="number" min={1} list="std-scales" aria-label="Scale ratio"
@@ -435,4 +493,34 @@ function Dimensions({ plan, fs, mode, footprints, thick }: { plan: Plan; fs: num
     return <text x={x} y={y + fs * 2.6} font-size={fs * 0.75} text-anchor="middle" stroke="var(--sheet)" stroke-width={fs * 0.2} paint-order="stroke">{t}</text>;
   })() : null;
   return <g pointer-events="none" aria-hidden="true" class="dims" fill="var(--fg)">{strings}{rooms}{doors}{level}</g>;
+}
+
+/** A map-pin 22 px wide with its tip at (0, 0), in screen pixels. */
+const PIN_PATH = 'M0,0 C-3,-6 -11,-10.5 -11,-17.5 A11,11 0 1 1 11,-17.5 C11,-10.5 3,-6 0,0Z';
+
+const sgn = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : '±'}${Math.abs(round(n, 2))}`;
+/**
+ * What changed since the older revision, over the newer plan: added rooms and walls green, removed walls (and rooms)
+ * dashed red from the older plan, resized rooms tinted with their change in m². Strokes don't scale with zoom.
+ */
+function DiffOverlay({ diff, fs, labelAt }: { diff: PlanDiff; fs: number; labelAt: Map<string, Pt> }) {
+  return (
+    <g class="diff" pointer-events="none" aria-hidden="true">
+      {diff.rooms.map((r, i) => {
+        if (r.status === 'same') return null;
+        const poly = (r.b ?? r.a)!.polygon;
+        return <polygon key={`r${i}`} points={pts(poly)} class={`d-room d-${r.status}`} />;
+      })}
+      {diff.walls.removed.map((w) => <line key={`wr${w.id}`} x1={w.a[0]} y1={w.a[1]} x2={w.b[0]} y2={w.b[1]} class="d-wall-del" />)}
+      {diff.walls.added.map((w) => <line key={`wa${w.id}`} x1={w.a[0]} y1={w.a[1]} x2={w.b[0]} y2={w.b[1]} class="d-wall-add" stroke-width={Math.max(w.thickness, 0.08)} />)}
+      <g text-anchor="middle" font-size={fs * 0.9} font-weight="600" stroke="var(--sheet)" stroke-width={fs * 0.25} paint-order="stroke" stroke-linejoin="round">
+        {diff.rooms.map((r, i) => {
+          if (r.status === 'same') return null;
+          const room = (r.b ?? r.a)!, [x, y] = (r.b && labelAt.get(r.b.id)) || labelPoint(room.polygon);
+          const t = r.status === 'added' ? `New · ${r.area_b} m²` : r.status === 'removed' ? `Removed: ${r.name}` : `${sgn(r.delta)} m²`;
+          return <text key={`t${i}`} x={x} y={r.status === 'removed' ? y : y - fs * 1.35} class={`d-label l-${r.status}`}>{t}</text>;
+        })}
+      </g>
+    </g>
+  );
 }

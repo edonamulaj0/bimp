@@ -1,4 +1,4 @@
-import { ai, user } from './state';
+import { ai, teams, user } from './state';
 
 type Opts = { method?: string; json?: unknown; body?: BodyInit; headers?: Record<string, string> };
 
@@ -16,5 +16,7 @@ export async function api<T = any>(path: string, o: Opts = {}): Promise<T> {
   return data as T;
 }
 
-/** Who is signed in, and whether AI answers are available. */
-export const loadMe = () => api<{ user: typeof user.value; ai?: boolean }>('/me').then((d) => { ai.value = d.ai !== false; user.value = d.user; });
+/** Who is signed in, their teams, and whether AI answers are available. */
+export const loadMe = () => api<{ user: typeof user.value; ai?: boolean; teams?: typeof teams.value }>('/me').then((d) => {
+  ai.value = d.ai !== false; teams.value = d.teams ?? []; user.value = d.user;
+});

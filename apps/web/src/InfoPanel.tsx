@@ -3,12 +3,14 @@ import { type Plan, FIXTURE_LABEL, area, round } from '../../shared/plan';
 import { planAreas, roomInfo } from '../../shared/rooms';
 import { fengShui, suggestLayout } from '../../shared/fengshui';
 import { ROOM_COLORS } from './canvas/colors';
+import { checkPlan } from '../../shared/standards';
 import { AI_OFF, ai, chatPrompt, hoverRoom, selectedRooms } from './state';
 
 const m = (v: number, d = 2) => v.toFixed(d);
 
 /** Plan overview, or the selected room's measures and feng shui notes. All figures computed from the plan geometry. */
-export function InfoPanel({ plan, suggest, onSuggest }: { plan: Plan; suggest: boolean; onSuggest(v: boolean): void }) {
+export function InfoPanel({ plan, suggest, onSuggest, hidden }: { plan: Plan; suggest: boolean; onSuggest(v: boolean): void; hidden?: boolean }) {
+  const checks = checkPlan(plan);
   const room = plan.rooms.find((r) => r.id === selectedRooms.value[0]);
   const pa = planAreas(plan);
   const notes = fengShui(plan, room?.id);
@@ -26,7 +28,7 @@ export function InfoPanel({ plan, suggest, onSuggest }: { plan: Plan; suggest: b
   const hover = (id: string | null) => ({ onMouseEnter: () => (hoverRoom.value = id), onMouseLeave: () => (hoverRoom.value = null), onFocus: () => (hoverRoom.value = id), onBlur: () => (hoverRoom.value = null) });
 
   return (
-    <aside class="infopanel" id="info-panel" aria-label="Information" onPointerDown={(e) => e.stopPropagation()}>
+    <section class="tabpanel infopanel" id="panel-info" role="tabpanel" aria-labelledby="tab-info" hidden={hidden}>
       {room ? (() => {
         const ri = roomInfo(plan, room);
         return (
@@ -73,6 +75,18 @@ export function InfoPanel({ plan, suggest, onSuggest }: { plan: Plan; suggest: b
         </>
       )}
 
+      <h4 id="checks-h" tabIndex={-1}>Checks against design standards <span class="muted small">{checks.filter((c) => c.level === 'warn').length} to review</span></h4>
+      {!checks.length && <p class="muted small">Nothing unusual found.</p>}
+      <ul class="checks-list">
+        {checks.map((c, i) => (
+          <li key={i}>
+            <button class={`check check--${c.level}`} disabled={!c.room_id} onClick={() => c.room_id && (selectedRooms.value = [c.room_id])} {...hover(c.room_id ?? null)}>
+              <span><span aria-hidden="true">{c.level === 'warn' ? '△ ' : 'ℹ '}</span><span class="sr-only">{c.level === 'warn' ? 'Warning: ' : 'Note: '}</span>{c.text}</span><small class="muted">{c.ref}</small>
+            </button>
+          </li>
+        ))}
+      </ul>
+
       <h4>Feng shui <span class="muted small">traditional guidance</span></h4>
       {notes.length ? (
         <ul class="fs">
@@ -102,6 +116,6 @@ export function InfoPanel({ plan, suggest, onSuggest }: { plan: Plan; suggest: b
       </div>
       {!ai.value && <p class="small muted" id="ip-ai-off">{AI_OFF}</p>}
       {suggest && <p class="small muted">Dashed items are suggestions by bimp, not part of the drawing.</p>}
-    </aside>
+    </section>
   );
 }

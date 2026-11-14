@@ -4,8 +4,10 @@ import { loadMe } from './api';
 import { Login } from './Login';
 import { Projects } from './Projects';
 import { ProjectPage } from './Project';
-import { route, user } from './state';
+import { TeamSettings } from './TeamSettings';
+import { announce, parsed, route, sidebarCollapsed, user } from './state';
 import { Spinner } from './brand';
+import { ShellDialogs, Sidebar } from './Shell';
 import './app.css';
 
 function App() {
@@ -20,8 +22,20 @@ function App() {
   }, [key]);
   if (user.value === undefined) return <div class="boot"><Spinner size={56} /></div>;
   if (!user.value) return <Login />;
-  const m = route.value.match(/^#\/p\/([\w-]+)/);
-  return m ? <ProjectPage key={m[1]} id={m[1]} /> : <Projects />;
+  const r = parsed.value;
+  return (
+    <div class={`app${sidebarCollapsed.value ? ' sb-collapsed' : ''}`}>
+      <a class="skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a>
+      <Sidebar />
+      <div class="main-col">
+        {r.page === 'project' ? <ProjectPage key={r.id} id={r.id} />
+          : r.page === 'team' ? <TeamSettings key={r.id} id={r.id} />
+          : <Projects key={r.team ?? 'all'} team={r.team} />}
+      </div>
+      <ShellDialogs />
+      <p class="sr-only" role="status" aria-live="polite">{announce.value}</p>
+    </div>
+  );
 }
 
 render(<App />, document.getElementById('root')!);

@@ -495,6 +495,7 @@ Avoid: "100% accurate" claims, renders better than the real product, generic AI 
   Google Fonts). Once chosen, record palette (hex), fonts and logo rules here.
 
 ---
+- Visual system (2026-11-14, v2): an app, not a poster. One sans (Jost) for all text; no uppercase eyebrow labels, section numbers or decorative monospace — monospace only for numbers, dimensions, revision ids and file names. Paper #F4F1EA for chrome, white for the drawing sheet and content, charcoal for ink, orange #FF682B only for the primary action and active markers. Light mode only. App: left sidebar (projects, teams), canvas, right panel (Chat / Comments / Revisions / Info). Site: Home, Product, Pricing, Changelog, Docs, Sign in; About and Method live in Docs.
 
 ## 13. Repository layout (proposed)
 
