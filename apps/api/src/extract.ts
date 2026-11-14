@@ -325,7 +325,7 @@ export function alignEdges(polys: Pt[][], axis: number, tol: number): Pt[][] {
 type Op = { kind: 'door' | 'window'; a: Pt; b: Pt };
 /**
  * Seats openings in the walls and drops repeats. Each opening is projected onto the centre line of the nearest wall
- * (any angle), so it cuts that wall in 2D and 3D instead of floating beside it; one that is already there, from an
+ * (any angle), so it cuts that wall instead of floating beside it; one that is already there, from an
  * earlier source in the list, is not added again. Openings with no wall within reach are kept where they were read.
  */
 export function seatOpenings(ops: Op[], walls: Wall[], reach = 0.6): Op[] {

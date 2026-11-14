@@ -569,6 +569,7 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 | 2026-11-14 | Review fixes (security, UI/UX, functionality): wall builder closes corners and pairs faces of any thickness; detail scales no longer win over the plan scale; scale/dimension conflicts make a plan a preview; escape distance sampled along edges and inside rooms; verifier hardened; per-user quotas; ingest parse limits; keyboard access to rooms, live chat regions, info panel docking |
 | 2026-11-14 | Room/plan info panel (net/gross, heights), door swing rules, feng shui checks and suggested layout |
 | 2026-11-14 | Dollhouse cutaway is the default 3D mode; procedural floor materials by room type |
+| 2026-11-14 | The 3D view is removed (viewer, furniture models, three.js) with the Cloudinary images generated from it; the app is 2D only and work goes into the accuracy of the 2D plan. Sections above that describe 3D are history |
 | 2026-11-14 | On scans and images the symbol detector decides where its five kinds are drawn; rooms open to a neighbour are fitted edge by edge to the wall faces; furniture is tightened onto its lines; outside walls take their drawn thickness |
 | 2026-11-14 | Room outlines are traced from the drawing's wall lines by the ingestion service (`/trace`); the model's outline only says which enclosed space is which room, and is the fallback when none matches |
 | 2026-11-14 | Every page of a PDF is read (8 per file); each page with a floor plan is its own revision, and chat answers about the revision on the canvas |

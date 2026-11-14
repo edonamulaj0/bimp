@@ -85,7 +85,7 @@ export class IngestWorkflow extends WorkflowEntrypoint<Env, IngestParams> {
         });
 
         results.push(await step.do(`measure and save page ${n}`, RETRY, async (): Promise<PageResult> => {
-          await stage(`${of}Measuring and building the 2D and 3D plan…`);
+          await stage(`${of}Measuring and drawing the plan…`);
           const an = await loadAnalysis();
           let plan;
           try { plan = buildPlan(raw, an, fileId, sum.renderSha, traced); }

@@ -1,4 +1,4 @@
-// Floor material by room type (a visual convention, not data from the drawing). Shared by the 2D and 3D views.
+// Floor material by room type (a visual convention, not data from the drawing). Used for the floor patterns on the plan.
 import type { RoomType } from '../../../shared/plan';
 
 export type FloorKind = 'wood' | 'tiles' | 'concrete' | 'deck' | 'plain';

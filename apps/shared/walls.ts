@@ -1,5 +1,5 @@
 // Mitered wall footprints: every wall becomes a polygon whose ends meet its neighbours exactly (L-corners,
-// T-junctions, crossings, mixed thicknesses), so 2D fills and 3D extrusions show one continuous wall mass.
+// T-junctions, crossings, mixed thicknesses), so the wall fills show one continuous wall mass.
 // Technique after neonplan3d (MIT, © 2026 Mastershort): sort walls by angle at each node and intersect each wall's
 // left face line with the next wall's right face line.
 import { type Pt, type Wall, dist } from './plan';

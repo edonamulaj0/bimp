@@ -9,7 +9,7 @@ Read `docs/BIMP.md` first: it is the project's source of truth.
 | Path | What |
 |---|---|
 | `apps/web/index.html` | Marketing page (static) |
-| `apps/web/app/`, `apps/web/src/` | App: login, projects, workspace (chat + 2D/3D canvas). Preact + three.js |
+| `apps/web/app/`, `apps/web/src/` | App: login, projects, workspace (chat + 2D canvas). Preact |
 | `apps/api/src/` | Worker code. `index.ts` = web/API Worker `bimp` (auth, projects, uploads, jobs, chat). `ingest-worker.ts` = Worker `bimp-ingest` (ingestion Workflow + Container) |
 | `ingest/` | Python ingestion service (PyMuPDF, OpenCV, ezdxf) for Cloudflare Containers; `make_fixtures.py` makes test drawings with known geometry |
 | `apps/shared/` | Plan model and geometry used by both sides |
@@ -75,28 +75,15 @@ Version URLs are public: put Cloudflare Access in front if the data must stay pr
 3. **Measure on the drawing** (Python service, no language model): each room's outline is replaced by the exact outline of the enclosed space on the drawing, bounded by its wall lines. A room that is open to its neighbour (a doorway nobody reported, an open plan) has each edge moved onto the wall face beside it instead. Fittings and furniture are tightened onto the lines drawn for them, and the outside walls get the thickness they are drawn with. On scans and images the symbol detector (`ml/`, trained on Colab) decides where doors, windows, toilets, sinks, showers and bathtubs stand, and adds the ones the language model missed. The reading gives each room its shape; measuring only moves its walls onto the lines of the drawing, square to the drawing's axes, and a traced outline is used only when it is clean (no kinks round door leaves, hatching or handwriting). Whatever the drawing gives no clear answer for stays as read; the plan's assumptions say which is which. Set `MEASURE_ON_DRAWING` to `off` in `ingest/wrangler.jsonc` to switch this step off.
 4. **Measure and save** (code): scale, walls, openings seated in walls, and for every room, opening and fitting the page and box it was read from (`src`).
 
-The uploaded drawing is on the canvas as soon as it is rendered; the model is drawn over it when the reading is done. **Overlay** in the canvas toolbar sets how strongly the drawing and the model are drawn (in 3D the drawing lies on the floor).
+The uploaded drawing is on the canvas as soon as it is rendered; the model is drawn over it when the reading is done. **Overlay** in the canvas toolbar sets how strongly the drawing and the plan are drawn.
 
 Symbols: bimp names 29 kinds of fitting, appliance and furniture. One it cannot name is drawn dashed with a "?" pin; anyone on the project can say what it is, and each answer is stored with its place on the sheet (`symbol_labels`) as an example for the next symbol model. Hovering a wall, door, window or symbol on the 2D plan shows what it is and its measurements, whether or not the drawing states them; the chat has the same figures (`list_walls`, `list_openings`, `list_fixtures`).
 
 Questions are answered from the stored plan. Counts, room areas, the total area, the largest or smallest room and the room list are answered by code (`apps/api/src/quick.ts`): no model call, 0¢. Everything else goes to the agent, and the answer shows what it cost at the model's list price (`GEMINI_PRICE_IN` / `GEMINI_PRICE_OUT`, US dollars per million tokens, in both `wrangler.jsonc` files: update them when the model or its price changes). Each citation carries a crop of the source sheet with the cited rooms or items outlined.
 
-### Architectural images (Cloudinary, optional)
-
-The 3D view can generate architectural images (the model set in a garden, a street at dusk, a 16:9 panorama, or a
-presentation board) with Cloudinary's generative AI. Enable generative AI on your Cloudinary account, then:
-
-```bash
-# in wrangler.jsonc "vars": CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY
-npx wrangler secret put CLOUDINARY_API_SECRET -c apps/web/dist/bimp/wrangler.json
-npm run db:migrate:remote   # adds the visuals table (0004)
-```
-
-Snapshots are uploaded with signed requests into `bimp/<project id>/`, and each image is generated as an eager
-transformation, so it works with "strict transformations" on. Generative styles use Cloudinary credits; each user can
-make 20 images a day.
+### Site images
 
 The marketing site uses photographs and plan sheets in `apps/web/public/photos/` (credits in the docs), not generated
-images. The `site_images` table from `db/migrations/0005` is no longer read.
+images. The `site_images` and `visuals` tables (`db/migrations/0004`, `0005`) are no longer read: the 3D view and the images generated from it were removed, and the app is 2D only.
 
 Set `ALLOW_SIGNUP` to `"false"` in `wrangler.jsonc` to close sign-up after creating your accounts.

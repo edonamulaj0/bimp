@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { housePlan } from '../../shared/house-plan';
-import { visuals, visualsOn } from './visuals';
 import { clipPlan, parseRegion, regionContents, regionSize, type Region } from '../../shared/region';
 import { type Fixture, type Plan, FIXTURE_KINDS, area, evidenceFor, sourceBox } from '../../shared/plan';
 import { costUsd, meter } from './gemini';
@@ -45,7 +44,7 @@ app.post('/auth/login', async (c) => {
 app.post('/auth/logout', async (c) => { await endSession(c); return c.json({ ok: true }); });
 app.get('/me', requireUser, async (c) => {
   await refreshSamples(c.env, c.get('user').id).catch(() => {}); // never block sign-in on it
-  return c.json({ user: c.get('user'), ai: !!c.env.GEMINI_API_KEY, visuals: visualsOn(c.env), teams: await myTeams(c.env, c.get('user').id) });
+  return c.json({ user: c.get('user'), ai: !!c.env.GEMINI_API_KEY, teams: await myTeams(c.env, c.get('user').id) });
 });
 
 /**
@@ -417,7 +416,6 @@ function regionBrief(plan: Plan, r: Region) {
 }
 
 projects.route('/:id/comments', comments);
-projects.route('/:id/visuals', visuals);
 app.route('/projects', projects);
 app.route('/teams', teams);
 app.all('*', () => { throw fail(404, 'Not found.'); });

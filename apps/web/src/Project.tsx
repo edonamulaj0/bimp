@@ -7,12 +7,10 @@ import { suggestLayout } from '../../shared/fengshui';
 import { type Region, regionContents, regionSize } from '../../shared/region';
 import { api } from './api';
 import { ALL_LAYERS, type CanvasTool, type Layers, type MenuAt, type PinMark, Plan2D, type Plan2DApi } from './canvas/Plan2D';
-import { Plan3D, type Plan3DApi } from './canvas/Plan3D';
-import type { Projection, ViewPreset } from './canvas/scene';
 import { ROOM_COLORS } from './canvas/colors';
 import { signal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
-import { answerNote, chatPrompt, hoverRoom, pendingDrawing, projectsVersion, queueFiles, region, say, selectedRooms, tourStep, tutorialOpen, toggleTheme, visualsOpen } from './state';
+import { answerNote, chatPrompt, hoverRoom, pendingDrawing, projectsVersion, queueFiles, region, say, selectedRooms, tourStep, tutorialOpen, toggleTheme } from './state';
 import { InfoPanel } from './InfoPanel';
 import { PageHeader } from './Shell';
 import { Spinner } from './brand';
@@ -24,7 +22,6 @@ import { FileTree, type FileRow } from './FileTree';
 import { CanvasMenu, type CmSection } from './CanvasMenu';
 import { Menu } from './ui';
 import { Shortcuts, Tour, Tutorial } from './Tour';
-import { VisualsDialog } from './Visuals';
 import type { Comment, ProjectData } from './types';
 
 type Tab = 'comments' | 'revisions' | 'info';
@@ -81,7 +78,7 @@ export function ProjectPage({ id }: { id: string }) {
   const setTab = (t: Tab) => { setTabState(t); store('bimp.tab', t); setRightOpen(true); if (phone) setMPane(t); };
   const load = () => api<ProjectData>(`/projects/${id}`).then((d) => { if (d.plan && d.plan_id) plans.current.set(d.plan_id, d.plan); setData(d); }).catch((e) => setErr(e.message));
   useEffect(() => {
-    hoverRoom.value = null; selectedRooms.value = []; chatPrompt.value = null; region.value = null; visualsOpen.value = false;
+    hoverRoom.value = null; selectedRooms.value = []; chatPrompt.value = null; region.value = null;
     load();
     api<{ comments: Comment[] }>(`/projects/${id}/comments`).then((d) => setComments(d.comments)).catch(() => setComments([]));
     return () => { region.value = null; };
@@ -332,7 +329,6 @@ function InfoPanelHost({ plan, hidden }: { plan: Plan; hidden: boolean }) {
 }
 
 // ---------------------------------------------------------------- canvas
-type Mode = '2d' | '3d' | 'split';
 type CanvasProps = {
   plan: Plan | null; /** the revision shown, for the answer note */ planId: string | null; projectId: string; name: string; loading: boolean; onUpload(): void; onRefused(why: string[]): void; onChecks(): void;
   banner: ComponentChildren; notice: string[]; onNotice(): void; diff: PlanDiff | null; pins: PinMark[]; activePin: string | null; onPin(id: string): void;
@@ -344,33 +340,24 @@ type CanvasProps = {
 const LAYER_LABEL: [keyof Layers, string][] = [['fills', 'Room fills'], ['furniture', 'Furniture and fittings'], ['dims', 'Dimensions'], ['labels', 'Room labels'], ['pins', 'Comment pins']];
 
 function CanvasPane({ onRelabel, plan: drawn, planId, projectId, name, loading, onUpload, onRefused, onChecks, banner, notice, onNotice, diff, pins, activePin, onPin, tool, onTool, canComment, onPlace, draft, focusAt, popover, onRegion, onAsk }: CanvasProps) {
-  const [mode, setModeState] = useState<Mode>(() => stored('bimp.view', '2d' as Mode, (v) => ['2d', '3d', 'split'].includes(v), (v) => v as Mode));
-  const setMode = (m: Mode) => { setModeState(m); store('bimp.view', m); };
-  const [rot, setRot] = useState(0);
   // Overlay: the source drawing and the model over it, each with its own strength (percent), so one shows through the other.
   const [drawOp, setDrawOpState] = useState(() => stored('bimp.drawOp', 60, (v) => +v >= 0 && +v <= 100, Number));
   const [modelOp, setModelOpState] = useState(() => stored('bimp.modelOp', 85, (v) => +v >= 10 && +v <= 100, Number));
   const setDrawOp = (v: number) => { setDrawOpState(v); store('bimp.drawOp', String(v)); };
   const setModelOp = (v: number) => { setModelOpState(v); store('bimp.modelOp', String(v)); };
   const [overlayOpen, setOverlayOpen] = useState(false);
-  const [walls, setWalls] = useState<'dollhouse' | 'cut' | 'full'>('dollhouse');
-  const [proj, setProj] = useState<Projection>('persp');
   const [layers, setLayers] = useState<Layers>(() => ({ ...ALL_LAYERS, ...stored('bimp.layers', {}, (v) => v.startsWith('{'), (v) => JSON.parse(v)) }));
   const [menu, setMenu] = useState<(MenuAt & { kind: 'canvas' | 'layers' | 'view' }) | null>(null);
   const [over, setOver] = useState(false);
-  const p2 = useRef<Plan2DApi | null>(null), p3 = useRef<Plan3DApi | null>(null);
+  const p2 = useRef<Plan2DApi | null>(null);
   const suggest = suggestOn.value && !diff;
   const reg = region.value;
   const setLayer = (k: keyof Layers, v: boolean) => setLayers((l) => { const n = { ...l, [k]: v }; store('bimp.layers', JSON.stringify(n)); return n; });
-  // pins and the comment tool live on the 2D plan
-  useEffect(() => { if (tool === 'comment' && mode === '3d') setMode('2d'); if (tool === 'measure' && mode === '3d') setMode('2d'); }, [tool]);
-  // 1 2 3: views; F: fit
+  // F: fit
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
       if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || document.querySelector('dialog[open], .cm, .tour-card')) return;
-      const m = ({ 1: '2d', 2: '3d', 3: 'split' } as Record<string, Mode>)[e.key];
-      if (m) { e.preventDefault(); setMode(m); }
-      else if (e.key === 'f' || e.key === 'F') { e.preventDefault(); fit(); }
+      if (e.key === 'f' || e.key === 'F') { e.preventDefault(); fit(); }
     };
     addEventListener('keydown', k);
     return () => removeEventListener('keydown', k);
@@ -401,7 +388,6 @@ function CanvasPane({ onRelabel, plan: drawn, planId, projectId, name, loading, 
     <section class={`canvas no-plan${over ? ' over' : ''}`} id="pane-canvas" aria-label="Canvas" data-tour="canvas" {...dropProps}>
       {/* the tools as they will be, switched off until there is a drawing: the tour and the first-project guide point at them */}
       <div class="toolbar" aria-label="Tools, available once a drawing is read">
-        <div class="seg sm" role="group" aria-label="View">{['2D', '3D', 'Split'].map((m) => <button key={m} disabled>{m}</button>)}</div>
         <div class="seg sm tools" role="group" aria-label="Tools" data-tour="tools">
           {TOOLS.map(([t, l, ic, k, tip]) => <button key={t} disabled title={`${l} (${k}): ${tip}. Add a drawing first.`}><Icon name={ic} size={16} /><span class="tool-l">{l}</span></button>)}
         </div>
@@ -412,7 +398,7 @@ function CanvasPane({ onRelabel, plan: drawn, planId, projectId, name, loading, 
       <div class="empty-canvas grow">
       <div class="drop">
         <h2>No drawing yet</h2>
-        <p class="muted">Drop a floor plan here or on the file list. bimp reads it into rooms, walls and openings, drawn here in 2D and 3D.</p>
+        <p class="muted">Drop a floor plan here or on the file list. bimp reads it into rooms, walls and openings, drawn here as a measured 2D plan.</p>
         <button class="btn sm" onClick={onUpload}><Icon name="upload" size={16} />Add a floor plan</button>
         <p class="muted small">PDF, DXF, PNG, JPG or WebP · up to 50 MB</p>
       </div>
@@ -424,12 +410,11 @@ function CanvasPane({ onRelabel, plan: drawn, planId, projectId, name, loading, 
     : plan.source.renderSha ? `/api/projects/${projectId}/render/${plan.source.renderSha}`
     : plan.source.mime.startsWith('image/') ? `/api/projects/${projectId}/files/${plan.source.fileId}` : null;
   const sourceUrl = drawOp > 0 ? drawingUrl : null;
-  const show3d = mode !== '2d';
   const focus = plan.rooms.find((r) => r.id === (hoverRoom.value ?? selectedRooms.value[0]));
   const types = ROOM_TYPES.filter((t) => plan.rooms.some((r) => r.type === t));
   const checks = checkPlan(plan);
   const warns = checks.filter((c) => c.level === 'warn').length;
-  const fit = () => { if (mode !== '3d') p2.current?.fit(); if (mode !== '2d') p3.current?.view('iso'); };
+  const fit = () => p2.current?.fit();
   const roomAsk = (rid: string) => { const r = plan.rooms.find((x) => x.id === rid); if (r) { selectedRooms.value = [rid]; onAsk(`Tell me about the ${r.name}: its size, doors, windows and fittings.`); } };
   const roomRegion = (rid: string) => {
     const r = plan.rooms.find((x) => x.id === rid);
@@ -443,20 +428,12 @@ function CanvasPane({ onRelabel, plan: drawn, planId, projectId, name, loading, 
     setMenu(menu?.kind === kind ? null : { x: r.left, y: r.bottom + 4, p: null, roomId: null, kind });
   };
   const toolItems = TOOLS.map(([t, l, ic, k]) => ({ label: t === 'comment' && menu?.p ? 'Comment here' : l, icon: ic, hint: k, checked: undefined as boolean | undefined, disabled: t === 'comment' && !canComment,
-    onSelect: () => { if (t === 'comment' && menu?.p) { onTool('comment'); setMode(mode === '3d' ? '2d' : mode); onPlace(menu.p, menu.roomId ?? undefined); } else onTool(t); } }));
+    onSelect: () => { if (t === 'comment' && menu?.p) { onTool('comment'); onPlace(menu.p, menu.roomId ?? undefined); } else onTool(t); } }));
   const viewItems: CmSection['items'] = [
-    ...(['2d', '3d', 'split'] as Mode[]).map((m, i) => ({ label: m === 'split' ? 'Split 2D and 3D' : `${m.toUpperCase()} view`, hint: String(i + 1), checked: mode === m, onSelect: () => setMode(m) })),
     { label: 'Fit to view', icon: 'fit', hint: 'F', onSelect: fit },
-    ...(mode !== '3d' ? [
-      { label: 'Dimensioned drawing', checked: p2.current?.mode() === 'dims', onSelect: () => p2.current?.setMode(p2.current.mode() === 'dims' ? 'plan' : 'dims') },
-      { label: 'Escape routes', checked: !!p2.current?.escape(), onSelect: () => p2.current?.toggleEscape() },
-      { label: 'Print to scale…', icon: 'file', onSelect: () => p2.current?.print() },
-    ] : []),
-    ...(show3d ? [
-      ...([['iso', 'Isometric'], ['top', 'Top'], ['front', 'Front (south)'], ['side', 'Side (east)'], ['eye', 'Low angle']] as [ViewPreset, string][]).map(([v, l]) => ({ label: `${l} view`, icon: 'orbit', onSelect: () => p3.current?.view(v) })),
-      { label: 'Parallel projection', checked: proj === 'ortho', onSelect: () => setProj(proj === 'ortho' ? 'persp' : 'ortho') },
-      { label: 'Generate an image of this view…', icon: 'sparkle', onSelect: () => (visualsOpen.value = true) },
-    ] : []),
+    { label: 'Dimensioned drawing', checked: p2.current?.mode() === 'dims', onSelect: () => p2.current?.setMode(p2.current.mode() === 'dims' ? 'plan' : 'dims') },
+    { label: 'Escape routes', checked: !!p2.current?.escape(), onSelect: () => p2.current?.toggleEscape() },
+    { label: 'Print to scale…', icon: 'file', onSelect: () => p2.current?.print() },
   ];
   const layerItems: CmSection['items'] = [
     ...LAYER_LABEL.map(([k, l]) => ({ label: l, checked: layers[k], onSelect: () => setLayer(k, !layers[k]) })),
@@ -482,11 +459,6 @@ function CanvasPane({ onRelabel, plan: drawn, planId, projectId, name, loading, 
   return (
     <section class={`canvas${tool !== 'select' ? ` tool-${tool}` : ''}${over ? ' over' : ''}`} id="pane-canvas" aria-label="Canvas" data-tour="canvas" {...dropProps}>
       <div class="toolbar">
-        <div class="seg sm" role="group" aria-label="View">
-          {(['2d', '3d', 'split'] as Mode[]).map((m, i) => (
-            <button key={m} aria-pressed={mode === m} onClick={() => setMode(m)} title={`${m === 'split' ? 'Split' : m.toUpperCase()} (${i + 1})`}>{m === 'split' ? 'Split' : m.toUpperCase()}</button>
-          ))}
-        </div>
         <div class="seg sm tools" role="group" aria-label="Tools" data-tour="tools">
           {TOOLS.map(([t, l, ic, k, tip]) => (
             <button key={t} aria-pressed={tool === t} onClick={() => onTool(tool === t && t !== 'select' ? 'select' : t)} disabled={t === 'comment' && !canComment}
@@ -495,19 +467,6 @@ function CanvasPane({ onRelabel, plan: drawn, planId, projectId, name, loading, 
             </button>
           ))}
         </div>
-        {show3d && (<>
-          <div class="seg sm hide-sm" role="group" aria-label="3D camera">
-            <button onClick={() => setRot((r) => r - 1)} title="Orbit left 90°" aria-label="Orbit left">⟲</button>
-            <button onClick={() => setRot((r) => r + 1)} title="Orbit right 90°" aria-label="Orbit right">⟳</button>
-            <button aria-pressed={proj === 'ortho'} onClick={() => setProj(proj === 'ortho' ? 'persp' : 'ortho')} title="Parallel projection (no perspective)">Parallel</button>
-          </div>
-          <div class="seg sm hide-sm" role="group" aria-label="Walls">
-            {([['dollhouse', 'Dollhouse', 'Walls facing the camera lowered, the rest full height'], ['cut', 'Cut 1.2 m', 'All walls cut at 1.2 m, like a plan section'], ['full', 'Full', 'All walls full height']] as const).map(([m, label, title]) => (
-              <button key={m} aria-pressed={walls === m} title={title} onClick={() => setWalls(m)}>{label}</button>
-            ))}
-          </div>
-        </>)}
-        <button class="tool" onClick={() => { if (mode === '2d') setMode('3d'); visualsOpen.value = true; }} title="Generate architectural images from the 3D model (Cloudinary)"><Icon name="sparkle" size={16} /><span class="tool-l">Images</span></button>
         {drawingUrl && (
           <div class="overlay-ctl">
             <button class="tool" onClick={() => setOverlayOpen(!overlayOpen)} aria-expanded={overlayOpen} aria-controls="overlay-pop" title="Show the uploaded drawing under the model, and set how strongly each is drawn"><Icon name="layers" size={16} /><span class="tool-l">Overlay</span></button>
@@ -515,7 +474,7 @@ function CanvasPane({ onRelabel, plan: drawn, planId, projectId, name, loading, 
               <div class="overlay-pop" id="overlay-pop" role="group" aria-label="Overlay">
                 <label><span>Drawing</span><input type="range" min={0} max={100} step={5} value={drawOp} onInput={(e) => setDrawOp(+e.currentTarget.value)} /><output class="mono">{drawOp}%</output></label>
                 <label><span>Model</span><input type="range" min={10} max={100} step={5} value={modelOp} onInput={(e) => setModelOp(+e.currentTarget.value)} /><output class="mono">{modelOp}%</output></label>
-                <p class="muted small">The drawing you uploaded lies under the model at the same scale. Rooms stay clickable. In 3D it lies on the floor.</p>
+                <p class="muted small">The drawing you uploaded lies under the model at the same scale. Rooms stay clickable.</p>
                 <div class="overlay-quick">
                   <button type="button" class="link small" onClick={() => { setDrawOp(100); setModelOp(35); }}>Mostly drawing</button>
                   <button type="button" class="link small" onClick={() => { setDrawOp(60); setModelOp(85); }}>Both</button>
@@ -540,8 +499,7 @@ function CanvasPane({ onRelabel, plan: drawn, planId, projectId, name, loading, 
         </div>
       )}
 
-      <div class={`views mode-${mode}`}>
-        {mode !== '3d' && (
+      <div class="views">
           <div class="view">
             <Plan2D plan={plan} sourceUrl={sourceUrl} sourceOpacity={drawOp / 100} modelOpacity={sourceUrl ? modelOp / 100 : 1} title={name} pins={pins} activePin={activePin} onPin={onPin}
               placing={tool === 'comment' && canComment} onPlace={onPlace} draft={draft} popover={popover} diff={diff} focusAt={focusAt}
@@ -550,21 +508,11 @@ function CanvasPane({ onRelabel, plan: drawn, planId, projectId, name, loading, 
               regionCard={reg ? <RegionCard plan={plan} r={reg} onClear={() => onRegion(null)} onAsk={onAsk} /> : undefined}
               note={!diff && answerNote.value && (answerNote.value.planId ?? planId) === planId ? answerNote.value : null} onNoteClose={() => (answerNote.value = null)} />
           </div>
-        )}
-        {mode !== '2d' && (
-          <div class="view">
-            <Plan3D plan={plan} underlayUrl={drawingUrl} underlayOpacity={drawOp / 100} rotation={rot} walls={walls} furniture={layers.furniture} labels={layers.labels} projection={proj}
-              tool={tool === 'region' ? 'region' : 'select'} region={reg} onRegion={onRegion} apiRef={p3} onMenu={openMenu} />
-            <div class="nav-hint" aria-hidden="true">Drag to orbit · right-drag to pan · scroll to zoom</div>
-          </div>
-        )}
         <div class="hover-readout" aria-hidden="true">
           {focus
             ? <><i class="sw" style={{ background: ROOM_COLORS[focus.type] }} /><b>{focus.name}</b> · {focus.type} · <span class="mono">{round(area(focus.polygon), 1)} m²</span></>
             : <span class="muted">{matchMedia('(pointer: coarse)').matches ? 'Tap a room · press and hold for tools' : 'Hover a room · right-click or double-click for tools'}</span>}
         </div>
-        {/* with the 2D plan in view the region's card stands beside the region (see Plan2D); in 3D alone it sits in the corner */}
-        {reg && mode === '3d' && <RegionCard plan={plan} r={reg} onClear={() => onRegion(null)} onAsk={onAsk} />}
         {over && <div class="drop-veil" aria-hidden="true"><Icon name="upload" size={22} /><b>Drop to add to {name}</b><span>Each drawing becomes the next revision</span></div>}
       </div>
 
@@ -575,8 +523,6 @@ function CanvasPane({ onRelabel, plan: drawn, planId, projectId, name, loading, 
         {types.map((t) => <span key={t} class="lg-type"><i class="sw" style={{ background: ROOM_COLORS[t] }} />{t}</span>)}
         <span class="muted">· {plan.rooms.length} rooms · <span class="mono">{plan.width} × {plan.height} m</span></span>
       </div>
-      {visualsOpen.value && <VisualsDialog projectId={projectId} snapshot={mode !== '2d' ? () => p3.current?.snapshot() ?? null : null}
-        onShow3D={() => setMode('3d')} onClose={() => (visualsOpen.value = false)} />}
       {menu && <CanvasMenu x={menu.x} y={menu.y} title={menu.kind === 'canvas' ? (room ? room.name : 'Plan') : undefined} sections={sections} onClose={() => setMenu(null)} />}
     </section>
   );
@@ -599,7 +545,7 @@ function PendingDrawing({ url, name, stage, onStop }: { url: string; name: strin
         : <p class="muted small">The drawing appears here as soon as it has been rendered.</p>}
       <div class="pending-card" role="status">
         <Spinner size={18} label={null} />
-        <span><b>{stage || 'Reading the drawing…'}</b><span class="muted small">{name} · the 2D and 3D model will be drawn over it</span></span>
+        <span><b>{stage || 'Reading the drawing…'}</b><span class="muted small">{name} · the plan will be drawn over it</span></span>
         {onStop && <button type="button" class="btn ghost sm" onPointerDown={(e) => e.stopPropagation()} onClick={onStop} title="Stop reading this drawing and remove it from the project">Stop</button>}
       </div>
       <div class="pending-zoom seg sm" role="group" aria-label="Zoom">

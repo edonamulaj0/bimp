@@ -171,7 +171,7 @@ export function Chat({ projectId, planId, messages, hasPlan, shared, resumeJob, 
         {!messages.length && (
           <div class="empty">
             <h2 class="empty-h">{hasPlan ? 'Ask about this plan' : 'Start with a drawing'}</h2>
-            <p class="muted small">{hasPlan ? 'Try: "What is the area of the kitchen?", "How many windows are there?", or mark a region on the plan (R) and ask about just that area.' : 'Drop a floor plan (PDF, DXF, PNG, JPG or WebP) on the file list, or use the + button. bimp builds a 2D plan and a 3D model from it.'}</p>
+            <p class="muted small">{hasPlan ? 'Try: "What is the area of the kitchen?", "How many windows are there?", or mark a region on the plan (R) and ask about just that area.' : 'Drop a floor plan (PDF, DXF, PNG, JPG or WebP) on the file list, or use the + button. bimp draws a measured 2D plan from it.'}</p>
           </div>
         )}
         {messages.map((m, i) => <Message key={m.id ?? i} m={m} shared={shared} />)}

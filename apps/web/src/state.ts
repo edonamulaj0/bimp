@@ -6,10 +6,6 @@ export const user = signal<User | null | undefined>(undefined); // undefined = s
 export const teams = signal<TeamRef[]>([]);
 /** Whether the server can answer questions with AI (GET /me → ai). Plan, measures and checks work without it. */
 export const ai = signal(true);
-/** Whether the server can generate architectural images with Cloudinary (GET /me → visuals). */
-export const visualsOn = signal(false);
-/** Open the image-generation dialog (project workspace). */
-export const visualsOpen = signal(false);
 export const AI_OFF = 'Answers are switched off on this server right now. The plan, measurements and checks still work.';
 export const route = signal(location.hash);
 // Route changes crossfade (View Transitions) where the browser supports it and the reader hasn't asked for less motion.
@@ -50,7 +46,7 @@ export const newTeam = signal(false);
 /** Bumped when projects change, so lists reload. */
 export const projectsVersion = signal(0);
 
-/** Linked selection across chat, 2D and 3D. */
+/** Linked selection across the chat, the file tree and the plan. */
 export const hoverRoom = signal<string | null>(null);
 export const selectedRooms = signal<string[]>([]);
 
@@ -66,7 +62,7 @@ export const say = (t: string) => { announce.value = ''; requestAnimationFrame((
 
 /** The markup region on the canvas (plan metres). While set, questions in the chat are answered from inside it only. */
 export const region = signal<import('../../shared/region').Region | null>(null);
-/** The drawing being read right now: the canvas shows it at once, and the 2D and 3D model is drawn over it when the reading is done. */
+/** The drawing being read right now: the canvas shows it at once, and the plan is drawn over it when the reading is done. */
 export const pendingDrawing = signal<{ url: string; name: string; stage: string; stop?(): void } | null>(null);
 /** Files dropped on the file tree or the canvas, waiting for the chat to upload and read them (one at a time). */
 export const uploadQueue = signal<File[]>([]);

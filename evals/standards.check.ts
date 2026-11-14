@@ -19,8 +19,6 @@ import { doorClashes, doorSweep, fixtureContains, inside, planAreas, roomInfo } 
 import { fengShui, suggestLayout } from '../apps/shared/fengshui';
 import { escapeWidth } from '../apps/shared/standards';
 import { clipPlan, clipSegment, parseRegion, regionContents } from '../apps/shared/region';
-import { signParams, transformationFor } from '../apps/api/src/visuals';
-import { cleanPrompt } from '../apps/shared/visual-styles';
 
 let fail = 0;
 const eq = (name: string, got: unknown, want: unknown) => {
@@ -391,13 +389,6 @@ eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
   eq('bad region rejected', parseRegion({ x0: 'a' }, p), null);
 }
 
-// Cloudinary: request signing (the documented example) and generated-image transformations
-{
-  const sig = await signParams({ eager: 'w_400,h_300,c_pad|w_260,h_200,c_crop', public_id: 'sample_image', timestamp: '1315060510' }, 'abcd');
-  eq('Cloudinary signature matches the documented example', sig, 'bfd09f95f331f558cbd1320e67aa8d488770583e');
-  eq('prompt commas and slashes are escaped in the transformation', transformationFor('custom', 'garden, trees/sky'), 'e_gen_background_replace:prompt_garden%2C%20trees%2Fsky/c_limit,w_1600/f_jpg,q_auto');
-  eq('custom prompts are cleaned', cleanPrompt('  a <b>garden</b> | with "trees"  '), 'a b garden b with trees');
-}
 
 // Gemini: a retired model (404) is replaced by the newest Flash model the key can use, and the call succeeds
 {
