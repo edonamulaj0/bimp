@@ -235,6 +235,78 @@ Examples: "How many tiles do I need for the bathroom on level 2?", "How many win
   `final_answer`). Verifier: every number in the answer must appear in a tool result, the question, or a listed
   assumption; cited rooms must exist; otherwise the answer is shown as "Unverified".
 
+## 5.4.1 Plan scale (built)
+
+- 2D view shows the screen scale as `1:x` (editable; standard scales in a list; "Drawing 1:N" jumps to the drawing's own
+  scale when known) and a graphic scale bar that is always correct relative to the plan.
+- On-screen 1:x is nominal (assumes 96 CSS px per inch; real screens differ). **Print…** is exact: the SVG is sized
+  in millimetres at 1:x on the smallest ISO sheet (A4–A0) that fits, with scale bar and a title line stating the scale
+  and whether the plan is measured or a preview.
+- `Plan.scale.ratio` stores the drawing's stated scale (vector PDF `1:N`).
+
+## 5.4.2 Fittings, furniture and rendering (built)
+
+- `Plan.fixtures`: WC, sink, bathtub, shower, sauna stove, cooker, fridge, washer, bed, sofa, table, desk, wardrobe.
+  Read from the drawing as boxes by the model (prompt `read-v4`); code turns each to back onto its nearest wall
+  (`placeFixture`) and assigns its room. Never invented; the sample house has hand-placed items.
+- The agent's `count` tool counts fixture kinds with ids (the dataset's questions are mostly such counts).
+- 2D: plan symbols per kind, overall dimension lines, haloed labels. 3D: architectural cutaway convention (dark cut
+  wall tops), soft shadows, door leaves, window glass, fixtures as CC0 Kenney Furniture Kit models (`apps/web/public/models/kenney`,
+  scaled to the size read from the drawing, clipped at the wall height; boxes for kinds without a model), room labels.
+- Walls (`apps/shared/walls.ts`): mitered footprints (node-based corner intersection, T-junction splitting) drawn
+  fill-only in 2D and extruded in 3D after cutting at opening edges; outline from shared-edge cancellation; baked
+  occlusion (wall-base gradient, floor contact strips skipping doorways); door/window frames and sills; room labels
+  at the pole of inaccessibility. Techniques after neonplan3d (MIT, © 2026 Mastershort), reimplemented.
+- VespeneLabs/floor-view was reviewed: its code is UNLICENSED (private), so only its CC0 Kenney assets were reused.
+
+## 5.5 Ingestion: Workflows + Containers (built)
+
+- Two Workers: `bimp` (site, app, API; gets preview URLs) and `bimp-ingest` (Workflow + Container). Split because
+  Cloudflare generates no version/preview URLs for Workers that contain Durable Objects, and Containers are Durable Objects.
+- Upload → R2 → `jobs` row → Workflow instance (same id). Steps, each retried on its own, big results kept in R2:
+  1. **analyze** (Container, `ingest/service.py`): PDF → render ≤ 3000 px + vector line segments + text spans with
+     boxes + sheet scale from `1:N` text (most frequent; others listed). Scans/images → render + OpenCV wall strokes
+     (Otsu, morphological opening, Hough). DXF → INSERTs expanded, curves flattened, rendered; scale exact from `$INSUNITS`.
+  2. **read** (Gemini, cached by render hash): room labels/types/outlines, openings, one dimension string.
+  3. **measure + save** (code): room outlines snapped **edge by edge** to the drawing's line work (parallel, overlapping
+     line within 1 % of the sheet; corners = intersections); labels replaced by the exact text inside the room when it
+     matches; scale = stated on the drawing > dimension string > door width > assumed; stated scale cross-checked
+     against the dimension, mismatch > 5 % reported as a conflict.
+- **Measured** only when the scale is stated exactly (vector sheet `1:N` or DXF units) AND ≥ 90 % of corners snapped,
+  for vector PDF or DXF. Everything else stays "Preview, not measured".
+- Formats: PDF (vector, scanned; page 1), PNG/JPG/WebP, DXF. DWG is rejected with "export to DXF".
+- Checked on generated fixtures with ±0.4 % position noise on the model output: vector PDF at 1:100 → all 8 areas
+  exact, measured; 150 dpi scan → within ~2–4 %, preview.
+
+## 5.6 Design knowledge (built) — Metric Handbook, 4th ed. (Littlefield, 2012)
+
+Reference book supplied by the team (all parts: Ch. 1–42 and appendices). Figures are encoded as facts with citations in
+`apps/shared/standards.ts`; the book's text is not copied into the product.
+
+| Source | Used for |
+|---|---|
+| Ch. 1 Table III preferred scales; plans at 1:50 / 1:100 / 1:200 | Scale from a dimension is rounded to the nearest preferred scale when the paper size is known (PDF page, image DPI); non-preferred stated scales are flagged |
+| Ch. 1 §2 notation: mm without decimals or m; decimal comma; no thousands marker | `parseDimension` — code, not the model, converts dimension text to metres |
+| Ch. 1 drawing conventions (levels FFL/SSL/TBM, grid lines, dashed = overhead) | Reading prompt: levels and grids are not dimensions or walls; title-block scale is read as `stated_scale` |
+| Ch. 1 §3.2 inclined lines at multiples of 15° | `regularize`: preview and raster outlines straightened to the room's axes |
+| Ch. 2 §4.6, §4.9 doorsets 800/900/1000 mm | Door-width scale fallback (0.9 m) and a check that flags implausible door widths as a likely scale error |
+| Ch. 2 Fig. 2.35 corridor widths; §4.5 wheelchair turning 1.4 m; §5.2 / Table X stairs | Corridor check; `space_standard` tool |
+| Ch. 8 Table IV room minimums; Table III bed sizes; net area to inside wall faces | Room-size checks; bedroom width check; `space_standard` tool; outlines follow inside faces |
+| Ch. 41 Figs. 41.16–41.21 (flat: 9 m to the entrance door without an alternative exit); Table XV travel distances; Tables XI, XIV occupancy and escape widths | `apps/shared/escape.ts`: door graph, exits = doors with open air on one side, worst-point travel distance per room; 2D **Escape** overlay; check; `escape_route` and `occupancy` tools |
+| Ch. 42 §5.2 stairs ≥ 1000 mm between handrails, ≤ 12 steps a flight, ramps ≤ 1:12; Tables V–VI wheelchair turning | Stair-width check; `space_standard` (access) |
+| Ch. 37 §4 bricks 215 × 102.5 × 65, blocks 90–100 mm | `wallsFromFaces`: facing room edges 75–600 mm apart become one wall of the measured thickness on their centreline; edges closer than that (or overlapping by a raster stroke) are the same wall; unpaired edges get a wall outside the room so areas stay net |
+| Ch. 31 Fig. 31.30 smallest single garage 2400 × 4900 mm | Garage check |
+| Ch. 39 daylight | Habitable rooms with no window (only when ≥ 2 windows were found, to avoid noise from incomplete readings) |
+
+- Scale order for non-vector sources: sheet `1:N` read by the model and confirmed by a dimension (≤ 5 %) > dimension
+  rounded to a preferred scale (paper size known) > raw dimension > stated scale alone > door width > assumed.
+  Disagreements are reported as conflicts.
+- Checks (`checkPlan`) are shown in the canvas ("Checks" in the legend bar) and available to the agent (`check_plan`).
+  They are plausibility flags that point at misreadings, not compliance verdicts.
+- Fixture results (`npm test` for the rules; ingestion with ±0.4 % model noise): vector PDF exact and measured; scanned
+  PDF and PNG with DPI now get the exact 1:100 scale, remaining area differences ≤ ~4 % are outline position on raster
+  strokes (inside-face net area vs the fixture's centreline areas).
+
 ## 6. Data model (PostgreSQL)
 
 ```sql
@@ -412,7 +484,7 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 
 ## 16. Open questions
 
-- Exact format and language mix of the dataset; does it include IFC and DWG/DXF?
+- Exact format and language mix of the dataset; does it include IFC and DWG/DXF? (DWG: ask organizers for DXF/PDF exports.)
 - Judging on full set or hidden set? Is live ingestion expected?
 - Data storage permissions for each service.
 - Which sponsor integrations are scored?
@@ -431,4 +503,12 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 | 2026-11-13 | Login: two halves, single conversational input (email → password) with `bimp.` wordmark left; our own isometric render under a blueprint-blue overlay right. Blueprint blue is used only here (user request overrides §12 for the login) |
 | 2026-11-13 | Logo for now: lowercase wordmark `bimp.` |
 | 2026-11-13 | Floor plan → 2D + isometric 3D via Gemini extraction, labelled preview; cutaway walls default in 3D |
+| 2026-11-13 | Ingestion: Cloudflare Workflow + Python Container (PyMuPDF, OpenCV, ezdxf) in a separate `bimp-ingest` Worker so `bimp` keeps preview URLs |
+| 2026-11-13 | "Measured" requires an exact stated scale and ≥ 90 % of corners snapped to vector line work |
+| 2026-11-13 | Plan scale: nominal 1:x on screen + scale bar; exact 1:x only via print in mm |
+| 2026-11-13 | Metric Handbook (4th ed.) adopted as the design-knowledge reference; rules encoded with citations in `apps/shared/standards.ts` |
+| 2026-11-13 | Fire escape distances and wall thickness from facing room edges added from Metric Handbook Ch. 31–42 |
+| 2026-11-13 | Fixtures read from drawings and rendered in 2D/3D; 3D uses the architectural cutaway convention |
+| 2026-11-14 | Mitered wall footprints + baked occlusion (after neonplan3d, MIT); minimised inset views removed |
+| 2026-11-14 | 3D fixtures use the CC0 Kenney Furniture Kit; VespeneLabs floor-view code not reused (UNLICENSED) |
 | 2026-11-13 | Marketing page v1: plain static HTML + one CSS file in `apps/web/`, system fonts, no build step, default styling; focus stays on functionality. Results section is a placeholder until evals run. Demo CTA points to `/app` |

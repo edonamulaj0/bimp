@@ -7,6 +7,10 @@ export interface Env {
   GEMINI_MODEL: string;
   AI_GATEWAY_URL?: string;
   ALLOW_SIGNUP?: string;
+  /** Only bound in the bimp-ingest Worker. */
+  INGEST: DurableObjectNamespace<import('./ingest').IngestContainer>;
+  INGEST_URL?: string;
+  INGEST_WORKFLOW: Workflow<import('./workflow').IngestParams>;
 }
 export type User = { id: string; email: string };
 export type AppEnv = { Bindings: Env; Variables: { user: User } };

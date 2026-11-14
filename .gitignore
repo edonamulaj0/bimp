@@ -3,3 +3,8 @@ dist
 .wrangler
 .dev.vars
 evals/reports
+evals/fixtures
+__pycache__
+.upload-done.txt
+.upload-failed.txt
+.upload-too-big.txt

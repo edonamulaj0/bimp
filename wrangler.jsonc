@@ -5,10 +5,12 @@
   "compatibility_date": "2026-10-01",
   "assets": { "not_found_handling": "404-page", "run_worker_first": ["/api/*"] },
   "d1_databases": [
-    // Create with `wrangler d1 create bimp` and paste the real id here before deploying.
-    { "binding": "DB", "database_name": "bimp", "database_id": "00000000-0000-0000-0000-000000000000", "migrations_dir": "db/migrations" }
+    { "binding": "DB", "database_name": "bimp", "database_id": "07fca9b5-ac4a-463f-951d-a2c0e82f2e35", "migrations_dir": "db/migrations" }
   ],
   "r2_buckets": [{ "binding": "FILES", "bucket_name": "bimp-files" }],
+  // Ingestion runs in the separate "bimp-ingest" Worker (ingest/wrangler.jsonc); this binding points at its Workflow.
+  "workflows": [{ "name": "bimp-ingest", "binding": "INGEST_WORKFLOW", "class_name": "IngestWorkflow", "script_name": "bimp-ingest" }],
+  "preview_urls": true,
   "vars": {
     "GEMINI_MODEL": "gemini-2.5-flash",
     "ALLOW_SIGNUP": "true",

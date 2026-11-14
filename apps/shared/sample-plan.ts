@@ -1,4 +1,4 @@
-import { type Plan, type Room, type Opening, type Pt, wallsFromRooms } from './plan';
+import { type Plan, type Room, type Opening, type Pt, type FixtureKind, placeFixture, wallsFromRooms } from './plan';
 
 const rect = (x0: number, y0: number, x1: number, y1: number): Pt[] => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
 const rooms: Room[] = [
@@ -32,6 +32,17 @@ const openings: Opening[] = [
   o('w9', 'window', [12, 6.5], [12, 8]),
 ];
 
+const walls = wallsFromRooms(rooms);
+// [kind, centre x, centre y, width, depth] as boxes on the plan; placeFixture turns each to back onto its wall.
+const items: [FixtureKind, number, number, number, number][] = [
+  ['wc', 6.2, 6.0, 0.4, 0.65], ['sink', 6.25, 6.9, 0.35, 0.55], ['bathtub', 5.5, 7.1, 1.7, 0.7],
+  ['stove', 11.7, 1.2, 0.6, 0.6], ['sink', 11.7, 2.2, 0.6, 0.9], ['fridge', 11.7, 3.2, 0.65, 0.65], ['table', 8.6, 1.9, 1.6, 0.9],
+  ['sofa', 0.5, 2.5, 0.9, 2.2], ['table', 2.1, 2.5, 0.6, 1.2],
+  ['bed', 1.1, 6.2, 1.6, 2.0], ['wardrobe', 3.9, 8.7, 1.2, 0.6],
+  ['bed', 8.0, 8.0, 0.9, 2.0], ['wardrobe', 6.9, 6.2, 0.6, 1.2],
+  ['desk', 10.7, 8.6, 1.4, 0.7], ['washer', 5.5, 8.7, 0.6, 0.6],
+];
+
 export const samplePlan = (): Plan => ({
   version: 1,
   method: 'sample',
@@ -40,8 +51,9 @@ export const samplePlan = (): Plan => ({
   height: 9,
   wallHeight: 2.7,
   rooms,
-  walls: wallsFromRooms(rooms),
+  walls,
   openings,
+  fixtures: items.map(([k, x, y, w, h], i) => placeFixture(k, [x, y], w, h, walls, rooms, `f${i + 1}`)),
   scale: { metersPerPx: null, source: 'Hand-made sample plan' },
   source: null,
   assumptions: ['Sample plan for demonstration, not from a real drawing', 'Wall height 2.7 m', 'Exterior walls 0.30 m, interior 0.12 m'],

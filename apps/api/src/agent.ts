@@ -1,5 +1,7 @@
 import { type Plan, area, roomStats, round } from '../../shared/plan';
 import { calculate } from './calc';
+import { ACCESS, BED, CORRIDOR, DOOR, FLAT_TRAVEL, GARAGE, OCCUPANCY, OCCUPANCY_REF, PLAN_SCALES, ROOM_STANDARDS, STAIR, TRAVEL, TRAVEL_REF, TURNING, WALL, checkPlan, escapeWidth } from '../../shared/standards';
+import { escapeRoutes } from '../../shared/escape';
 import { type Content, generate } from './gemini';
 import type { Env } from './util';
 
@@ -18,7 +20,11 @@ const TOOLS = [
   { name: 'plan_info', description: 'Overview of the plan: how it was produced, whether measured, scale source, assumptions, extent, counts.', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'list_rooms', description: 'All rooms with id, name, type, area_m2 and perimeter_m (computed from geometry).', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'get_room', description: 'One room by id: area, perimeter, bounding dimensions, doors and windows on its boundary.', parameters: S('OBJECT', undefined, { properties: { id: S('STRING') }, required: ['id'] }) },
-  { name: 'count', description: 'Count doors, windows, or rooms of a type.', parameters: S('OBJECT', undefined, { properties: { what: S('STRING', 'door | window | room'), room_type: S('STRING', 'optional room type filter') }, required: ['what'] }) },
+  { name: 'count', description: 'Count doors, windows, rooms of a type, or fittings/furniture drawn on the plan (each counted item is cited by id).', parameters: S('OBJECT', undefined, { properties: { what: S('STRING', 'door | window | room | wc | sink | bathtub | shower | sauna_stove | stove | fridge | washer | bed | sofa | table | desk | wardrobe'), room_type: S('STRING', 'optional room type filter for rooms'), room_id: S('STRING', 'optional: only items in this room') }, required: ['what'] }) },
+  { name: 'check_plan', description: 'Plausibility checks of the plan against design standards (room minimum sizes, corridor and door widths, scale). Each check cites its source.', parameters: S('OBJECT', undefined, { properties: {} }) },
+  { name: 'space_standard', description: 'Design standard figures with their source: room minimum areas by type, door, corridor, stair, bed, wheelchair turning, preferred plan scales.', parameters: S('OBJECT', undefined, { properties: { topic: S('STRING', 'room type (bedroom, living, kitchen...), or door | corridor | stair | bed | turning | scale') }, required: ['topic'] }) },
+  { name: 'escape_route', description: 'Estimated travel distance from the furthest point of each room (or one room) to an exit door, through doors, with the path and the limits that apply (Metric Handbook Ch. 41).', parameters: S('OBJECT', undefined, { properties: { room_id: S('STRING', 'optional room id') } }) },
+  { name: 'occupancy', description: 'Occupant capacity of a room or the whole plan from floor space factors, and the minimum escape width for that many people (Ch. 41 Tables XI, XIV).', parameters: S('OBJECT', undefined, { properties: { use: S('STRING', `one of: ${Object.keys(OCCUPANCY).join(' | ')}`), room_id: S('STRING', 'optional; whole plan if omitted') }, required: ['use'] }) },
   { name: 'calculate', description: 'Evaluate arithmetic exactly. Supports + - * / ^ ( ) ceil floor round sqrt min max abs.', parameters: S('OBJECT', undefined, { properties: { expression: S('STRING') }, required: ['expression'] }) },
   {
     name: 'final_answer',
@@ -39,7 +45,10 @@ const TOOLS = [
 const SYSTEM = `You are BIMP, a BIM pilot. You answer questions about the floor plan of the user's project.
 Rules: every fact must come from a tool result. Never estimate numbers yourself; do all arithmetic with calculate.
 If the plan does not contain the answer, set not_found and say what you looked at. When the plan is not measured,
-say that dimensions are approximate. Cite the rooms each claim comes from by id. Finish by calling final_answer.
+say that dimensions are approximate. Cite the rooms each claim comes from by id. For questions about sizes being
+adequate, compliance or "is this right", use check_plan and space_standard and name the standard's source in the answer;
+standards are guidance, not a legal verdict. For fire escape and capacity questions use escape_route and occupancy.
+Finish by calling final_answer.
 Answer in the language of the question.`;
 
 function runTool(plan: Plan, name: string, args: any): unknown {
@@ -70,8 +79,39 @@ function runTool(plan: Plan, name: string, args: any): unknown {
     }
     case 'count': {
       if (args.what === 'door' || args.what === 'window') return { what: args.what, count: plan.openings.filter((o) => o.kind === args.what).length };
+      if (args.what !== 'room') {
+        const fx = (plan.fixtures ?? []).filter((f) => f.kind === args.what && (!args.room_id || f.room_id === args.room_id));
+        return { what: args.what, count: fx.length, items: fx.map((f) => ({ id: f.id, room_id: f.room_id })), note: plan.fixtures ? undefined : 'This plan has no fittings data.' };
+      }
       const rs = plan.rooms.filter((r) => !args.room_type || r.type === args.room_type);
       return { what: 'room', room_type: args.room_type ?? null, count: rs.length, room_ids: rs.map((r) => r.id) };
+    }
+    case 'check_plan':
+      return checkPlan(plan);
+    case 'space_standard': {
+      const t = String(args.topic ?? '').toLowerCase();
+      const room = ROOM_STANDARDS[t as keyof typeof ROOM_STANDARDS];
+      if (room) return { topic: t, ...room };
+      const table: Record<string, unknown> = { door: DOOR, corridor: CORRIDOR, stair: { ...STAIR, access: ACCESS }, bed: BED, turning: TURNING,
+        garage: GARAGE, wall: WALL, access: ACCESS, fire: { flat_max_travel_m: FLAT_TRAVEL, travel_distance_m: TRAVEL, ref: TRAVEL_REF },
+        occupancy: { m2_per_person: OCCUPANCY, ref: OCCUPANCY_REF },
+        scale: { plan_scales: PLAN_SCALES, ref: 'Metric Handbook, 4th ed. Ch. 1 Table III' } };
+      return table[t] ? { topic: t, ...(table[t] as object) } : { error: `No standard stored for "${t}". Known: ${[...Object.keys(ROOM_STANDARDS), ...Object.keys(table)].join(', ')}` };
+    }
+    case 'escape_route': {
+      const esc = escapeRoutes(plan);
+      if (!esc) return { error: 'No exit door found on the plan (a door with outside space on one side).' };
+      const routes = esc.routes.filter((r) => !args.room_id || r.room_id === args.room_id).map((r) => ({ room_id: r.room_id, distance_m: r.distance_m, via_doors: r.via }));
+      return { exits: esc.exits, routes, rooms_without_door: esc.unreachable, limits: { flat_without_alternative_exit_m: FLAT_TRAVEL.max, by_use_one_direction_and_more_m: TRAVEL },
+        note: 'Straight lines through door centres; furniture ignored. ' + TRAVEL_REF };
+    }
+    case 'occupancy': {
+      const f = OCCUPANCY[String(args.use)];
+      if (!f) return { error: `Unknown use. Known: ${Object.keys(OCCUPANCY).join(', ')}` };
+      const rs = args.room_id ? plan.rooms.filter((r) => r.id === args.room_id) : plan.rooms;
+      const a = round(rs.reduce((t, r) => t + area(r.polygon), 0), 2);
+      const people = Math.floor(a / f);
+      return { use: args.use, area_m2: a, m2_per_person: f, people, escape: escapeWidth(people), ref: OCCUPANCY_REF };
     }
     case 'calculate':
       try { return { expression: args.expression, result: round(calculate(String(args.expression)), 4) }; }
