@@ -463,6 +463,16 @@ Avoid: "100% accurate" claims, renders better than the real product, generic AI 
     mark). Used in the app top bar, login, marketing header and footer. Accent orange **#FF6B2B** in the marks only.
   - Icon `apps/web/public/brand/favicon.svg` (the b on a #17191c rounded tile) + PNG 32/180/512 fallbacks.
   - Spinner `apps/web/src/brand/loading.svg` (target mark, rotates) for loading states.
+  - Palette (2026-11-14): orange **#FF682B** (markers, rules, button fills; never text on paper: 2.56:1), off-white
+    paper **#F4F1EA** (panels #EBE6DC, raised #FBFAF7), charcoal **#1E1D1B** (text 14.9:1), muted #6B665D (5.05:1),
+    control borders #8F897D (3.08:1). Buttons: charcoal on orange (5.83:1). Dark mode swaps paper and ink.
+  - Type: **Jost** (geometric, monoline like the logo; light weights for headings) and **IBM Plex Mono** for
+    annotations, labels and figures. Self-hosted (@fontsource, OFL). Tokens in `apps/web/src/tokens.css`.
+  - Visual language "the drawing sheet": hairline rules, sheet frames with crop marks and title blocks, survey-target
+    annotations with leader lines, numbered sections. No gradients, glow, sparkles, robots or stock photography.
+  - Marketing site: Home, Product, Method, About (`apps/web/{index,product,method,about}`), shared header/footer
+    partials injected at build (`apps/web/partials`, Vite plugin in `vite.config.ts`). Product imagery is rendered
+    from the real app (`apps/web/public/shots`).
   - Web versions: cropped to the artwork, print crop marks removed, white → currentColor so the marks follow the
     text colour (dark on light, light in dark mode), class names prefixed per file. UI accent stays #c2410c for text
     and buttons (better contrast on white than #FF6B2B).
@@ -539,6 +549,7 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 | 2026-11-13 | Metric Handbook (4th ed.) adopted as the design-knowledge reference; rules encoded with citations in `apps/shared/standards.ts` |
 | 2026-11-13 | Fire escape distances and wall thickness from facing room edges added from Metric Handbook Ch. 31–42 |
 | 2026-11-13 | Fixtures read from drawings and rendered in 2D/3D; 3D uses the architectural cutaway convention |
+| 2026-11-14 | Design system: #FF682B / #F4F1EA / #1E1D1B, Jost + IBM Plex Mono; multi-page marketing site; redesigned dashboard |
 | 2026-11-14 | Room/plan info panel (net/gross, heights), door swing rules, feng shui checks and suggested layout |
 | 2026-11-14 | Dollhouse cutaway is the default 3D mode; procedural floor materials by room type |
 | 2026-11-14 | Mitered wall footprints + baked occlusion (after neonplan3d, MIT); minimised inset views removed |

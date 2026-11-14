@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { samplePlan } from '../../shared/sample-plan';
-import type { Plan } from '../../shared/plan';
+import { type Plan, area } from '../../shared/plan';
 import { ask } from './agent';
 import { checkLogin, createUser, endSession, requireUser, sameOrigin, startSession, validate } from './auth';
 import { type AppEnv, type Env, fail, now, sha256, uid } from './util';
@@ -63,10 +63,20 @@ projects.use('*', requireUser);
 projects.get('/', async (c) => {
   const { results } = await c.env.DB.prepare(
     `SELECT p.id, p.name, p.updated_at, (SELECT COUNT(*) FROM files f WHERE f.project_id = p.id) AS files,
-            EXISTS (SELECT 1 FROM plans x WHERE x.project_id = p.id) AS has_plan
+            (SELECT data FROM plans x WHERE x.project_id = p.id ORDER BY x.created_at DESC LIMIT 1) AS plan
      FROM projects p WHERE p.user_id = ? ORDER BY p.updated_at DESC`,
-  ).bind(c.get('user').id).all();
-  return c.json({ projects: results });
+  ).bind(c.get('user').id).all<{ id: string; name: string; updated_at: number; files: number; plan: string | null }>();
+  // A compact thumbnail per project (room outlines to 10 cm) so the dashboard can draw each plan without loading it.
+  const r1 = (v: number) => Math.round(v * 10) / 10;
+  return c.json({ projects: results.map(({ plan, ...p }) => {
+    if (!plan) return { ...p, has_plan: 0, thumb: null };
+    const pl = JSON.parse(plan) as Plan;
+    return { ...p, has_plan: 1, thumb: {
+      w: r1(pl.width), h: r1(pl.height), measured: pl.measured, method: pl.method,
+      rooms: pl.rooms.map((r) => ({ t: r.type, p: r.polygon.map(([x, y]) => [r1(x), r1(y)]) })),
+      net_m2: Math.round(pl.rooms.reduce((s, r) => s + area(r.polygon), 0) * 10) / 10,
+    } };
+  }) });
 });
 projects.post('/', async (c) => {
   const { name } = (await c.req.json().catch(() => ({}))) as { name?: unknown };

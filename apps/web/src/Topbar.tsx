@@ -7,9 +7,9 @@ export function Topbar({ children }: { children?: ComponentChildren }) {
   const out = async () => { await api('/auth/logout', { method: 'POST' }).catch(() => {}); user.value = null; go('#/'); };
   return (
     <header class="topbar">
-      <a class="logo" href="#/" aria-label="bimp: projects"><Logo height={34} /></a>
+      <a class="logo" href="#/" aria-label="bimp: projects"><Logo height={30} /></a>
       <div class="topbar-mid">{children}</div>
-      <span class="muted small hide-sm">{user.value?.email}</span>
+      <span class="who">{user.value?.email}</span>
       <button class="btn ghost sm" onClick={out}>Sign out</button>
     </header>
   );

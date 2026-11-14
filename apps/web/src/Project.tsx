@@ -39,7 +39,7 @@ export function ProjectPage({ id }: { id: string }) {
   return (
     <div class="page ws-page">
       <Topbar>
-        <a href="#/" class="muted small">Projects</a> <span class="muted">/</span> <b>{data?.project.name ?? '…'}</b>
+        <a href="#/" class="crumb">Projects</a> <span class="crumb-sep" aria-hidden="true">/</span> <b>{data?.project.name ?? '…'}</b>
       </Topbar>
       {err && <p class="err pad">{err}</p>}
       {!data && !err && <div class="loading-block grow"><Spinner size={48} label="Loading project" /></div>}
@@ -132,6 +132,7 @@ function Chat({ projectId, messages, hasPlan, resumeJob, onMessages, onPlan }: {
       <div class="msgs" ref={list}>
         {!messages.length && (
           <div class="empty">
+            <p class="label">Ask</p>
             <p><b>Ask about this plan.</b></p>
             <p class="muted small">{hasPlan ? 'Try: "What is the area of the kitchen?", "How many windows are there?", "How many 30×30 cm tiles for the bathroom?"' : 'Upload a floor plan (PDF, DXF, PNG, JPG) with the + button. bimp builds a 2D and isometric 3D plan from it.'}</p>
           </div>
