@@ -7,7 +7,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "deploy": "npm run deploy:ingest && npm run deploy:web",
-    "deploy:web": "vite build && wrangler deploy -c apps/web/dist/bimp/wrangler.json",
+    "deploy:web": "vite build && wrangler d1 migrations apply bimp --remote && wrangler deploy -c apps/web/dist/bimp/wrangler.json",
     "deploy:ingest": "wrangler deploy -c ingest/wrangler.jsonc",
     "preview:web": "vite build && wrangler versions upload -c apps/web/dist/bimp/wrangler.json",
     "test": "esbuild evals/standards.check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/bimp/standards.check.mjs --log-level=warning && node node_modules/.cache/bimp/standards.check.mjs",
