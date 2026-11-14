@@ -288,6 +288,12 @@ Examples: "How many tiles do I need for the bathroom on level 2?", "How many win
   data). "Ask AI for an overview" sends the room/plan to the agent (tools `room_info`, `plan_areas`, `feng_shui`).
 - `placeFixture` backs an item onto the wall nearest its **edge**, so long items (beds) back onto their short end.
 
+## 5.4.4 Teams, revisions and pinned comments (built)
+
+- Teams: an owner adds existing accounts by email; members open, upload, ask, comment and label revisions in the team's projects; owners delete and move projects. Deleting a team returns its projects to their creators. Contract: `docs/API.md`.
+- Revisions: each plan row is a revision (r1 = oldest). Comparing two (`apps/shared/diff.ts`) matches rooms by name and type, then by overlap, and walls by centre line within 10 cm; it reports rooms added, removed and resized, walls added and removed, doors, windows, and net and gross area.
+- Comments are pinned in plan metres to one revision and threaded. "Ask bimp" answers in the thread with the drawing sheet (the source render, the pin's position given on it), the room and openings and fittings within 1.5 m, and the plan tools; the same verifier marks the answer verified or not. Questions in comments count toward the daily cap.
+
 ## 5.5 Ingestion: Workflows + Containers (built)
 
 - Two Workers: `bimp` (site, app, API; gets preview URLs) and `bimp-ingest` (Workflow + Container). Split because
@@ -557,6 +563,7 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 | 2026-11-13 | Fire escape distances and wall thickness from facing room edges added from Metric Handbook Ch. 31–42 |
 | 2026-11-13 | Fixtures read from drawings and rendered in 2D/3D; 3D uses the architectural cutaway convention |
 | 2026-11-14 | Design system: #FF682B / #F4F1EA / #1E1D1B, Jost + IBM Plex Mono; multi-page marketing site; redesigned dashboard |
+| 2026-11-14 | Teams and shared projects (owners and members); revisions (every reading of a drawing, numbered and labelled) with browser-side comparison (`diffPlans`); comments pinned to a spot on a revision, where bimp answers from the drawing sheet with the pin marked plus the plan tools. App layout: left sidebar, canvas, right panel with Chat / Comments / Revisions / Info. Visual system: one sans, no eyebrow labels, monospace only for numbers and ids. Marketing: Product, Pricing, Changelog, Docs, Sign in. API contract in `docs/API.md` |
 | 2026-11-14 | Light theme only; drawing sheet white. 2D plan follows drafting convention: cut plane 1.2 m, poché by wall type (45° masonry hatch ≥ 250 mm, cross-hatch load-bearing 150–250, open partitions), ISO 128-2 line weights (0.70 / 0.50 / 0.32 / 0.35 / 0.25 / 0.16 mm, non-scaling), above-cut dashed. Plan and Dimensioned modes: Dimensioned adds facade, structure and overall strings on all sides, room clear sizes and door widths, in mm |
 | 2026-11-14 | Review fixes (security, UI/UX, functionality): wall builder closes corners and pairs faces of any thickness; detail scales no longer win over the plan scale; scale/dimension conflicts make a plan a preview; escape distance sampled along edges and inside rooms; verifier hardened; per-user quotas; ingest parse limits; keyboard access to rooms, live chat regions, info panel docking |
 | 2026-11-14 | Room/plan info panel (net/gross, heights), door swing rules, feng shui checks and suggested layout |
