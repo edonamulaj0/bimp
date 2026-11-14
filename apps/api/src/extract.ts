@@ -6,7 +6,7 @@ import { BOOK, nearestPreferredScale, parseDimension } from '../../shared/standa
 import { orientDoors } from '../../shared/rooms';
 import type { Env } from './util';
 
-const PROMPT_VERSION = 'read-v6';
+const PROMPT_VERSION = 'read-v7';
 const P = { type: 'ARRAY', items: { type: 'NUMBER' } }; // [y, x] normalised 0-1000
 const SCHEMA = {
   type: 'OBJECT',
@@ -69,9 +69,18 @@ openings: EVERY door and EVERY window, each as the segment from one jamb to the 
 scale_evidence: one dimension string with its dimension line (prefer the longest overall dimension). text = exactly as written
   ("12000", "12.00", "12,00", "3'-6\""). Drawings use millimetres without decimals or metres with decimals; value_m = that length
   in metres. a, b = the two ends of the dimension line. null if there are no dimensions.
-fixtures: every fitting and furniture item drawn: toilet bowls (wc), wash basins and kitchen sinks (sink; a double-bowl sink
-  is one), bathtubs, showers, sauna stoves (kiuas), cookers/hobs (stove), fridges, washing machines (washer), beds, sofas, tables,
-  desks, wardrobes. box = [ymin, xmin, ymax, xmax] normalised 0-1000. One entry per item; skip anything you cannot see.
+fixtures: every fitting, appliance and furniture item drawn, each with the closest kind:
+  sanitary: toilet bowls (wc), bidet, urinal, wash basins and kitchen sinks (sink; a double-bowl sink is one), bathtub, shower,
+    sauna stoves (sauna_stove, "kiuas");
+  kitchen and services: cookers/hobs (stove), oven (a tall or separate oven), fridge (also fridge-freezers, often "JK", "JK/PK", "F"),
+    dishwasher ("APK", "DW"), washing machine (washer, "PK", "PKK", "WM"), dryer ("KR", "TD"), water_heater ("LVV", "WH"), radiator,
+    fireplace (also stoves for heating), counter (kitchen worktops and base units without an appliance in them);
+  furniture: bed, bedside, sofa, armchair, chair, table (dining and coffee tables, with their chairs as separate chair items only
+    when drawn apart from it), desk, wardrobe (cupboards, closets, tall storage), bookshelf (open shelving), tv (TV or media unit),
+    plant; structure: column (a free-standing column or pier).
+  Letter codes written in or beside a symbol tell you what it is; use them.
+  A symbol that is clearly an object but that you cannot name is kind "unknown": report it, do not leave it out and do not guess.
+  box = [ymin, xmin, ymax, xmax] normalised 0-1000, tight around the symbol. One entry per item; skip anything you cannot see.
 levels: the finished floor level of this plan as written (e.g. "FFL ±0.00", "OKFF +3.05", "NGF 102.40") and the clear ceiling
   height if stated (e.g. "RH 2.50", "lichte Höhe 2,60", "HSP 2.50", "CH 2400"), as written; null where not stated.
 stated_scale: the drawing scale written on the sheet (title block or under the plan, e.g. "1:100", "M 1:50", "Scale 1/100"),

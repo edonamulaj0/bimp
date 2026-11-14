@@ -77,6 +77,8 @@ Version URLs are public: put Cloudflare Access in front if the data must stay pr
 
 The uploaded drawing is on the canvas as soon as it is rendered; the model is drawn over it when the reading is done. **Overlay** in the canvas toolbar sets how strongly the drawing and the model are drawn (in 3D the drawing lies on the floor).
 
+Symbols: bimp names 29 kinds of fitting, appliance and furniture. One it cannot name is drawn dashed with a "?" pin; anyone on the project can say what it is, and each answer is stored with its place on the sheet (`symbol_labels`) as an example for the next symbol model. Hovering a wall, door, window or symbol on the 2D plan shows what it is and its measurements, whether or not the drawing states them; the chat has the same figures (`list_walls`, `list_openings`, `list_fixtures`).
+
 Questions are answered from the stored plan. Counts, room areas, the total area, the largest or smallest room and the room list are answered by code (`apps/api/src/quick.ts`): no model call, 0¢. Everything else goes to the agent, and the answer shows what it cost at the model's list price (`GEMINI_PRICE_IN` / `GEMINI_PRICE_OUT`, US dollars per million tokens, in both `wrangler.jsonc` files: update them when the model or its price changes). Each citation carries a crop of the source sheet with the cited rooms or items outlined.
 
 ### Architectural images (Cloudinary, optional)

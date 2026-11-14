@@ -1,7 +1,7 @@
 // Plan-view symbols for fittings and furniture at real size, drawn in the fixture's local frame:
 // origin at its centre, x along the wall it backs onto, back (wall side) at -d/2, front at +d/2.
 // Thin lines (0.25 mm), lighter than walls and doors so they don't compete with the structure.
-import type { Fixture } from '../../../shared/plan';
+import { type Fixture, fixtureName } from '../../../shared/plan';
 import { W, ln } from './weights';
 
 const S = { fill: 'var(--sheet)', ...ln(W.fixture) } as const;
@@ -59,13 +59,50 @@ function Shape({ k, w, d }: { k: Fixture['kind']; w: number; d: number }) {
       return <><rect x={-0.21} y={-y0 + 0.04} width={0.42} height={0.42} {...T} />{rect}</>;
     case 'wardrobe': // centre line between the doors, hanging rod dashed
       return <>{rect}<line x1={0} y1={y0} x2={0} y2={-y0} {...T} /><line x1={x0 + 0.05} y1={0} x2={-x0 - 0.05} y2={0} {...HIDDEN} /></>;
+    case 'bidet': case 'urinal': { // a short fixing against the wall and a bowl in front
+      const c = Math.min(0.12, d * 0.25);
+      return <><rect x={x0 + w * 0.15} y={y0} width={w * 0.7} height={c} {...S} /><ellipse cx={0} cy={y0 + c + (d - c) / 2} rx={w * (k === 'urinal' ? 0.32 : 0.42)} ry={(d - c) / 2} {...S} />
+        {k === 'bidet' && <circle cx={0} cy={y0 + c + 0.05} r={0.02} {...T} />}</>;
+    }
+    case 'dryer':
+      return <>{rect}<circle cx={0} cy={0.03} r={Math.min(w, d) * 0.32} {...T} /><circle cx={0} cy={0.03} r={Math.min(w, d) * 0.12} {...T} /></>;
+    case 'dishwasher': case 'oven': case 'water_heater': { // an appliance box with its letter code, as on drawings
+      const code = k === 'dishwasher' ? 'DW' : k === 'oven' ? 'OV' : 'WH';
+      return <>{k === 'water_heater' ? <circle cx={0} cy={0} r={Math.min(w, d) / 2} {...S} /> : rect}{k === 'oven' && <rect x={x0 + 0.06} y={y0 + 0.06} width={w - 0.12} height={d - 0.12} {...T} />}
+        <text x={0} y={Math.min(w, d) * 0.1} font-size={Math.min(w, d) * 0.3} text-anchor="middle" fill="var(--wall)">{code}</text></>;
+    }
+    case 'radiator': { // ribs
+      const n = Math.max(3, Math.round(w / 0.08));
+      return <>{rect}{Array.from({ length: n - 1 }, (_, i) => <line key={i} x1={x0 + (w / n) * (i + 1)} y1={y0} x2={x0 + (w / n) * (i + 1)} y2={-y0} {...T} />)}</>;
+    }
+    case 'fireplace': // the surround with the firebox opening to the front
+      return <>{rect}<path d={`M${x0 + w * 0.2},${-y0}V${y0 + d * 0.35}H${-x0 - w * 0.2}V${-y0}`} {...T} /></>;
+    case 'counter': // worktop; wall cabinets above shown dashed
+      return <>{rect}<line x1={x0} y1={y0 + Math.min(0.35, d * 0.6)} x2={-x0} y2={y0 + Math.min(0.35, d * 0.6)} {...HIDDEN} /></>;
+    case 'chair':
+      return <><rect x={x0} y={y0} width={w} height={d} rx={0.04} {...S} /><line x1={x0} y1={y0 + d * 0.18} x2={-x0} y2={y0 + d * 0.18} {...T} /></>;
+    case 'armchair': { const a = Math.min(0.14, w * 0.18);
+      return <><rect x={x0} y={y0} width={w} height={d} rx={0.08} {...S} /><rect x={x0 + a} y={y0} width={w - 2 * a} height={Math.min(0.18, d * 0.25)} {...T} />
+        <line x1={x0 + a} y1={y0} x2={x0 + a} y2={-y0} {...T} /><line x1={-x0 - a} y1={y0} x2={-x0 - a} y2={-y0} {...T} /></>; }
+    case 'tv':
+      return <>{rect}<line x1={x0 + w * 0.15} y1={y0 + d * 0.3} x2={-x0 - w * 0.15} y2={y0 + d * 0.3} {...ln(W.fixture)} /></>;
+    case 'bookshelf': { const n = Math.max(2, Math.round(w / 0.45));
+      return <>{rect}{Array.from({ length: n - 1 }, (_, i) => <line key={i} x1={x0 + (w / n) * (i + 1)} y1={y0} x2={x0 + (w / n) * (i + 1)} y2={-y0} {...T} />)}</>; }
+    case 'bedside':
+      return <>{rect}<circle cx={0} cy={0} r={Math.min(w, d) * 0.28} {...T} /></>;
+    case 'plant': { const r = Math.min(w, d) / 2;
+      return <><circle cx={0} cy={0} r={r} {...S} /><circle cx={0} cy={0} r={r * 0.45} {...T} />{[0, 1, 2, 3, 4, 5].map((i) => <line key={i} x1={0} y1={0} x2={Math.cos(i * 1.047) * r * 0.9} y2={Math.sin(i * 1.047) * r * 0.9} {...T} />)}</>; }
+    case 'column':
+      return <rect x={x0} y={y0} width={w} height={d} fill="var(--wall)" {...ln(W.fixture)} />;
+    case 'unknown': // something is drawn here that nobody has named yet
+      return <rect x={x0} y={y0} width={w} height={d} fill="var(--sheet)" {...ln(W.fixture, '5 3')} />;
   }
 }
 
 export function FixtureSymbol({ f }: { f: Fixture }) {
   return (
     <g transform={`translate(${f.center[0]} ${f.center[1]}) rotate(${(f.angle * 180) / Math.PI})`} class={f.source === 'suggested' ? 'suggested' : undefined}>
-      <title>{f.kind}</title>
+      <title>{fixtureName(f)}</title>
       <Shape k={f.kind} w={f.size[0]} d={f.size[1]} />
     </g>
   );

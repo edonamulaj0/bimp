@@ -252,7 +252,13 @@ export function ProjectPage({ id }: { id: string }) {
               </aside>
               <div class="ws-handle h-left" role="separator" aria-orientation="vertical" tabIndex={0} aria-label="Resize files panel" aria-controls="ws-left"
                 aria-valuenow={leftW} aria-valuemin={240} aria-valuemax={480} {...resizer(() => leftW, setLeftW, 'bimp.leftW', 240, () => Math.min(480, innerWidth * 0.3), 1)} />
-              <CanvasPane plan={shownPlan} planId={compare ? null : shownId} projectId={id} name={data.project.name} onUpload={upload} onRefused={refused} loading={!!(shownId && !shownPlan)}
+              <CanvasPane plan={shownPlan} planId={compare ? null : shownId} projectId={id}
+                onRelabel={shownId && shownPlan && !compare ? async (fid, kind, label, similar) => {
+                  const d = await api<{ plan: Plan; named: number }>(`/projects/${id}/revisions/${shownId}/fixtures/${fid}`, { method: 'PATCH', json: { kind, label, similar } });
+                  plans.current.set(shownId, d.plan); bump((n) => n + 1);
+                  if (shownId === latestId) setData((x) => x && { ...x, plan: d.plan });
+                  say(d.named > 1 ? `${d.named} symbols named` : 'Symbol named');
+                } : undefined} name={data.project.name} onUpload={upload} onRefused={refused} loading={!!(shownId && !shownPlan)}
                 banner={banner} notice={notice} onNotice={() => setNotice([])} diff={diff} pins={compare ? [] : pins} activePin={active} onPin={onPin}
                 tool={tool} onTool={setTool} canComment={canComment} onPlace={place} draft={draft} focusAt={focusAt} onRegion={markRegion}
                 popover={draft && <PinComposer busy={posting} onSubmit={post} onCancel={() => setDraft(null)} />}
@@ -332,10 +338,12 @@ type CanvasProps = {
   banner: ComponentChildren; notice: string[]; onNotice(): void; diff: PlanDiff | null; pins: PinMark[]; activePin: string | null; onPin(id: string): void;
   tool: CanvasTool; onTool(t: CanvasTool): void; canComment: boolean; onPlace(p: Pt, roomId?: string): void; draft: Pt | null; focusAt: { p: Pt; key: number } | null;
   popover: ComponentChildren; onRegion(r: Region | null): void; onAsk(q: string): void;
+  /** Says what a symbol on the shown revision is; absent when the plan cannot be corrected (the sample, a comparison). */
+  onRelabel?(fixtureId: string, kind: import('../../shared/plan').FixtureKind, label: string, similar: boolean): Promise<void>;
 };
 const LAYER_LABEL: [keyof Layers, string][] = [['fills', 'Room fills'], ['furniture', 'Furniture and fittings'], ['dims', 'Dimensions'], ['labels', 'Room labels'], ['pins', 'Comment pins']];
 
-function CanvasPane({ plan: drawn, planId, projectId, name, loading, onUpload, onRefused, onChecks, banner, notice, onNotice, diff, pins, activePin, onPin, tool, onTool, canComment, onPlace, draft, focusAt, popover, onRegion, onAsk }: CanvasProps) {
+function CanvasPane({ onRelabel, plan: drawn, planId, projectId, name, loading, onUpload, onRefused, onChecks, banner, notice, onNotice, diff, pins, activePin, onPin, tool, onTool, canComment, onPlace, draft, focusAt, popover, onRegion, onAsk }: CanvasProps) {
   const [mode, setModeState] = useState<Mode>(() => stored('bimp.view', '2d' as Mode, (v) => ['2d', '3d', 'split'].includes(v), (v) => v as Mode));
   const setMode = (m: Mode) => { setModeState(m); store('bimp.view', m); };
   const [rot, setRot] = useState(0);
@@ -538,6 +546,7 @@ function CanvasPane({ plan: drawn, planId, projectId, name, loading, onUpload, o
             <Plan2D plan={plan} sourceUrl={sourceUrl} sourceOpacity={drawOp / 100} modelOpacity={sourceUrl ? modelOp / 100 : 1} title={name} pins={pins} activePin={activePin} onPin={onPin}
               placing={tool === 'comment' && canComment} onPlace={onPlace} draft={draft} popover={popover} diff={diff} focusAt={focusAt}
               tool={tool} region={reg} onRegion={onRegion} layers={layers} apiRef={p2} onMenu={openMenu}
+              onRelabel={onRelabel}
               regionCard={reg ? <RegionCard plan={plan} r={reg} onClear={() => onRegion(null)} onAsk={onAsk} /> : undefined}
               note={!diff && answerNote.value && (answerNote.value.planId ?? planId) === planId ? answerNote.value : null} onNoteClose={() => (answerNote.value = null)} />
           </div>

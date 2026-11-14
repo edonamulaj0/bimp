@@ -12,8 +12,9 @@ export function noteArea(plan: Plan, n: Pick<AnswerNote, 'rooms' | 'items' | 're
   if (n.region) polys.push([[n.region.x0, n.region.y0], [n.region.x1, n.region.y0], [n.region.x1, n.region.y1], [n.region.x0, n.region.y1]]);
   for (const id of n.items) {
     const o = plan.openings.find((x) => x.id === id), f = plan.fixtures?.find((x) => x.id === id), d = plan.detected?.items.find((x) => x.id === id);
-    const p = 0.2;
-    if (o) marks.push([Math.min(o.a[0], o.b[0]) - p, Math.min(o.a[1], o.b[1]) - p, Math.max(o.a[0], o.b[0]) + p, Math.max(o.a[1], o.b[1]) + p]);
+    const p = 0.2, w = id.startsWith('wall-') ? plan.walls.find((x) => `wall-${x.id}` === id) : undefined;
+    if (w) { const t = w.thickness / 2 + 0.12; marks.push([Math.min(w.a[0], w.b[0]) - t, Math.min(w.a[1], w.b[1]) - t, Math.max(w.a[0], w.b[0]) + t, Math.max(w.a[1], w.b[1]) + t]); }
+    else if (o) marks.push([Math.min(o.a[0], o.b[0]) - p, Math.min(o.a[1], o.b[1]) - p, Math.max(o.a[0], o.b[0]) + p, Math.max(o.a[1], o.b[1]) + p]);
     else if (f) { const r = Math.max(...f.size) / 2 + 0.1; marks.push([f.center[0] - r, f.center[1] - r, f.center[0] + r, f.center[1] + r]); }
     else if (d) marks.push([d.box[0] - 0.1, d.box[1] - 0.1, d.box[2] + 0.1, d.box[3] + 0.1]);
   }

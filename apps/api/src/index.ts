@@ -3,7 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { housePlan } from '../../shared/house-plan';
 import { visuals, visualsOn } from './visuals';
 import { clipPlan, parseRegion, regionContents, regionSize, type Region } from '../../shared/region';
-import { type Plan, area, evidenceFor } from '../../shared/plan';
+import { type Fixture, type Plan, FIXTURE_KINDS, area, evidenceFor, sourceBox } from '../../shared/plan';
 import { costUsd, meter } from './gemini';
 import { quickAnswer } from './quick';
 import { ask } from './agent';
@@ -201,6 +201,36 @@ projects.patch('/:id/revisions/:rid', async (c) => {
 });
 
 // --- files: raw body upload, deduplicated by content hash per project
+/**
+ * A person says what a symbol is: `kind` one of the known kinds, or 'unknown' with a `label` in their own words.
+ * `similar` names the other unknown symbols of the same size on the sheet at once. The plan is corrected in place
+ * (it is the same reading, now better informed), and each named symbol is kept as an example for training.
+ */
+projects.patch('/:id/revisions/:rid/fixtures/:fid', async (c) => {
+  const project = await projectAccess(c, c.req.param('id'));
+  const b = (await c.req.json().catch(() => ({}))) as { kind?: unknown; label?: unknown; similar?: unknown };
+  const kind = typeof b.kind === 'string' && (FIXTURE_KINDS as readonly string[]).includes(b.kind) ? (b.kind as Fixture['kind']) : null;
+  const label = typeof b.label === 'string' ? b.label.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 40) : '';
+  if (!kind || (kind === 'unknown' && !label)) throw fail(400, 'Choose what it is from the list, or type a name for it.');
+  const row = await c.env.DB.prepare('SELECT data FROM plans WHERE id = ? AND project_id = ?').bind(c.req.param('rid'), project.id).first<{ data: string }>();
+  if (!row) throw fail(404, 'Revision not found.');
+  const plan = JSON.parse(row.data) as Plan, target = plan.fixtures?.find((f) => f.id === c.req.param('fid'));
+  if (!target) throw fail(404, 'That symbol is no longer on the plan.');
+  const like = (f: Fixture) => f.kind === 'unknown' && !f.label && [f.size, [f.size[1], f.size[0]]].some(([w, d]) => Math.abs(w / target.size[0] - 1) <= 0.15 && Math.abs(d / target.size[1] - 1) <= 0.15);
+  const named = [target, ...(b.similar === true && target.kind === 'unknown' ? plan.fixtures!.filter((f) => f !== target && like(f)) : [])];
+  const t = now(), stmts = [];
+  for (const f of named) {
+    const box = f.src?.box ?? sourceBox(plan, [f.center], Math.max(...f.size) / 2);
+    stmts.push(c.env.DB.prepare('INSERT INTO symbol_labels (id, project_id, user_id, render_sha, page, x0, y0, x1, y1, kind, label, was_kind, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .bind(uid(), project.id, c.get('user').id, plan.source?.renderSha ?? null, f.src?.page ?? plan.source?.page ?? null, box?.[0] ?? null, box?.[1] ?? null, box?.[2] ?? null, box?.[3] ?? null, kind, kind === 'unknown' ? label : null, f.kind, t));
+    f.kind = kind;
+    if (kind === 'unknown') f.label = label; else delete f.label;
+  }
+  await c.env.DB.batch([c.env.DB.prepare('UPDATE plans SET data = ? WHERE id = ? AND project_id = ?').bind(JSON.stringify(plan), c.req.param('rid'), project.id), ...stmts,
+    c.env.DB.prepare('UPDATE projects SET updated_at = ? WHERE id = ?').bind(t, project.id)]);
+  return c.json({ plan, named: named.length });
+});
+
 projects.post('/:id/files', async (c) => {
   const project = await projectAccess(c, c.req.param('id'));
   let filename: string;

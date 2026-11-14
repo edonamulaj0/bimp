@@ -5,6 +5,9 @@ import { quickAnswer } from '../apps/api/src/quick';
 import { costUsd, joinStream, meter } from '../apps/api/src/gemini';
 import { evidenceFor } from '../apps/shared/plan';
 import { noteArea, placeNote } from '../apps/web/src/canvas/note';
+import { describe, fixtureInfo, openingInfo, wallInfo } from '../apps/shared/measure';
+import { housePlan } from '../apps/shared/house-plan';
+import { FIXTURE_KINDS, FIXTURE_LABEL, fixtureName } from '../apps/shared/plan';
 import { verify, runTool, traceStep } from '../apps/api/src/agent';
 import { calculate } from '../apps/api/src/calc';
 import { diffPlans } from '../apps/shared/diff';
@@ -317,6 +320,23 @@ void doorSweep; void fixtureContains;
   eq('note: never covers the area when a side has room, and stays in view', cases.map(([a]) => { const n = placeNote(a as never, 300, 150, 1000, 600); return [n.clear, covers(n, a, 300, 150), n.left >= 8 && n.left + 300 <= 992 && n.top >= 8 && n.top + 150 <= 592]; }),
     cases.map(() => [true, false, true]));
   eq('note: an area that fills the view is reported, so the plan zooms out to make room', placeNote([20, 20, 980, 580], 300, 150, 1000, 600).clear, false);
+}
+// Measurements of things the drawing does not dimension, and names of symbols
+{
+  const h = housePlan();
+  const front = openingInfo(h, h.openings.find((o) => o.id === 'd1')!);
+  eq('measure: a door has its width, the rooms it joins, and whether it leads outside', [front.width_m, front.exit, front.where], [1, true, 'Entrance hall, outside wall']);
+  eq('measure: a door between rooms names both', openingInfo(h, h.openings.find((o) => o.id === 'd6')!).where, 'between Bedroom 3 and Entrance hall');
+  const outer = h.walls.map((w) => wallInfo(h, w)).filter((w) => w.exterior), inner = h.walls.map((w) => wallInfo(h, w)).filter((w) => !w.exterior);
+  eq('measure: outside walls are 0.30 m, partitions 0.12 m, each with its length', [outer.every((w) => w.thickness_m === 0.3 && w.length_m > 0), inner.every((w) => w.thickness_m === 0.12), outer.length > 3 && inner.length > 5], [true, true, true]);
+  near('measure: the outside walls add up to the perimeter of the house (16.8 × 9.6 m)', outer.reduce((s, w) => s + w.length_m, 0), 2 * (16.8 + 9.6), 0.05);
+  const bed = h.fixtures!.find((f) => f.kind === 'bed')!;
+  eq('measure: a fitting has its size and room', [fixtureInfo(h, bed).width_m, fixtureInfo(h, bed).depth_m, fixtureInfo(h, bed).room], [1.4, 2, 'Bedroom 3']);
+  eq('measure: the read-out says what it is and how big', describe(h, 'opening', 'w2'), { title: 'Window', detail: '1800 mm wide · Bedroom 3, outside wall' });
+  eq('measure: the tools give the same figures', [(runTool(h, 'list_walls', {}) as { total_length_m: number }).total_length_m > 80, (runTool(h, 'list_openings', { kind: 'door' }) as { count: number }).count, (runTool(h, 'list_fixtures', { room_id: 'r2' }) as { count: number }).count], [true, 13, 3]);
+  eq('symbols: every kind has a name', FIXTURE_KINDS.every((k) => !!FIXTURE_LABEL[k]), true);
+  eq('symbols: a name given by a person wins', [fixtureName({ kind: 'unknown', label: 'piano' }), fixtureName({ kind: 'unknown' }), fixtureName({ kind: 'radiator' })], ['piano', 'unknown symbol', 'radiator']);
+  eq('evidence: a cited wall is marked on the sheet crop and on the plan', [noteArea(h, { rooms: [], items: [`wall-${h.walls[0].id}`], region: null })?.marks.length], [1]);
 }
 // Level and ceiling strings (FN-13)
 eq('level "1.OG OKFF +3.05"', parseLevel('1.OG OKFF +3.05'), 3.05);

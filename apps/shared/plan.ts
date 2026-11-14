@@ -11,16 +11,29 @@ export interface Wall { id: string; a: Pt; b: Pt; thickness: number }
 export interface Opening { id: string; kind: 'door' | 'window'; a: Pt; b: Pt; swing?: 1 | -1; src?: Src }
 
 /** Fittings and furniture drawn on the plan. Read from the drawing, never invented. */
-export const FIXTURE_KINDS = ['wc', 'sink', 'bathtub', 'shower', 'sauna_stove', 'stove', 'fridge', 'washer', 'bed', 'sofa', 'table', 'desk', 'wardrobe'] as const;
+export const FIXTURE_KINDS = ['wc', 'sink', 'bathtub', 'shower', 'sauna_stove', 'stove', 'fridge', 'washer', 'bed', 'sofa', 'table', 'desk', 'wardrobe',
+  // sanitary and services
+  'bidet', 'urinal', 'dryer', 'dishwasher', 'oven', 'water_heater', 'radiator', 'fireplace',
+  // kitchen and loose furniture
+  'counter', 'chair', 'armchair', 'tv', 'bookshelf', 'bedside', 'plant', 'column',
+  // drawn on the plan but not recognised: shown with a "?" until someone says what it is
+  'unknown'] as const;
 export type FixtureKind = (typeof FIXTURE_KINDS)[number];
 /** center/size in metres; size[0] runs along the wall it backs onto, size[1] away from it; angle in radians (local +y = front). */
 export interface Fixture { id: string; kind: FixtureKind; center: Pt; size: Pt; angle: number; room_id: string | null; src?: Src;
+  /** A name given by a person, for something that is not one of the known kinds ("piano", "safe"). */
+  label?: string;
   /** 'suggested' = placed by bimp (feng shui layout), not read from the drawing. */
   source?: 'drawing' | 'suggested' }
 export const FIXTURE_LABEL: Record<FixtureKind, string> = {
   wc: 'toilet', sink: 'sink / wash basin', bathtub: 'bathtub', shower: 'shower', sauna_stove: 'sauna stove', stove: 'cooker / hob',
   fridge: 'fridge', washer: 'washing machine', bed: 'bed', sofa: 'sofa', table: 'table', desk: 'desk', wardrobe: 'wardrobe',
+  bidet: 'bidet', urinal: 'urinal', dryer: 'tumble dryer', dishwasher: 'dishwasher', oven: 'oven', water_heater: 'water heater', radiator: 'radiator', fireplace: 'fireplace',
+  counter: 'kitchen worktop', chair: 'chair', armchair: 'armchair', tv: 'TV / media unit', bookshelf: 'shelving', bedside: 'bedside table', plant: 'plant', column: 'column',
+  unknown: 'unknown symbol',
 };
+/** What a fitting is called: the name a person gave it, else its kind. */
+export const fixtureName = (f: Pick<Fixture, 'kind' | 'label'>) => f.label?.trim() || FIXTURE_LABEL[f.kind] || f.kind;
 
 /** What the symbol detector (ml/, fixtures-v1) can find on a scan or image. Showers and bathtubs are one class. */
 export const DETECTED_KINDS = ['window', 'door', 'toilet', 'sink', 'shower_bath'] as const;
@@ -306,7 +319,9 @@ export function evidenceFor(plan: Plan, roomIds: string[], itemIds: string[] = [
   const add = (b: [number, number, number, number] | null | undefined) => { if (b && b[2] > b[0] && b[3] > b[1]) marks.push(b); };
   for (const id of itemIds) {
     const o = plan.openings.find((x) => x.id === id), f = plan.fixtures?.find((x) => x.id === id), d = plan.detected?.items.find((x) => x.id === id);
-    if (o) add(o.src?.box ?? sourceBox(plan, [o.a, o.b], 0.5));
+    const w = id.startsWith('wall-') ? plan.walls.find((x) => `wall-${x.id}` === id) : undefined;
+    if (w) add(sourceBox(plan, [w.a, w.b], w.thickness / 2 + 0.25));
+    else if (o) add(o.src?.box ?? sourceBox(plan, [o.a, o.b], 0.5));
     else if (f) add(f.src?.box ?? sourceBox(plan, [f.center], Math.max(...f.size) / 2 + 0.1));
     else if (d) add(sourceBox(plan, [[d.box[0], d.box[1]], [d.box[2], d.box[3]]], 0.1));
   }

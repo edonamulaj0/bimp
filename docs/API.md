@@ -56,4 +56,5 @@ Every reading of a drawing is a revision (a row in `plans`). The latest is the p
 - `message.content.cost`: `{ by: 'code' | 'model', usd, calls, tokens_in, tokens_out, ms }`. `by: 'code'` means the answer was computed from the stored plan without a model call.
 - Jobs (`GET /projects/:id/jobs/:jid`, and `jobs[]` of a project) carry `file_id` and `render_sha`: the sheet being read, shown on the canvas meanwhile.
 - Plans: every room, opening and fitting read from a drawing has `src: { page, box }`; `plan.source.page` / `pages` say which page of the file the plan is.
+- `PATCH /projects/:id/revisions/:rid/fixtures/:fid { kind, label?, similar? }` → `{ plan, named }`. Says what a symbol is: `kind` a fixture kind, or `unknown` with a `label` in the person's words; `similar: true` names the other unknown symbols of the same size too. Each answer is kept in `symbol_labels` (render, box, name) as a training example.
 - `DELETE /projects/:id/jobs/:jid` stops a reading in progress → `{ ok, removed, message }`. A file that was never read into a plan is removed from the project with it (`removed: true`).

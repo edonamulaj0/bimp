@@ -415,6 +415,29 @@ details { margin-top: var(--s2); } details summary { cursor: pointer; } details 
 .reply textarea:focus, .pin-composer textarea:focus { outline: 2px solid var(--focus); outline-offset: 0; border-color: var(--ink); }
 .reply-actions, .pc-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--s2); }
 .pin-pop { position: absolute; z-index: 5; width: 320px; }
+/* walls, openings and fittings answer to the pointer: what they are and their measurements show at the top of the plan */
+.plan2d .hits > * { fill: transparent; stroke: transparent; pointer-events: all; vector-effect: non-scaling-stroke; }
+.plan2d .hits line { fill: none; stroke-linecap: butt; }
+.plan2d .hits polygon.on, .plan2d .hits rect.on { fill: var(--accent); fill-opacity: .22; stroke: var(--accent); stroke-width: 1.5px; }
+.plan2d .hits line.on { stroke: var(--accent); stroke-opacity: .45; }
+.plan2d .hits rect { cursor: pointer; }
+.item-chip { position: absolute; top: 3.9rem; left: 50%; transform: translateX(-50%); z-index: 4; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 2px var(--s2); max-width: calc(100% - 2rem); padding: 5px var(--s3); background: var(--ink); color: var(--paper); border-radius: 16px; font-size: var(--t-xs); box-shadow: 0 6px 18px -10px rgb(30 29 27 / .5); }
+.item-chip b { font-weight: 600; font-size: var(--t-sm); }
+.item-chip .muted { color: color-mix(in srgb, var(--paper) 62%, var(--ink)); }
+.item-chip .link { color: var(--paper); margin-left: var(--s1); }
+.plan2d .q-pin { cursor: pointer; }
+.plan2d .q-pin circle { fill: var(--accent); stroke: var(--paper); stroke-width: 2; }
+.plan2d .q-pin text { fill: var(--on-accent); font: 700 13px var(--font); pointer-events: none; }
+.plan2d .q-pin:focus { outline: none; }
+.plan2d .q-pin:hover circle, .plan2d .q-pin:focus-visible circle { stroke: var(--ink); }
+.name-pop { position: absolute; z-index: 6; width: 260px; display: grid; gap: var(--s2); padding: var(--s3); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; box-shadow: 0 10px 30px -12px rgb(30 29 27 / .35); font-size: var(--t-sm); }
+.name-pop.sheet-bottom { left: 8px; right: 8px; bottom: 8px; width: auto; }
+.name-pop label { display: grid; gap: 3px; }
+.name-pop label.check { display: flex; align-items: center; gap: var(--s2); }
+.name-pop label.check input { width: auto; flex: none; margin: 0; }
+.name-pop select, .name-pop input[type="text"] { width: 100%; min-height: 32px; padding: 4px var(--s2); border: 1px solid var(--line-strong); border-radius: 4px; background: var(--paper-3); color: var(--ink); font: inherit; }
+.name-pop p { margin: 0; }
+.name-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--s3); }
 /* the answer note: the area it is about is outlined on the plan, the note stands beside it, a leader joins them */
 .plan2d .note-area polygon, .plan2d .note-area rect { fill: var(--accent); fill-opacity: .1; stroke: var(--accent); stroke-width: 2.5px; stroke-dasharray: 7 4; vector-effect: non-scaling-stroke; }
 .note-lead { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; overflow: visible; }

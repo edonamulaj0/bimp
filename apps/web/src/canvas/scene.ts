@@ -540,6 +540,13 @@ function fixtureParts(f: Fixture, H: number): THREE.BufferGeometry[] {
     case 'table': case 'desk': box(w, 0.04, d, 0, 0.71, 0, wood);
       for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) box(0.05, 0.71, 0.05, a * (w / 2 - 0.05), 0, b * (d / 2 - 0.05), wood); break;
     case 'wardrobe': box(w, 2.0, d, 0, 0, 0, 0xe4ddd2); break;
+    case 'plant': cyl(Math.min(w, d) * 0.3, 0.35, 0, 0, 0x8a7458); cyl(Math.min(w, d) * 0.5, 1.1, 0, 0, 0x7d9a6a); break;
+    case 'column': box(w, H, d, 0, 0, 0, 0xd9d4ca); break;
+    case 'chair': case 'armchair': box(w, 0.45, d, 0, 0, 0, fabric); box(w, 0.45, Math.min(0.12, d * 0.25), 0, 0.45, back + Math.min(0.06, d * 0.125), fabric); break;
+    default: { // a box of the usual height of the thing; an unknown symbol is a low grey block
+      const tall: Partial<Record<FixtureKind, number>> = { bidet: 0.4, urinal: 0.9, dryer: 0.85, dishwasher: 0.85, oven: 2.0, water_heater: 1.6, radiator: 0.6, fireplace: 1.2, counter: 0.9, tv: 0.5, bookshelf: 1.9, bedside: 0.5, unknown: 0.3 };
+      box(w, tall[f.kind] ?? 0.5, d, 0, 0, 0, f.kind === 'unknown' ? 0xc9c4ba : white, f.kind === 'counter' ? 0xd8d2c6 : undefined);
+    }
   }
   const m = new THREE.Matrix4().makeRotationY(-f.angle).setPosition(f.center[0], 0, f.center[1]);
   // plan (x, y) -> world (x, z); a plan rotation by +angle is a rotation by -angle about +Y in world space

@@ -1,9 +1,10 @@
-import { type Plan, type Evidence, area, roomStats, round, detectedKindOf, detectedCount } from '../../shared/plan';
+import { type Plan, type Evidence, FIXTURE_KINDS, area, roomStats, round, detectedKindOf, detectedCount } from '../../shared/plan';
 import { calculate } from './calc';
 import { ACCESS, BED, CORRIDOR, DOOR, FLAT_TRAVEL, GARAGE, OCCUPANCY, OCCUPANCY_REF, PLAN_SCALES, ROOM_STANDARDS, STAIR, TRAVEL, TRAVEL_REF, TURNING, WALL, checkPlan, escapeWidth } from '../../shared/standards';
 import { escapeRoutes } from '../../shared/escape';
 import { openingsOfRoom, planAreas, roomInfo } from '../../shared/rooms';
 import { fengShui } from '../../shared/fengshui';
+import { basisOf, fixtureInfo, openingInfo, wallInfo } from '../../shared/measure';
 import { type Content, type Meter, type Part, generate } from './gemini';
 import type { Env } from './util';
 
@@ -27,7 +28,7 @@ const TOOLS = [
   { name: 'plan_info', description: 'Overview of the plan: how it was produced, whether measured, scale source, assumptions, extent, counts.', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'list_rooms', description: 'All rooms with id, name, type, area_m2 and perimeter_m (computed from geometry).', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'get_room', description: 'One room by id: area, perimeter, bounding dimensions, doors and windows on its boundary.', parameters: S('OBJECT', undefined, { properties: { id: S('STRING') }, required: ['id'] }) },
-  { name: 'count', description: 'Count doors, windows, rooms of a type, or fittings/furniture drawn on the plan (each counted item is cited by id). On scans and images, doors, windows, wc, sink and shower_bath are counted by a symbol detector; it counts showers and bathtubs together, so use shower_bath for that total.', parameters: S('OBJECT', undefined, { properties: { what: S('STRING', 'door | window | room | wc | sink | shower_bath | bathtub | shower | sauna_stove | stove | fridge | washer | bed | sofa | table | desk | wardrobe'), room_type: S('STRING', 'optional room type filter for rooms'), room_id: S('STRING', 'optional: only items in this room') }, required: ['what'] }) },
+  { name: 'count', description: 'Count doors, windows, rooms of a type, or fittings/furniture drawn on the plan (each counted item is cited by id). On scans and images, doors, windows, wc, sink and shower_bath are counted by a symbol detector; it counts showers and bathtubs together, so use shower_bath for that total.', parameters: S('OBJECT', undefined, { properties: { what: S('STRING', `door | window | room | shower_bath | ${FIXTURE_KINDS.join(' | ')}`), room_type: S('STRING', 'optional room type filter for rooms'), room_id: S('STRING', 'optional: only items in this room') }, required: ['what'] }) },
   { name: 'check_plan', description: 'Plausibility checks of the plan against design standards (room minimum sizes, corridor and door widths, scale). Each check cites its source.', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'space_standard', description: 'Design standard figures with their source: room minimum areas by type, door, corridor, stair, bed, wheelchair turning, preferred plan scales.', parameters: S('OBJECT', undefined, { properties: { topic: S('STRING', 'room type (bedroom, living, kitchen...), or door | corridor | stair | bed | turning | scale') }, required: ['topic'] }) },
   { name: 'escape_route', description: 'Estimated travel distance from the furthest point of each room (or one room) to an exit door, through doors, with the path and the limits that apply (Metric Handbook Ch. 41).', parameters: S('OBJECT', undefined, { properties: { room_id: S('STRING', 'optional room id') } }) },
@@ -35,6 +36,9 @@ const TOOLS = [
   { name: 'room_info', description: 'One room: net area, perimeter, length × width, ceiling height, volume, doors, windows, glazed area and ratio, fittings.', parameters: S('OBJECT', undefined, { properties: { id: S('STRING') }, required: ['id'] }) },
   { name: 'plan_areas', description: 'Whole plan: net floor area (rooms), wall area, gross floor area (net + walls), net/gross ratio, ceiling height and its source, floor level, volume, counts.', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'feng_shui', description: 'Feng shui guidance as geometric checks (command position of bed/desk, headboard wall, stove vs sink and door, WC vs door, light, entrance alignment). Traditional guidance, not a standard.', parameters: S('OBJECT', undefined, { properties: { room_id: S('STRING', 'optional') } }) },
+  { name: 'list_walls', description: 'Every wall with its length and thickness in metres, whether it is an outside wall, and the rooms beside it. Use this for wall lengths and thicknesses that are not written on the drawing; they are measured on the plan model. Cite walls by their id in item_ids.', parameters: S('OBJECT', undefined, { properties: { room_id: S('STRING', 'optional: only walls beside this room') } }) },
+  { name: 'list_openings', description: 'Every door and window with its clear width in metres and the rooms it joins or lights; exit marks doors to the outside. Measured on the plan model. Cite by id in item_ids.', parameters: S('OBJECT', undefined, { properties: { room_id: S('STRING', 'optional: only openings of this room'), kind: S('STRING', 'optional: door | window') } }) },
+  { name: 'list_fixtures', description: 'Every fitting, appliance and furniture item with its name, width and depth in metres and its room. Items a person named have that name. Cite by id in item_ids.', parameters: S('OBJECT', undefined, { properties: { room_id: S('STRING', 'optional: only items in this room') } }) },
   { name: 'calculate', description: 'Evaluate arithmetic exactly. Supports + - * / ^ ( ) ceil floor round sqrt min max abs.', parameters: S('OBJECT', undefined, { properties: { expression: S('STRING') }, required: ['expression'] }) },
   {
     name: 'final_answer',
@@ -42,7 +46,7 @@ const TOOLS = [
     parameters: S('OBJECT', undefined, {
       properties: {
         text: S('STRING', 'Answer in the user\'s language, short. Markdown: a blank line between paragraphs, a bullet list when listing several rooms or items, **bold** for the key figure, a small table only for comparing several rooms. No headings in a short answer.'),
-        claims: S('ARRAY', 'Each factual claim with the room ids it comes from', { items: S('OBJECT', undefined, { properties: { text: S('STRING'), room_ids: S('ARRAY', undefined, { items: S('STRING') }) }, required: ['text', 'room_ids'] }) }),
+        claims: S('ARRAY', 'Each factual claim with the room ids it comes from, and the ids of the walls, openings or items it is about', { items: S('OBJECT', undefined, { properties: { text: S('STRING'), room_ids: S('ARRAY', undefined, { items: S('STRING') }), item_ids: S('ARRAY', 'ids from list_walls, list_openings, list_fixtures or count', { items: S('STRING') }) }, required: ['text', 'room_ids'] }) }),
         reasoning: S('ARRAY', 'How the answer follows from the tool results, step by step, 3 to 7 short steps in the user\'s language: what was looked up and where (room names), each figure used with its unit, the formula and its result, any standard applied with its source, and what limits the answer (preview plan, assumed values). Only figures from tool results.', { items: S('STRING') }),
         calculation: S('STRING', 'Formula with inputs and result, if any arithmetic was done', { nullable: true }),
         assumptions: S('ARRAY', undefined, { items: S('STRING') }),
@@ -61,6 +65,8 @@ say that dimensions are approximate. Cite the rooms each claim comes from by id.
 adequate, compliance or "is this right", use check_plan and space_standard and name the standard's source in the answer;
 standards are guidance, not a legal verdict. For fire escape and capacity questions use escape_route and occupancy. For an overview of a room or
 the home (size, light, feel), use room_info or plan_areas plus feng_shui, and write a short, warm, practical overview.
+A length, width, thickness or size that is not written on the drawing can still be given: measure it with list_walls,
+list_openings, list_fixtures, room_info or get_room, and say it was measured on the plan and how exact that is.
 Finish by calling final_answer. Keep "text" short, and put the full working in "reasoning": a reader must be able to
 follow every step from the drawing to the answer and check it.
 Answer in the language of the question.`;
@@ -140,6 +146,18 @@ export function runTool(plan: Plan, name: string, args: any): unknown {
       return planAreas(plan);
     case 'feng_shui':
       return { notes: fengShui(plan, args.room_id || undefined), note: 'Traditional placement guidance, presented as such.' };
+    case 'list_walls': {
+      const all = plan.walls.map((w) => wallInfo(plan, w)).filter((w) => !args.room_id || w.rooms.includes(args.room_id));
+      return { basis: basisOf(plan), count: all.length, total_length_m: round(all.reduce((s, w) => s + w.length_m, 0), 2), walls: all.slice(0, 80) };
+    }
+    case 'list_openings': {
+      const all = plan.openings.map((o) => openingInfo(plan, o)).filter((o) => (!args.room_id || o.rooms.includes(args.room_id)) && (!args.kind || o.kind === args.kind));
+      return { basis: basisOf(plan), count: all.length, openings: all.slice(0, 80) };
+    }
+    case 'list_fixtures': {
+      const all = (plan.fixtures ?? []).map((f) => fixtureInfo(plan, f)).filter((f) => !args.room_id || f.room_id === args.room_id);
+      return { basis: basisOf(plan), count: all.length, items: all.slice(0, 80) };
+    }
     case 'calculate':
       try { return { expression: args.expression, result: round(calculate(String(args.expression)), 4) }; }
       catch (e) { return { error: (e as Error).message }; }
@@ -199,6 +217,9 @@ export function traceStep(plan: Plan, tool: string, args: Record<string, unknown
       r.ceiling_height_m && `ceiling ${r.ceiling_height_m} m`, `${r.doors} doors`, `${r.windows} windows`].filter(Boolean).join(', ') };
     case 'count': return { tool: `Count: ${args.what}${args.room_type ? ` (${args.room_type})` : ''}${args.room_id ? ` in ${room(args.room_id)}` : ''}`, found: `${r.count}${r.source ? `, by the ${r.source}` : ', from the plan model'}` };
     case 'plan_areas': return { tool: 'Plan areas', found: `net ${r.net_floor_area_m2} m², walls ${r.wall_area_m2} m², gross ${r.gross_floor_area_m2} m², ceiling ${r.ceiling_height_m} m (${r.ceiling_source})` };
+    case 'list_walls': return { tool: `Walls${args.room_id ? ` of ${room(args.room_id)}` : ''}`, found: `${r.count} walls, ${r.total_length_m} m in all (${r.basis}): ${(r.walls as { length_m: number; thickness_m: number }[]).slice(0, 6).map((w) => `${w.length_m} m × ${w.thickness_m} m`).join(', ')}${r.count > 6 ? ', …' : ''}` };
+    case 'list_openings': return { tool: `Doors and windows${args.room_id ? ` of ${room(args.room_id)}` : ''}`, found: `${r.count} (${r.basis}): ${(r.openings as { kind: string; width_m: number }[]).slice(0, 8).map((o) => `${o.kind} ${o.width_m} m`).join(', ')}${r.count > 8 ? ', …' : ''}` };
+    case 'list_fixtures': return { tool: `Fittings and furniture${args.room_id ? ` in ${room(args.room_id)}` : ''}`, found: `${r.count}: ${(r.items as { name: string; width_m: number; depth_m: number }[]).slice(0, 8).map((f) => `${f.name} ${f.width_m} × ${f.depth_m} m`).join(', ')}${r.count > 8 ? ', …' : ''}` };
     case 'calculate': return { tool: 'Calculation', found: `${r.expression} = ${r.result}` };
     case 'check_plan': return { tool: 'Checks against design standards', found: `${(result as { level: string }[]).filter((x) => x.level === 'warn').length} to review of ${(result as unknown[]).length}` };
     case 'space_standard': return { tool: `Standard: ${args.topic}`, found: short(result) };
