@@ -9,7 +9,9 @@
   <meta name="theme-color" content="#f4f1ea">
   <title>Docs · bimp</title>
   <meta name="description" content="How to use bimp: uploading drawings, asking questions, plans and dimensions, revisions, pinned comments, teams, and the method behind measured and preview plans.">
+  <script src="/js.js"></script>
   <link rel="stylesheet" href="/site.css">
+  <script type="module" src="/site.js"></script>
 </head>
 <body data-page="docs">
   <!-- @include header.html -->
@@ -22,6 +24,7 @@
           <li><a href="#uploading">Uploading drawings</a></li>
           <li><a href="#asking">Asking questions</a></li>
           <li><a href="#plans">Plans and dimensions</a></li>
+          <li><a href="#workspace">The workspace</a></li>
           <li><a href="#revisions">Revisions and comparison</a></li>
           <li><a href="#comments">Comments and pins</a></li>
           <li><a href="#teams">Teams</a></li>
@@ -43,6 +46,7 @@
             <li><a href="#uploading">Uploading drawings</a></li>
             <li><a href="#asking">Asking questions</a></li>
             <li><a href="#plans">Plans and dimensions</a></li>
+            <li><a href="#workspace">The workspace</a></li>
             <li><a href="#revisions">Revisions and comparison</a></li>
             <li><a href="#comments">Comments and pins</a></li>
             <li><a href="#teams">Teams</a></li>
@@ -137,6 +141,20 @@
           <p>A true isometric view, rotated in 90° steps, in three wall modes: <b>Dollhouse</b> (default; walls between you and the rooms drop to 0.3 m, back walls stay full height), <b>Cut 1.2 m</b> and <b>Full</b>. Floor materials by room type are a visual convention, not drawing data.</p>
           <h3>Room and plan info</h3>
           <p>Click a room for its net area, length × width, perimeter, ceiling height, volume, doors, windows, glazed area and glazing ratio. With nothing selected, the panel shows the plan: net floor area (rooms to the inside of walls), wall area, gross area (net plus walls), and floor level. Heights not stated on the drawing are shown as "not stated" or "assumed".</p>
+        </section>
+
+        <section id="workspace" aria-labelledby="ws-h">
+          <h2 id="ws-h">The workspace</h2>
+          <p>A project opens in three columns. On the left, <b>Files</b> lists drawings, revisions and the model's rooms; drop drawings anywhere on it. Under it, <b>bimp AI</b> answers questions. In the middle, the <b>canvas</b> shows the plan in 2D, the model in 3D, or both (keys 1, 2, 3). On the right, <b>Comments</b>, <b>Revisions</b> and the <b>Overview</b>. Drag the dividers to resize; the buttons at the top right hide either side.</p>
+          <h3>Tools</h3>
+          <ul>
+            <li><b>Select (V)</b>: pick rooms; drag to pan.</li>
+            <li><b>Comment (C)</b>: click a spot to pin a thread.</li>
+            <li><b>Markup (R)</b>: drag a region over the plan or the model. While a region is marked, bimp AI answers only from what lies inside it (rooms are clipped to the region, and the answer says so). Clear it to ask about the whole plan again.</li>
+            <li><b>Measure (M)</b>: click two points; they snap to corners, and Shift keeps the line straight.</li>
+          </ul>
+          <p>Right-click, double-click or press and hold on the canvas for tools, layers (room fills, furniture, dimensions, labels, pins) and views. In 3D, drag to orbit, right-drag or Shift-drag to pan, and scroll to zoom; arrow keys orbit and Home returns to the isometric view.</p>
+          <p>On a phone the canvas fills the screen and Files, Ask, Comments and Overview open as sheets from the bar at the bottom. Help (the ? button) replays the welcome tour and opens the first-project guide.</p>
         </section>
 
         <section id="revisions" aria-labelledby="rev-h">
