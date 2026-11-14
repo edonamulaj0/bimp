@@ -27,7 +27,7 @@ npm run dev                      # http://localhost:5173 (marketing) and /app/ (
 ```
 
 `npm test` checks the drawing-convention and standards rules. Without a Gemini key, everything works except reading new drawings and chat. Every new account gets a
-"Sample house" project. `npm run ingest:fixtures` writes test drawings (vector PDF at 1:100, a scan, a DXF) to `evals/fixtures/`.
+"Pilot house" project (a three-bedroom single-storey model). `npm run ingest:fixtures` writes test drawings (vector PDF at 1:100, a scan, a DXF) to `evals/fixtures/`.
 
 ## Deploy
 

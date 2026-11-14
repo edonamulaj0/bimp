@@ -9,7 +9,9 @@
   <meta name="theme-color" content="#f4f1ea">
   <title>Changelog · bimp</title>
   <meta name="description" content="What's new in bimp: teams, revisions and pinned comments, drafting-convention plans, room info, the isometric dollhouse and more.">
+  <script src="/js.js"></script>
   <link rel="stylesheet" href="/site.css">
+  <script type="module" src="/site.js"></script>
 </head>
 <body data-page="changelog">
   <!-- @include header.html -->
@@ -23,6 +25,24 @@
 
     <section class="section tight" aria-label="Releases">
       <div class="wrap log">
+        <article class="entry" id="workspace-markup-tours" aria-labelledby="e0">
+          <time datetime="2026-11-14">14 November 2026</time>
+          <div class="body">
+            <div class="tags"><span class="pill">New</span><span class="pill">Workspace</span></div>
+            <h2 id="e0"><a href="#workspace-markup-tours">A three-column workspace, markup regions and a free 3D camera</a></h2>
+            <p>The project workspace is rebuilt around how drawings are actually worked on: files and the assistant on the left, the drawing in the middle, the overview on the right.</p>
+            <ul>
+              <li><b>Files and drop zone.</b> Drawings, revisions and the model's rooms as a tree. Drop PDFs, DXF files and scans on it; several at once are read in turn.</li>
+              <li><b>bimp AI, docked.</b> The assistant sits under the files, so you ask while looking at the plan.</li>
+              <li><b>Markup regions.</b> Drag a region on the plan or the model (R). bimp lists what is inside, and answers questions using only the rooms, walls, openings and fittings in it.</li>
+              <li><b>Free 3D camera.</b> Orbit, pan and zoom freely, in perspective or parallel projection, with isometric, top, front and side views. Dollhouse walls follow the camera.</li>
+              <li><b>Context menu and measuring.</b> Right-click, double-click or press and hold for tools, layers and views. Measure (M) snaps to corners.</li>
+              <li><b>Pilot house.</b> New accounts start with a three-bedroom, single-storey model sized against the Metric Handbook.</li>
+              <li><b>Welcome tour and first-project guide</b>, and a phone layout with a tab bar and bottom sheets.</li>
+            </ul>
+          </div>
+        </article>
+
         <article class="entry" id="teams-revisions-comments" aria-labelledby="e1">
           <time datetime="2026-11-14">14 November 2026</time>
           <div class="body">

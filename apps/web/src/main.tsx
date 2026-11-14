@@ -24,7 +24,7 @@ function App() {
   if (!user.value) return <Login />;
   const r = parsed.value;
   return (
-    <div class={`app${sidebarCollapsed.value ? ' sb-collapsed' : ''}`}>
+    <div class={`app${sidebarCollapsed.value ? ' sb-collapsed' : ''}${r.page === 'project' ? ' in-ws' : ''}`}>
       <a class="skip" href="#main" onClick={(e) => { e.preventDefault(); document.getElementById('main')?.focus(); }}>Skip to content</a>
       <Sidebar />
       <div class="main-col">
