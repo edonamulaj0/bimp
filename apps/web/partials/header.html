@@ -48,16 +48,30 @@
   <circle class="bl-fil2" cx="2106.08" cy="5108.77" r="147.76"/>
  </g>
 </svg></a>
-    <nav class="site-nav" aria-label="Main">
-      <a href="/product/" data-nav="product">Product</a>
-      <a href="/pricing/" data-nav="pricing">Pricing</a>
-      <a href="/changelog/" data-nav="changelog">Changelog</a>
-      <a href="/docs/" data-nav="docs">Docs</a>
-      <a href="/company/" data-nav="company">Company</a>
-    </nav>
     <div class="head-cta">
       <a class="nav-signin" href="/app/">Sign in</a>
-      <a class="btn sm" href="/app/#signup">Start a project</a>
+      <a class="btn sm head-start" href="/app/#signup">Start a project</a>
+      <button type="button" class="menu-toggle" aria-expanded="false" aria-controls="site-menu"><span aria-hidden="true">M e n u</span><span class="sr-only">Menu</span></button>
     </div>
   </div>
 </header>
+<div class="site-menu" id="site-menu" hidden>
+  <div class="wrap menu-grid">
+    <nav aria-label="Main">
+      <ol class="menu-links">
+        <li><a href="/" data-nav="home"><span class="mono">(01)</span>Home</a></li>
+        <li><a href="/product/" data-nav="product"><span class="mono">(02)</span>Product</a></li>
+        <li><a href="/pricing/" data-nav="pricing"><span class="mono">(03)</span>Pricing</a></li>
+        <li><a href="/changelog/" data-nav="changelog"><span class="mono">(04)</span>Changelog</a></li>
+        <li><a href="/docs/" data-nav="docs"><span class="mono">(05)</span>Docs</a></li>
+        <li><a href="/company/" data-nav="company"><span class="mono">(06)</span>Company</a></li>
+      </ol>
+    </nav>
+    <div class="menu-side">
+      <p class="menu-label">Building Information Modeling Pilot</p>
+      <p>Ask your drawings. See the answer on the sheet.</p>
+      <p class="menu-cta"><a class="btn" href="/app/#signup">Start a project</a> <a class="nav-signin" href="/app/">Sign in</a></p>
+      <p class="menu-small"><a href="/company/#contact">Contact</a> · <a href="/privacy/">Privacy</a> · <a href="/terms/">Terms</a></p>
+    </div>
+  </div>
+</div>

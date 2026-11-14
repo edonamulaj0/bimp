@@ -83,4 +83,9 @@ Snapshots are uploaded with signed requests into `bimp/<project id>/`, and each 
 transformation, so it works with "strict transformations" on. Generative styles use Cloudinary credits; each user can
 make 20 images a day.
 
+The marketing site's images are made the same way: `apps/web/public/renders/*.png` are renders of the pilot house's
+own 3D model. On the first visit to the deployed site, `GET /api/site/images` has Cloudinary fetch each render from the
+site and generate its image (scenes listed in `apps/shared/site-images.ts`, once each, `db/migrations/0005`). Until they
+are ready, and on a local dev server, the renders themselves are shown.
+
 Set `ALLOW_SIGNUP` to `"false"` in `wrangler.jsonc` to close sign-up after creating your accounts.

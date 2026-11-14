@@ -29,7 +29,7 @@ else {
   void document.body.offsetHeight;
   for (const el of lens.keys()) el.style.transition = '';
   const start = () => {
-    const io = new IntersectionObserver((entries) => entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { rootMargin: '0px 0px -10% 0px', threshold: 0.1 });
+    const io = new IntersectionObserver((entries) => entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { rootMargin: '0px 0px -24px 0px', threshold: 0 });
     els.forEach((e) => io.observe(e));
   };
   requestAnimationFrame(() => requestAnimationFrame(start));
@@ -85,6 +85,40 @@ if (pw) {
       else pw.textContent = words[i];
     }
   })();
+}
+
+// 5. images generated with Cloudinary (see apps/shared/site-images.ts): swap each in once it has loaded; until then
+// (or when it isn't set up) the committed render stays.
+const cldImgs = document.querySelectorAll('img[data-cld]');
+if (cldImgs.length) {
+  fetch('/api/site/images', { credentials: 'omit' }).then((r) => (r.ok ? r.json() : { images: {} })).then(({ images }) => {
+    for (const img of cldImgs) {
+      const url = images?.[img.dataset.cld];
+      if (!url) continue;
+      const pre = new Image();
+      pre.decoding = 'async';
+      pre.onload = () => { img.classList.add('swap'); setTimeout(() => { img.src = url; img.classList.add('is-cld'); img.classList.remove('swap'); }, 250); };
+      pre.src = url;
+    }
+  }).catch(() => {});
+}
+
+// 6. the Menu: a full-screen index; Escape or a link closes it, focus returns to the button
+const toggle = document.querySelector('.menu-toggle'), menu = document.getElementById('site-menu');
+if (toggle && menu) {
+  const set = (open) => {
+    toggle.setAttribute('aria-expanded', String(open)); menu.hidden = !open; document.body.classList.toggle('menu-open', open);
+    if (open) menu.querySelector('a')?.focus(); else toggle.focus();
+  };
+  toggle.addEventListener('click', () => set(menu.hidden));
+  menu.addEventListener('click', (e) => { if (e.target.closest('a')) set(false); });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) set(false); });
+}
+// home: the header sits over the hero until the page scrolls
+const head = document.querySelector('.site-head');
+if (head && document.body.classList.contains('kat')) {
+  const solid = () => head.classList.toggle('solid', scrollY > innerHeight * 0.6);
+  addEventListener('scroll', solid, { passive: true }); solid();
 }
 
 // header: mark the current page

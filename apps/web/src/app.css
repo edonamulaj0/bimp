@@ -81,7 +81,9 @@ kbd { font: 500 11px/1 var(--font); padding: 2px 5px; border: 1px solid var(--li
   .login-foot { flex-direction: column; gap: var(--s2); margin-top: var(--s6); }
 }
 .login-switch .link { font: inherit; padding: var(--s2) 0; text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 2px; text-underline-offset: 3px; }
-.login-right { position: relative; overflow: hidden; background: #fff url(/login.png) center / cover no-repeat; }
+.login-right { position: relative; overflow: hidden; background: #fff url(/renders/aerial.png) center / 118% auto no-repeat; }
+.login-right.photo { background-size: cover; }
+.login-right.photo::before { background: linear-gradient(180deg, transparent 55%, rgb(30 29 27 / .7)); mix-blend-mode: normal; opacity: 1; }
 .login-right::before { content: ""; position: absolute; inset: 0; background: #134a8a; mix-blend-mode: multiply; opacity: .9; }
 .bp-grid { position: absolute; inset: 0; background-image:
   linear-gradient(rgb(255 255 255 / .09) 1px, transparent 1px), linear-gradient(90deg, rgb(255 255 255 / .09) 1px, transparent 1px),
