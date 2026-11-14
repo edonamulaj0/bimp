@@ -267,7 +267,15 @@ eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
 
 // Gemini: a retired model (404) is replaced by the newest Flash model the key can use, and the call succeeds
 {
-  const { generate } = await import('../apps/api/src/gemini');
+  const { generate, joinStream } = await import('../apps/api/src/gemini');
+  const sse = (...chunks: unknown[]) => chunks.map((c) => `data: ${JSON.stringify(c)}\r\n\r\n`).join('');
+  const joined = joinStream(sse(
+    { candidates: [{ content: { role: 'model', parts: [{ text: 'thinking', thought: true }] } }] },
+    { candidates: [{ content: { role: 'model', parts: [{ text: '{"rooms":' }] } }] },
+    { candidates: [{ content: { role: 'model', parts: [{ text: '[]}' }, { functionCall: { name: 'count', args: { kind: 'door' } } }] }, finishReason: 'STOP' }] },
+  ));
+  eq('streamed Gemini reply: text pieces joined, thoughts and tool calls kept apart', joined.content?.parts, [{ text: 'thinking', thought: true }, { text: '{"rooms":[]}' }, { functionCall: { name: 'count', args: { kind: 'door' } } }]);
+  eq('streamed Gemini reply: finish reason read from the last piece', joined.finishReason, 'STOP');
   const calls: string[] = [];
   const real = globalThis.fetch;
   globalThis.fetch = (async (url: string) => {
@@ -284,7 +292,7 @@ eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
   try {
     const env = { GEMINI_API_KEY: 'k', GEMINI_MODEL: 'gemini-2.5-flash', DB: null } as never;
     const c = await generate(env, { contents: [] });
-    eq('retired Gemini model: falls back to the newest stable Flash', calls, ['models/gemini-2.5-flash:generateContent', 'models?pageSize=200', 'models/gemini-3.0-flash:generateContent']);
+    eq('retired Gemini model: falls back to the newest stable Flash', calls, ['models/gemini-2.5-flash:streamGenerateContent?alt=sse', 'models?pageSize=200', 'models/gemini-3.0-flash:streamGenerateContent?alt=sse']);
     eq('retired Gemini model: answer still returned', c.parts[0].text, 'ok');
   } finally { globalThis.fetch = real; }
 }

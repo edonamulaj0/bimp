@@ -15,7 +15,8 @@ export async function generate(env: Env, body: Record<string, unknown>, cacheKey
     const hit = await env.DB.prepare('SELECT response FROM model_cache WHERE key = ?').bind(key).first<{ response: string }>();
     if (hit) return JSON.parse(hit.response);
   }
-  const call = (m: string) => fetch(`${apiBase(env)}/v1beta/models/${m}:generateContent`, {
+  // Streamed: a long reading sends bytes as it goes, so the connection is not cut while the model is still working (524).
+  const call = (m: string) => fetch(`${apiBase(env)}/v1beta/models/${m}:streamGenerateContent?alt=sse`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY! },
     body: JSON.stringify(body),
@@ -30,14 +31,34 @@ export async function generate(env: Env, body: Record<string, unknown>, cacheKey
     console.error('gemini', res.status, (await res.text()).slice(0, 500));
     throw fail(502, res.status === 404 ? `The AI model "${model}" isn't available to this API key. Set GEMINI_MODEL to a current model (for example gemini-flash-latest).` : `The AI service returned an error (${res.status}). Try again.`);
   }
-  const json = (await res.json()) as { candidates?: { content?: Content; finishReason?: string }[] };
-  const content = json.candidates?.[0]?.content, fr = json.candidates?.[0]?.finishReason;
+  const { content, finishReason: fr } = joinStream(await res.text());
   if (!content?.parts?.length) throw fail(502, 'The AI service returned an empty response.');
   if (fr && fr !== 'STOP') throw fail(502, `The AI response was incomplete (${fr}). Try again.`);
   check?.(content);
   if (key) await env.DB.prepare('INSERT OR REPLACE INTO model_cache (key, model, response, created_at) VALUES (?, ?, ?, ?)')
     .bind(key, model, JSON.stringify(content), now()).run();
   return content;
+}
+
+type Chunk = { candidates?: { content?: Partial<Content>; finishReason?: string }[] };
+
+/** Joins a streamed reply (server-sent events, or one plain JSON body) into a single Content. Text pieces are concatenated; other parts are kept as sent. */
+export function joinStream(body: string): { content: Content | null; finishReason?: string } {
+  const events = body.split(/\r?\n/).filter((l) => l.startsWith('data:')).map((l) => l.slice(5).trim()).filter((l) => l && l !== '[DONE]');
+  const chunks: Chunk[] = events.length ? events.map((e) => JSON.parse(e)) : [JSON.parse(body)];
+  const parts: Part[] = [];
+  let finishReason: string | undefined;
+  for (const chunk of chunks) {
+    const cand = chunk.candidates?.[0];
+    if (cand?.finishReason) finishReason = cand.finishReason;
+    for (const part of cand?.content?.parts ?? []) {
+      const last = parts[parts.length - 1];
+      const plain = (p: Part) => typeof p.text === 'string' && !p.functionCall && !p.functionResponse && !p.inlineData;
+      if (last && plain(last) && plain(part) && !!last.thought === !!part.thought) parts[parts.length - 1] = { ...last, ...part, text: last.text! + part.text! };
+      else parts.push({ ...part });
+    }
+  }
+  return { content: parts.length ? { role: 'model', parts } : null, finishReason };
 }
 
 const apiBase = (env: Env) => (env.AI_GATEWAY_URL ? `${env.AI_GATEWAY_URL.replace(/\/$/, '')}/google-ai-studio` : 'https://generativelanguage.googleapis.com');
