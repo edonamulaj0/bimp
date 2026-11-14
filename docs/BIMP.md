@@ -4,6 +4,7 @@
 > Ask your drawings. See the answer on the sheet.
 
 This file is the single source of truth for BIMP. Read it in full before working on anything in this project.
+The work plan from here to judging is in `docs/PLAN.md`.
 If code, a conversation, or another document disagrees with this file, this file wins — or update it in the same
 change. Sections marked **VERIFY** are assumptions that have not been confirmed yet; check them before relying on them.
 
