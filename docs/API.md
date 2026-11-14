@@ -55,4 +55,4 @@ Every reading of a drawing is a revision (a row in `plans`). The latest is the p
 - `message.content.cost`: `{ by: 'code' | 'model', usd, calls, tokens_in, tokens_out, ms }`. `by: 'code'` means the answer was computed from the stored plan without a model call.
 - Jobs (`GET /projects/:id/jobs/:jid`, and `jobs[]` of a project) carry `file_id` and `render_sha`: the sheet being read, shown on the canvas meanwhile.
 - Plans: every room, opening and fitting read from a drawing has `src: { page, box }`; `plan.source.page` / `pages` say which page of the file the plan is.
-
+- `DELETE /projects/:id/jobs/:jid` stops a reading in progress → `{ ok, removed, message }`. A file that was never read into a plan is removed from the project with it (`removed: true`).

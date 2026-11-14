@@ -247,7 +247,7 @@ export function ProjectPage({ id }: { id: string }) {
                 <div class="row-handle" role="separator" aria-orientation="horizontal" tabIndex={0} aria-label="Resize files and chat"
                   aria-valuenow={filesH} aria-valuemin={15} aria-valuemax={85} {...rowResize} />
                 <Chat projectId={id} planId={compare ? null : shownId} messages={data.messages} hasPlan={!!data.plan} shared={!!team} resumeJob={data.jobs[0]?.id} onRefused={refused}
-                  onMessages={(messages) => setData((d) => d && { ...d, messages })}
+                  onMessages={(messages) => setData((d) => d && { ...d, messages })} onChanged={load}
                   onPlan={(plan) => { setData((d) => d && { ...d, plan }); setViewRev(null); setCompare(null); load(); projectsVersion.value++; }} />
               </aside>
               <div class="ws-handle h-left" role="separator" aria-orientation="vertical" tabIndex={0} aria-label="Resize files panel" aria-controls="ws-left"
@@ -298,7 +298,7 @@ export function ProjectPage({ id }: { id: string }) {
           </>
         )}
       </main>
-      {tourStep.value !== null && <Tour phone={phone} onPane={setMPane} />}
+      {tourStep.value !== null && <Tour phone={phone} onPane={setMPane} empty={!!data && !shownPlan} />}
       {showKeys && <Shortcuts onClose={() => setShowKeys(false)} />}
     </>
   );
@@ -385,18 +385,29 @@ function CanvasPane({ plan: drawn, projectId, name, loading, onUpload, onRefused
   if (pending) return (
     <section class="canvas" id="pane-canvas" aria-label="Canvas" data-tour="canvas">
       {noticeBar}
-      <PendingDrawing url={pending.url} name={pending.name} stage={pending.stage} />
+      <PendingDrawing url={pending.url} name={pending.name} stage={pending.stage} onStop={pending.stop} />
     </section>
   );
   if (loading) return <section class="canvas empty-canvas" id="pane-canvas" aria-label="Canvas"><Spinner size={40} label="Loading revision" /></section>;
   if (!plan) return (
-    <section class={`canvas empty-canvas${over ? ' over' : ''}`} id="pane-canvas" aria-label="Canvas" data-tour="canvas" {...dropProps}>
+    <section class={`canvas no-plan${over ? ' over' : ''}`} id="pane-canvas" aria-label="Canvas" data-tour="canvas" {...dropProps}>
+      {/* the tools as they will be, switched off until there is a drawing: the tour and the first-project guide point at them */}
+      <div class="toolbar" aria-label="Tools, available once a drawing is read">
+        <div class="seg sm" role="group" aria-label="View">{['2D', '3D', 'Split'].map((m) => <button key={m} disabled>{m}</button>)}</div>
+        <div class="seg sm tools" role="group" aria-label="Tools" data-tour="tools">
+          {TOOLS.map(([t, l, ic, k, tip]) => <button key={t} disabled title={`${l} (${k}): ${tip}. Add a drawing first.`}><Icon name={ic} size={16} /><span class="tool-l">{l}</span></button>)}
+        </div>
+        <span class="spacer" />
+        <span class="pill">Add a drawing to use the tools</span>
+      </div>
       {noticeBar}
+      <div class="empty-canvas grow">
       <div class="drop">
         <h2>No drawing yet</h2>
         <p class="muted">Drop a floor plan here or on the file list. bimp reads it into rooms, walls and openings, drawn here in 2D and 3D.</p>
         <button class="btn sm" onClick={onUpload}><Icon name="upload" size={16} />Add a floor plan</button>
         <p class="muted small">PDF, DXF, PNG, JPG or WebP · up to 50 MB</p>
+      </div>
       </div>
     </section>
   );
@@ -560,7 +571,7 @@ function CanvasPane({ plan: drawn, projectId, name, loading, onUpload, onRefused
 }
 
 /** The uploaded drawing while it is being read: drag to pan, scroll or pinch-free buttons to zoom, with the reading's progress. */
-function PendingDrawing({ url, name, stage }: { url: string; name: string; stage: string }) {
+function PendingDrawing({ url, name, stage, onStop }: { url: string; name: string; stage: string; onStop?(): void }) {
   const [v, setV] = useState({ k: 1, x: 0, y: 0 });
   const [ok, setOk] = useState(true);
   const drag = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
@@ -577,6 +588,7 @@ function PendingDrawing({ url, name, stage }: { url: string; name: string; stage
       <div class="pending-card" role="status">
         <Spinner size={18} label={null} />
         <span><b>{stage || 'Reading the drawing…'}</b><span class="muted small">{name} · the 2D and 3D model will be drawn over it</span></span>
+        {onStop && <button type="button" class="btn ghost sm" onPointerDown={(e) => e.stopPropagation()} onClick={onStop} title="Stop reading this drawing and remove it from the project">Stop</button>}
       </div>
       <div class="pending-zoom seg sm" role="group" aria-label="Zoom">
         <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => zoom(1 / 1.3)} aria-label="Zoom out">−</button>

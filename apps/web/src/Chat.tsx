@@ -15,9 +15,9 @@ const shortText = (t: string) => { const m = t.match(/^Give me an overview of (.
 const isError = (c: Content) => c.kind === 'error' || (c.kind === 'system' && !c.claims);
 
 /** bimp AI, docked under the file tree: questions about the plan, or about the marked region only. Also runs uploads. */
-export function Chat({ projectId, planId, messages, hasPlan, shared, resumeJob, hidden, onMessages, onPlan, onRefused }: {
+export function Chat({ projectId, planId, messages, hasPlan, shared, resumeJob, hidden, onMessages, onPlan, onRefused, onChanged }: {
   projectId: string; /** the revision on the canvas: questions are about it */ planId?: string | null; messages: Msg[]; hasPlan: boolean; shared: boolean; resumeJob?: string; hidden?: boolean;
-  onMessages(m: Msg[]): void; onPlan(p: Plan): void; onRefused?(why: string[]): void;
+  onMessages(m: Msg[]): void; onPlan(p: Plan): void; onRefused?(why: string[]): void; /** files changed without a new plan (a reading was stopped) */ onChanged?(): void;
 }) {
   const [text, setText] = useState('');
   const [job, setJob] = useState(''); // stage of the drawing being read; uploads don't block questions
@@ -40,10 +40,15 @@ export function Chat({ projectId, planId, messages, hasPlan, shared, resumeJob, 
   const canAsk = ai.value && hasPlan;
   const push = (...m: Msg[]) => { if (!alive.current) return; messages = [...messages, ...m]; onMessages(messages); };
   const fail = (e: unknown) => push({ role: 'assistant', content: { text: (e as Error).message, kind: 'error' } });
+  const jobId = useRef<string | null>(null);      // the reading in progress, so it can be stopped
+  const stopped = useRef(false);
+  const asker = useRef<AbortController | null>(null);
+  const [stopping, setStopping] = useState(false);
   const local = useRef<string | null>(null); // object URL of the image being uploaded, shown on the canvas at once
-  const pending = (url: string | null, name: string, stage: string) => { if (alive.current) pendingDrawing.value = url ? { url, name, stage } : null; };
+  const pending = (url: string | null, name: string, stage: string) => { if (alive.current) pendingDrawing.value = url ? { url, name, stage, stop: () => { void stop(); } } : null; };
   const done = () => {
-    if (alive.current) { setJob(''); pendingDrawing.value = null; }
+    jobId.current = null; stopped.current = false;
+    if (alive.current) { setJob(''); setStopping(false); pendingDrawing.value = null; }
     if (local.current) { URL.revokeObjectURL(local.current); local.current = null; }
     if (file.current) file.current.value = '';
   };
@@ -53,16 +58,19 @@ export function Chat({ projectId, planId, messages, hasPlan, shared, resumeJob, 
   }, []);
 
   /** Polls an ingestion job (a Cloudflare Workflow) until it finishes, showing its stage. Stops on unmount; rides out brief network errors. */
-  async function follow(jobId: string, name = 'the drawing') {
-    for (let i = 0, errors = 0; i < 400 && alive.current; i++) {
+  async function follow(id: string, name = 'the drawing') {
+    jobId.current = id;
+    const gone = () => stopped.current || jobId.current !== id; // stopped: this reading is no longer the one being followed
+    for (let i = 0, errors = 0; i < 400 && alive.current && !gone(); i++) {
       let d: { job: Job; plan?: Plan; message?: Msg };
-      try { d = await api(`/projects/${projectId}/jobs/${jobId}`); errors = 0; }
+      try { d = await api(`/projects/${projectId}/jobs/${id}`); errors = 0; }
       catch (e) {
+        if (gone()) return; // the reading was stopped while this check was on its way
         if (!(e instanceof TypeError) || ++errors > 3) throw e; // fetch itself failed: offline for a moment
         await new Promise((r) => setTimeout(r, 1500 * 2 ** errors));
         continue;
       }
-      if (!alive.current) return;
+      if (!alive.current || gone()) return;
       if (d.job.status === 'done') { if (d.message) push(d.message); if (d.plan) onPlan(d.plan); return; }
       if (d.job.status === 'failed') throw new Error(`Couldn't read the drawing: ${d.job.error ?? 'unknown error'}`);
       setJob(d.job.stage);
@@ -70,7 +78,7 @@ export function Chat({ projectId, planId, messages, hasPlan, shared, resumeJob, 
       pending(d.job.render_sha ? `/api/projects/${projectId}/render/${d.job.render_sha}` : local.current ?? (d.job.file_id ? `/api/projects/${projectId}/files/${d.job.file_id}/preview` : null), name, d.job.stage);
       await new Promise((r) => setTimeout(r, 1500));
     }
-    if (alive.current) throw new Error('Still working on the drawing. Reload the page later to see the result.');
+    if (alive.current && !gone()) throw new Error('Still working on the drawing. Reload the page later to see the result.');
   }
 
   useEffect(() => {
@@ -91,9 +99,25 @@ export function Chat({ projectId, planId, messages, hasPlan, shared, resumeJob, 
     setAsking(true);
     const r = region.peek();
     push({ role: 'user', content: r ? { text: q, region: r } : { text: q } });
-    try { const d = await api(`/projects/${projectId}/chat`, { json: { message: q, ...(r ? { region: r } : {}), ...(planId ? { plan_id: planId } : {}) } }); push(d.message); }
-    catch (e) { fail(e); }
+    asker.current = new AbortController();
+    try { const d = await api(`/projects/${projectId}/chat`, { json: { message: q, ...(r ? { region: r } : {}), ...(planId ? { plan_id: planId } : {}) }, signal: asker.current.signal }); push(d.message); }
+    catch (e) {
+      if ((e as Error).name === 'AbortError') push({ role: 'assistant', content: { text: 'Stopped waiting for the answer. If bimp had already finished it, it appears here when the project is opened again.', kind: 'system', claims: [] } });
+      else fail(e);
+    }
     finally { if (alive.current) setAsking(false); }
+  }
+
+  /** Stop: ends the reading in progress (a drawing uploaded by mistake leaves the project again), and gives up waiting for an answer. */
+  async function stop() {
+    asker.current?.abort();
+    const id = jobId.current;
+    if (!id || stopping) return;
+    setStopping(true); stopped.current = true;
+    uploadQueue.value = [];
+    try { const d = await api<{ message: Msg }>(`/projects/${projectId}/jobs/${id}`, { method: 'DELETE' }); push(d.message); say('Reading stopped'); onChanged?.(); }
+    catch (e) { stopped.current = false; if (alive.current) setStopping(false); if (!/already/.test((e as Error).message)) fail(e); return; }
+    done();
   }
 
   async function upload(f: File) {
@@ -140,7 +164,8 @@ export function Chat({ projectId, planId, messages, hasPlan, shared, resumeJob, 
         {messages.map((m, i) => <Message key={m.id ?? i} m={m} shared={shared} />)}
       </div>
       <p class="status" role="status">
-        {status && <><Spinner size={16} label={null} />{status}{job && <span aria-hidden="true" class="num"> · {clock(Date.now() - t0)}</span>}</>}
+        {status && <><Spinner size={16} label={null} /><span class="status-t">{status}{job && <span aria-hidden="true" class="num"> · {clock(Date.now() - t0)}</span>}</span>
+          {(asking || !!job) && <button type="button" class="link small stop" onClick={stop} disabled={stopping} title={job ? 'Stop reading this drawing and remove it from the project' : 'Stop waiting for the answer'}>{stopping ? 'Stopping…' : 'Stop'}</button>}</>}
       </p>
       {!ai.value && <p class="ai-off small muted" id="ai-off">{AI_OFF}</p>}
       {size && (

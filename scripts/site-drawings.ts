@@ -49,7 +49,7 @@ function shape(k: string, w: number, d: number): [string, string] {
     case 'bathtub': return [base, RR(x0 + 0.06, y0 + 0.06, w - 0.12, d - 0.12, 0.15) + E(x0 + 0.22, 0, 0.03)];
     case 'shower': return [base, L(x0, y0, -x0, -y0) + L(-x0, y0, x0, -y0) + E(0, 0, 0.04)];
     case 'stove': { const r = Math.min(w, d) * 0.15; return [base, [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => E((a * w) / 4, (b * d) / 4, r)).join('')]; }
-    case 'fridge': return [base, L(x0, -y0 - 0.06, -x0, -y0 - 0.06) + L(x0, y0, -x0, -y0)];
+    case 'fridge': return [base, L(x0, -y0 - 0.06, -x0, -y0 - 0.06) + L(0, -y0 - 0.06, 0, -y0) + R(x0 + 0.08, y0 + 0.08, w - 0.16, d - 0.3)]; // door line, the split between its two doors, the cabinet
     case 'washer': return [base, E(0, 0.03, Math.min(w, d) * 0.32) + E(0, 0.03, Math.min(w, d) * 0.2)];
     case 'bed': {
       const c = w > 1.2 ? 2 : 1, pw = (w - 0.1 * (c + 1)) / c, by = y0 + d * 0.3, fo = Math.min(0.35, w * 0.3);
@@ -85,12 +85,13 @@ const place = (k: string, x: number, y: number, w: number, d: number, deg: numbe
 };
 // drawn here only: [kind, centre x, centre y, width, depth, quarter turns]
 const decor: [string, number, number, number, number, number][] = [
-  ['rug', 9.6, 6.4, 3.6, 2.8, 0], ['rug', 5.0, 7.3, 3.2, 2.4, 1], ['rug', 14.3, 1.6, 2.6, 2.4, 0], ['rug', 15.3, 7.9, 3.0, 2.4, 0], ['rug', 7.2, 2.4, 2.6, 1.1, 1], ['rug', 11.0, 1.05, 0.9, 0.5, 0],
+  ['rug', 9.5, 6.5, 3.2, 2.6, 0], ['rug', 5.4, 7.3, 3.2, 2.4, 1], ['rug', 14.3, 1.6, 2.6, 2.4, 0], ['rug', 12.95, 8.0, 2.7, 2.3, 0], ['rug', 7.2, 2.6, 2.4, 1.1, 1], ['rug', 11.0, 1.05, 0.9, 0.5, 0],
   ['counter', 4.275, 4.56, 2.85, 0.6, 0], ['counter', 0.45, 6.6, 3.2, 0.6, 3], ['counter', 2.75, 6.7, 2.2, 0.9, 1], ['stool', 3.5, 6.0, 0.36, 0.36, 0], ['stool', 3.5, 6.7, 0.36, 0.36, 0], ['stool', 3.5, 7.4, 0.36, 0.36, 0],
-  ['shelf', 9.9, 4.44, 2.6, 0.35, 0], ['lowtable', 9.5, 6.3, 1.2, 0.65, 0], ['armchair', 8.3, 6.3, 0.85, 0.85, 3], ['plant', 11.0, 9.0, 0.55, 0.55, 0], ['plant', 8.2, 4.75, 0.5, 0.5, 0], ['plant', 0.6, 8.95, 0.6, 0.6, 0],
+  ['shelf', 9.9, 4.44, 2.6, 0.35, 0], ['lowtable', 9.5, 6.4, 1.2, 0.65, 0], ['armchair', 8.35, 6.4, 0.85, 0.85, 3], ['plant', 11.0, 9.05, 0.55, 0.55, 0], ['plant', 8.2, 4.75, 0.5, 0.5, 0], ['plant', 0.6, 8.95, 0.6, 0.6, 0],
   ['bedside', 3.0, 2.25, 0.45, 0.4, 3], ['bedside', 12.9, 0.45, 0.45, 0.4, 3], ['bedside', 12.9, 2.55, 0.45, 0.4, 3],
-  ['lowtable', 15.7, 8.35, 1.6, 0.4, 0], ['armchair', 13.4, 8.75, 0.85, 0.85, 2], ['shelf', 8.14, 0.8, 1.0, 0.35, 1], ['shelf', 10.0, 3.24, 1.4, 0.3, 0],
-  ['table', 5.4, 11.1, 1.8, 0.9, 0], ['armchair', 9.2, 11.4, 0.8, 0.8, 2], ['armchair', 10.2, 11.4, 0.8, 0.8, 2], ['plant', 3.5, 12.1, 0.6, 0.6, 0], ['plant', 10.9, 10.1, 0.5, 0.5, 0],
+  ['bedside', 11.69, 6.85, 0.45, 0.4, 3], ['bedside', 11.69, 9.15, 0.45, 0.4, 3], ['lowtable', 13.75, 8.0, 1.6, 0.4, 1], ['armchair', 16.0, 9.0, 0.8, 0.8, 1], ['shelf', 8.14, 0.8, 1.0, 0.35, 1],
+  // terrace: the table clear of the garden door's swing; the chairs back onto the house and face the garden
+  ['table', 4.9, 11.2, 1.8, 0.9, 0], ['armchair', 9.1, 10.45, 0.8, 0.8, 0], ['armchair', 10.15, 10.45, 0.8, 0.8, 0], ['lowtable', 9.62, 11.55, 0.9, 0.5, 0], ['plant', 3.5, 10.1, 0.55, 0.55, 0], ['plant', 10.9, 12.1, 0.55, 0.55, 0],
 ];
 for (const [k, x, y, w, d, q] of decor) place(k, x, y, w, d, q * 90, k === 'rug' ? rugs : furn);
 for (const fx of p.fixtures ?? []) place(fx.kind, fx.center[0], fx.center[1], fx.size[0], fx.size[1], (fx.angle * 180) / Math.PI);
@@ -136,7 +137,7 @@ dim(X(-0.15), Y(-0.15) - 34, X(bw + 0.15), Y(-0.15) - 34, mm(bw + 0.3));
 dim(X(-0.15) - 34, Y(-0.15), X(-0.15) - 34, Y(bh + 0.15), mm(bh + 0.3), true);
 
 // room labels with net areas, placed clear of the furniture
-const at: Record<string, Pt> = { Utility: [1.1, 2.6], 'Bedroom 3': [4.6, 1.6], 'Entrance hall': [7.3, 3.0], Bathroom: [11.0, 1.7], 'Bedroom 2': [14.9, 2.9], 'Kitchen / dining / living': [7.25, 5.7], Dressing: [12.5, 5.55], 'En-suite': [15.7, 5.5], 'Main bedroom': [13.1, 7.6], Terrace: [7.2, 11.95] };
+const at: Record<string, Pt> = { Utility: [1.1, 2.6], 'Bedroom 3': [4.6, 1.6], 'Entrance hall': [7.3, 3.0], Bathroom: [11.0, 1.7], 'Bedroom 2': [14.9, 2.9], 'Kitchen / dining / living': [7.25, 5.7], Dressing: [12.5, 5.55], 'En-suite': [15.7, 5.5], 'Main bedroom': [15.0, 6.75], Terrace: [7.2, 11.95] };
 const labels = allRooms.filter((r) => at[r.name]).map((r) => {
   const [x, y] = at[r.name];
   return `<text class="rl" x="${X(x)}" y="${Y(y)}" text-anchor="middle">${r.name}</text><text class="ra" x="${X(x)}" y="${f(Y(y) + 14)}" text-anchor="middle">${area(r.polygon).toFixed(1)} m²</text>`;

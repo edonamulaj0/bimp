@@ -277,6 +277,26 @@ projects.get('/:id/jobs/:jid', async (c) => {
   return c.json({ job, plan: await latestPlan(c.env, project.id), message: last && { role: 'assistant', content: JSON.parse(last.content) } });
 });
 
+/** Stops a reading in progress. A file that was never read into a plan (an accidental upload) is removed with it. */
+projects.delete('/:id/jobs/:jid', async (c) => {
+  const project = await projectAccess(c, c.req.param('id'));
+  const job = await c.env.DB.prepare('SELECT j.id, j.status, j.file_id, f.filename, f.r2_key FROM jobs j LEFT JOIN files f ON f.id = j.file_id WHERE j.id = ? AND j.project_id = ?')
+    .bind(c.req.param('jid'), project.id).first<{ id: string; status: string; file_id: string; filename: string | null; r2_key: string | null }>();
+  if (!job) throw fail(404, 'Job not found.');
+  const stopped = await c.env.DB.prepare("UPDATE jobs SET status = 'failed', stage = 'Stopped', error = 'stopped', updated_at = ? WHERE id = ? AND status IN ('queued', 'running')").bind(now(), job.id).run();
+  if (!stopped.meta.changes) throw fail(409, job.status === 'done' ? 'This drawing has already been read.' : 'This reading has already ended.');
+  await c.env.INGEST_WORKFLOW.get(job.id).then((w) => w.terminate()).catch(() => {});
+  // pages of a PDF read before the stop stay as revisions; a file with none of them goes
+  const kept = await c.env.DB.prepare('SELECT 1 FROM plans WHERE file_id = ? LIMIT 1').bind(job.file_id).first();
+  if (!kept) {
+    await c.env.DB.prepare('DELETE FROM files WHERE id = ? AND project_id = ?').bind(job.file_id, project.id).run();
+    if (job.r2_key) await c.env.FILES.delete(job.r2_key).catch(() => {});
+  }
+  const content = { kind: 'system', claims: [], text: `Stopped reading ${job.filename ?? 'the drawing'}.${kept ? '' : ' The file was removed from the project.'}` };
+  await c.env.DB.prepare('INSERT INTO messages (project_id, role, content, created_at) VALUES (?,?,?,?)').bind(project.id, 'assistant', JSON.stringify(content), now()).run();
+  return c.json({ ok: true, removed: !kept, message: { role: 'assistant', content } });
+});
+
 projects.get('/:id/render/:sha', async (c) => {
   const project = await projectAccess(c, c.req.param('id'));
   const sha = c.req.param('sha');

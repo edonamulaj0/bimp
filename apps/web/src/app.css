@@ -299,7 +299,7 @@ td.c-name { height: 44px; }
 .drop-veil span { font-size: var(--t-xs); color: var(--muted); }
 .files.over .ft { opacity: .35; }
 .canvas.over .views { outline: 2px dashed var(--accent); outline-offset: -6px; }
-.empty-canvas.over .drop { border-color: var(--accent); background: var(--paper-3); }
+.empty-canvas.over .drop, .no-plan.over .drop { border-color: var(--accent); background: var(--paper-3); }
 
 /* chat */
 .chat { overflow: hidden; background: var(--surface); }
@@ -359,6 +359,8 @@ td.c-name { height: 44px; }
 details { margin-top: var(--s2); } details summary { cursor: pointer; } details ul { margin: var(--s1) 0 0; padding-left: 1.1rem; }
 .unverified { margin-top: var(--s2) !important; color: var(--warn); }
 .status { display: flex; align-items: center; gap: var(--s2); margin: 0; padding: 0 var(--s4); min-height: 1.75rem; font-size: var(--t-xs); color: var(--muted); }
+.status-t { flex: 1; min-width: 0; }
+.status .stop { flex: none; font-weight: 500; color: var(--ink); }
 .status:empty { min-height: 0; }
 .ai-off { margin: 0; padding: var(--s2) var(--s4) 0; }
 .composer { display: flex; gap: var(--s2); align-items: flex-end; padding: var(--s2) var(--s3) var(--s3); border-top: 1px solid var(--line); }
@@ -504,6 +506,10 @@ details { margin-top: var(--s2); } details summary { cursor: pointer; } details 
 .pending-card > span { display: flex; flex-direction: column; min-width: 0; }
 .pending-card b { font-weight: 500; }
 .pending-zoom { position: absolute; right: var(--s3); bottom: var(--s3); z-index: 2; background: var(--surface); }
+.canvas.no-plan { display: flex; flex-direction: column; }
+.canvas.no-plan > .empty-canvas { flex: 1; min-height: 0; display: grid; place-items: center; }
+.canvas.no-plan .toolbar button:disabled { opacity: .45; cursor: default; }
+.pending-card .btn { margin-left: var(--s2); flex: none; }
 .tool-hint { position: absolute; left: 50%; bottom: 88px; transform: translateX(-50%); z-index: 4; background: var(--ink); color: var(--paper); padding: 4px 10px; border-radius: 14px; font-size: var(--t-xs); pointer-events: none; white-space: nowrap; }
 .views { position: relative; flex: 1; min-height: 0; display: grid; grid-template-rows: minmax(0, 1fr); }
 .views.mode-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }

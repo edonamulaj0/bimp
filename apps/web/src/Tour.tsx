@@ -27,8 +27,13 @@ const PHONE: Step[] = [
 ];
 
 /** The welcome tour: a spotlight on each part of the workspace with a short card. Arrow keys step, Escape ends. */
-export function Tour({ phone, onPane }: { phone: boolean; onPane(p: 'plan'): void }) {
-  const steps = phone ? PHONE : DESKTOP;
+/** In a project with no drawing yet, the canvas and its tools are there but switched off: the tour says so. */
+const EMPTY_NOTE: Record<string, string> = {
+  '[data-tour="canvas"]': ' This project has no drawing yet: drop one here, or open the pilot house from Projects to try everything first.',
+  '[data-tour="tools"]': ' They switch on as soon as a drawing has been read.',
+};
+export function Tour({ phone, onPane, empty }: { phone: boolean; onPane(p: 'plan'): void; empty?: boolean }) {
+  const steps = (phone ? PHONE : DESKTOP).map((st) => (empty && st.target && EMPTY_NOTE[st.target] ? { ...st, body: st.body + EMPTY_NOTE[st.target] } : st));
   const i = Math.min(tourStep.value ?? 0, steps.length - 1), s = steps[i];
   const [rect, setRect] = useState<DOMRect | null>(null);
   const card = useRef<HTMLDivElement>(null);

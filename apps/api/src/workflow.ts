@@ -28,7 +28,9 @@ export class IngestWorkflow extends WorkflowEntrypoint<Env, IngestParams> {
     // Each step first checks the project still exists: a deleted project stops its reading instead of retrying.
     const stage = async (s: string) => {
       if (!(await db.prepare('SELECT 1 FROM projects WHERE id = ?').bind(projectId).first())) throw new NonRetryableError('The project was deleted.');
-      await db.prepare("UPDATE jobs SET status = 'running', stage = ?, updated_at = ? WHERE id = ? AND status != 'done'").bind(s, now(), jobId).run();
+      // a reading that was stopped (or already failed) stays stopped: nothing brings it back to running
+      const r = await db.prepare("UPDATE jobs SET status = 'running', stage = ?, updated_at = ? WHERE id = ? AND status IN ('queued', 'running')").bind(s, now(), jobId).run();
+      if (!r.meta.changes) throw new NonRetryableError('The reading was stopped.');
     };
 
     const analyzePage = (page: number, of: string) => step.do(`analyze page ${page}`, RETRY, async (): Promise<Summary> => {
@@ -128,7 +130,7 @@ export class IngestWorkflow extends WorkflowEntrypoint<Env, IngestParams> {
       console.error('ingest', jobId, msg);
       // Only messages written for users reach the chat; library and infrastructure errors get a fixed text.
       const safe = /^(This |The |No rooms|Files up to|Upload a |The AI )/.test(msg) && msg.length < 300 ? msg : 'the reading failed. Try again, or upload a clearer PDF or image.';
-      if (!/project was deleted/.test(msg)) await failJob(this.env, jobId, projectId, safe).catch(() => {});
+      if (!/project was deleted|reading was stopped/.test(msg)) await failJob(this.env, jobId, projectId, safe).catch(() => {});
       throw e;
     }
   }

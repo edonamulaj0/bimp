@@ -64,7 +64,7 @@ export const say = (t: string) => { announce.value = ''; requestAnimationFrame((
 /** The markup region on the canvas (plan metres). While set, questions in the chat are answered from inside it only. */
 export const region = signal<import('../../shared/region').Region | null>(null);
 /** The drawing being read right now: the canvas shows it at once, and the 2D and 3D model is drawn over it when the reading is done. */
-export const pendingDrawing = signal<{ url: string; name: string; stage: string } | null>(null);
+export const pendingDrawing = signal<{ url: string; name: string; stage: string; stop?(): void } | null>(null);
 /** Files dropped on the file tree or the canvas, waiting for the chat to upload and read them (one at a time). */
 export const uploadQueue = signal<File[]>([]);
 export const ACCEPT = ['.pdf', '.dxf', '.png', '.jpg', '.jpeg', '.webp'];
