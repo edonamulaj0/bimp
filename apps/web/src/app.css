@@ -756,3 +756,9 @@ details { margin-top: var(--s2); } details summary { cursor: pointer; } details 
 @keyframes row-in { from { opacity: 0; transform: translateY(6px); } }
 @keyframes fade-in { from { opacity: 0; } }
 @keyframes fade-out { to { opacity: 0; } }
+
+/* bimp AI's mark (the target from the wordmark's i) */
+.bimp-mark { flex: none; display: block; color: var(--ink); }
+.cm-head .bimp-mark, .th-msgs .bimp-mark { margin-right: 2px; }
+.brand-logo.anim { display: inline-block; line-height: 0; color: var(--ink); }
+.brand-logo.anim svg { width: 100%; height: 100%; overflow: visible; }

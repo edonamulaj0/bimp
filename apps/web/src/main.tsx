@@ -9,6 +9,10 @@ import { announce, parsed, route, sidebarCollapsed, user } from './state';
 import { Spinner } from './brand';
 import { ShellDialogs, Sidebar } from './Shell';
 import './app.css';
+import { showSplash, splashPending } from './brand/wordmark';
+
+// launch splash (once per session): fades when its animation has run and we know who is signed in
+if (splashPending()) showSplash({ ready: new Promise<void>((ok) => { const stop = user.subscribe((u) => { if (u !== undefined) { ok(); queueMicrotask(() => stop()); } }); }) });
 
 function App() {
   useEffect(() => { loadMe().catch(() => (user.value = null)); }, []);

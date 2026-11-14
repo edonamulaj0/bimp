@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api } from './api';
 import { AI_OFF, ai, say, user } from './state';
-import { Spinner } from './brand';
+import { Spinner, BimpMark } from './brand';
 import { Icon } from './icons';
 import { AnswerBody } from './Answer';
 import { fullDate, when } from './ui';
@@ -147,7 +147,7 @@ function ThreadView({ t, projectId, onComments, onActive, viewedPlanId, revOf, r
         {[t.root, ...t.replies].map((c) => (
           <li key={c.id} class={`cm ${c.author}`}>
             <div class="cm-head">
-              {c.author === 'ai' ? <span class="avatar bimp" aria-hidden="true">b</span> : <span class="avatar" aria-hidden="true">{(c.user_email ?? '?').slice(0, 1).toUpperCase()}</span>}
+              {c.author === 'ai' ? <BimpMark size={24} /> : <span class="avatar" aria-hidden="true">{(c.user_email ?? '?').slice(0, 1).toUpperCase()}</span>}
               <b>{c.author === 'ai' ? 'bimp' : c.user_email ?? 'Someone'}</b>
               <span class="muted small" title={fullDate(c.created_at)}>{when(c.created_at)}</span>
               <span class="spacer" />

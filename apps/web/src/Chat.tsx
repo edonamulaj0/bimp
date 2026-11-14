@@ -3,7 +3,7 @@ import type { Plan } from '../../shared/plan';
 import { api } from './api';
 import { AI_OFF, ACCEPT, ai, chatPrompt, queueFiles, region, say, uploadQueue } from './state';
 import { regionSize } from '../../shared/region';
-import { Spinner } from './brand';
+import { BimpMark, Spinner } from './brand';
 import { Icon } from './icons';
 import { AnswerBody } from './Answer';
 import type { Content, Job, Msg } from './types';
@@ -112,7 +112,7 @@ export function Chat({ projectId, messages, hasPlan, shared, resumeJob, hidden, 
   return (
     <section class="chat dock" id="panel-chat" aria-labelledby="chat-h" hidden={hidden} data-tour="chat">
       <div class="dock-h">
-        <h2 id="chat-h"><span class="avatar bimp" aria-hidden="true">b</span>bimp AI</h2>
+        <h2 id="chat-h"><BimpMark size={18} />bimp AI</h2>
         <span class="spacer" />
         {messages.length > 0 && <span class="muted small">{messages.filter((m) => m.role === 'user').length} asked</span>}
       </div>
