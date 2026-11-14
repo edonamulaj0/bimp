@@ -202,8 +202,12 @@ void doorSweep; void fixtureContains;
   const p = buildPlan(raw, an, 'f1', 'sha');
   eq('detector: items kept by known kind', p.detected?.items.map((d) => d.kind), ['toilet', 'toilet', 'window']);
   eq('detector: item lies in its room', p.detected?.items[0].room_id, p.rooms[0].id);
-  const wc = runTool(p, 'count', { what: 'wc' }) as { count: number; source: string; read_by_language_model: number };
-  eq('detector: wc count comes from the detector', [wc.count, wc.read_by_language_model, /detector/.test(wc.source)], [2, 1, true]);
+  const wc = runTool(p, 'count', { what: 'wc' }) as { count: number; source: string; drawn_in_model: number };
+  eq('detector: wc count comes from the detector, and both toilets are drawn', [wc.count, wc.drawn_in_model, /detector/.test(wc.source)], [2, 2, true]);
+  // the model read the toilet 12 px off; the detector's box is where it is drawn. The second toilet only the detector saw.
+  const wcs = p.fixtures!.filter((f) => f.kind === 'wc').map((f) => f.src!.box.map((v, i) => Math.abs(v - [[150, 150, 220, 250], [300, 150, 370, 250]][f.id === 'f1' ? 0 : 1][i]) <= 12)); // the box plus its 10 cm margin
+  eq('detector: fittings stand where the detector found them', wcs, [[true, true, true, true], [true, true, true, true]]);
+  eq('detector: said in the assumptions', p.assumptions.some((a) => /1 where the symbol detector found them, 1 only the symbol detector found/.test(a)), true);
   eq('detector: window count comes from the detector', (runTool(p, 'count', { what: 'window' }) as { count: number }).count, 1);
   eq('detector: a kind it found none of counts zero', (runTool(p, 'count', { what: 'sink' }) as { count: number }).count, 0);
   eq('detector: other kinds still come from the plan', (runTool(p, 'count', { what: 'bed' }) as { count: number; source?: string }).source, undefined);
@@ -256,6 +260,14 @@ void doorSweep; void fixtureContains;
   near('traced: the room is as wide as the traced outline (1600 px = 8 m), not as read (1640 px)', p.rooms[0].polygon[1][0] - p.rooms[0].polygon[0][0], 8, 0.01);
   eq('traced: said in the assumptions', p.assumptions.some((a) => /2 of 2 room outlines traced/.test(a)), true);
   eq('aligned: the shared wall face is one line in both rooms', p.rooms[0].polygon[0][0] === p.rooms[1].polygon[0][0], true);
+  // what the service measured on the render: a room fitted edge by edge, a bed tightened onto its lines, 24 px outside walls
+  const seenOn = buildPlan(raw, an, 'f1', 'a'.repeat(64), { rooms: traced, how: ['traced', 'fitted'], boxes: [[1210, 1205, 1590, 1600]], exterior_px: 60 });
+  eq('measured: a room fitted edge by edge is said so', seenOn.assumptions.some((a) => /2 of 2 room outlines traced.*\(1 edge by edge/.test(a)), true);
+  const bed = seenOn.fixtures!.find((f) => f.kind === 'bed')!;
+  eq('measured: furniture stands on the lines drawn for it, not where it was read', [Math.abs(bed.src!.box[0] - 1210) <= 25, Math.abs(bed.src!.box[2] - 1590) <= 25, p.fixtures!.find((f) => f.kind === 'bed')!.src!.box[0] < 1210], [true, true, true]);
+  eq('measured: outside walls as thick as they are drawn (60 px = 0.30 m at this scale stays; 80 px = 0.40 m)', [seenOn.walls.some((w) => w.thickness === 0.3),
+    buildPlan(raw, an, 'f1', 'a'.repeat(64), { rooms: traced, exterior_px: 80 }).walls.some((w) => w.thickness === 0.4)], [true, true]);
+  eq('trace request: furniture boxes go along, by index', traceRequest(raw, an).boxes, [[1200, 1200, 1600, 1600]]);
   eq('aligned: faces a wall apart stay apart', alignEdges([[[0, 0], [10, 0], [10, 10], [0, 10]], [[0, 10.2], [10, 10.2], [10, 20], [0, 20]]], 0, 0.05).map((q) => q[2][1])[0], 10);
   eq('source: every room, opening and fitting keeps its page and box', [p.rooms.every((r) => r.src?.page === 2 && r.src.box[2] > r.src.box[0]), p.openings.every((o) => !!o.src), p.fixtures?.every((f) => !!f.src)], [true, true, true]);
   eq('source: a room box covers its outline on the render', p.rooms[0].src?.box.map((v, i) => Math.abs(v - [200, 200, 1800, 980][i]) <= 40), [true, true, true, true]);

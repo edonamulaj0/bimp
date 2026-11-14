@@ -1,6 +1,6 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep, type WorkflowStepConfig } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
-import { buildPlan, readDrawing, traceRequest, type Raw } from './extract';
+import { buildPlan, readDrawing, traceRequest, type Measured, type Raw } from './extract';
 import { analyze, trace, type Analysis } from './ingest';
 import { checkPlan } from '../../shared/standards';
 import { type Env, failJob, now, sha256, toBase64 } from './util';
@@ -72,14 +72,15 @@ export class IngestWorkflow extends WorkflowEntrypoint<Env, IngestParams> {
         });
 
         // Exact outlines from the wall lines. The plan stands without them, so a failure here is not a failed reading.
-        const traced = await step.do(`trace page ${n}`, { retries: { limit: 1, delay: '3 seconds' }, timeout: '3 minutes' }, async (): Promise<(number[][] | null)[]> => {
-          await stage(`${of}Tracing room outlines from the wall lines…`);
+        const traced = await step.do(`trace page ${n}`, { retries: { limit: 1, delay: '3 seconds' }, timeout: '3 minutes' }, async (): Promise<Measured> => {
+          await stage(`${of}Measuring walls and fittings on the drawing…`);
           try {
             const [png, an] = await Promise.all([loadPng(), loadAnalysis()]);
             const req = traceRequest(raw, an);
-            if (!req.rooms.some((r) => r.length)) return [];
-            return (await trace(this.env, png, req.rooms, req.close)).rooms ?? [];
-          } catch (e) { console.warn('trace', jobId, (e as Error).message); return []; }
+            if (!req.rooms.some((r) => r.length)) return { rooms: [] };
+            const m = await trace(this.env, png, req);
+            return { rooms: m.rooms ?? [], how: m.how, boxes: m.boxes, exterior_px: m.exterior_px ?? null };
+          } catch (e) { console.warn('trace', jobId, (e as Error).message); return { rooms: [] }; }
         });
 
         results.push(await step.do(`measure and save page ${n}`, RETRY, async (): Promise<PageResult> => {

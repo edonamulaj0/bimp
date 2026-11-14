@@ -48,14 +48,14 @@ export function quickAnswer(question: string, plan: Plan): Quick | null {
     for (let prev = ''; prev !== noun;) { prev = noun; noun = noun.replace(TAIL, ''); }
     const c = COUNTABLE.find((x) => x.re.test(noun));
     if (!c) return null;
-    const r = runTool(plan, 'count', { what: c.what, room_type: c.room_type }) as { count: number; room_ids?: string[]; items?: { id: string; room_id: string | null }[]; source?: string; read_by_language_model?: number };
+    const r = runTool(plan, 'count', { what: c.what, room_type: c.room_type }) as { count: number; room_ids?: string[]; items?: { id: string; room_id: string | null }[]; source?: string; drawn_in_model?: number };
     const label = plural(r.count, c.one, c.many);
     const openings = c.what === 'door' || c.what === 'window' ? plan.openings.filter((o) => o.kind === c.what).map((o) => o.id) : [];
     const items = r.items?.map((i) => i.id) ?? openings;
     const rooms = r.room_ids ?? [...new Set((r.items ?? []).map((i) => i.room_id).filter((x): x is string => !!x))];
     // the detector's count is the answer on scans; when the drawn model disagrees, both are said
-    const differs = r.source && r.read_by_language_model !== undefined && r.read_by_language_model !== r.count
-      ? ` The drawn model shows ${r.read_by_language_model}; check the plan where they differ.` : '';
+    const differs = r.source && r.drawn_in_model !== undefined && r.drawn_in_model !== r.count
+      ? ` The drawn model shows ${r.drawn_in_model}; check the plan where they differ.` : '';
     return done(`There ${r.count === 1 ? 'is' : 'are'} **${label}** on this plan${r.source ? `, counted by the ${r.source}` : ''}.${differs}`,
       [{ text: label, room_ids: rooms, ...(items.length ? { item_ids: items } : {}) }]);
   }

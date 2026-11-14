@@ -85,7 +85,7 @@ export function runTool(plan: Plan, name: string, args: any): unknown {
         const drawn = dk === 'door' || dk === 'window' ? plan.openings.filter((o) => o.kind === dk).length
           : (plan.fixtures ?? []).filter((f) => (dk === 'toilet' ? f.kind === 'wc' : dk === 'sink' ? f.kind === 'sink' : f.kind === 'shower' || f.kind === 'bathtub') && (!args.room_id || f.room_id === args.room_id)).length;
         return { what: args.what, count: det.length, source: `symbol detector ${plan.detected!.model}`, items: det.map((d) => ({ id: d.id, room_id: d.room_id })),
-          ...(args.room_id && (dk === 'door' || dk === 'window') ? {} : { read_by_language_model: drawn }) };
+          ...(args.room_id && (dk === 'door' || dk === 'window') ? {} : { drawn_in_model: drawn }) };
       }
       if (args.what === 'shower_bath') {
         const fx = (plan.fixtures ?? []).filter((f) => (f.kind === 'shower' || f.kind === 'bathtub') && (!args.room_id || f.room_id === args.room_id));
