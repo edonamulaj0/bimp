@@ -1,11 +1,14 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { PlanDiff } from '../../../shared/diff';
 import { doorLinks, escapeRoutes } from '../../../shared/escape';
 import { type Footprint, labelPoint, wallFootprints } from '../../../shared/walls';
 import { type Plan, type Pt, area, centroid, dist, round } from '../../../shared/plan';
 import { hoverRoom, selectedRooms } from '../state';
 import { ROOM_COLORS } from './colors';
+import { type AnswerNote, noteArea, placeNote } from './note';
+import { Icon } from '../icons';
+import { Markdown } from '../Markdown';
 import { printPlan } from './print';
 import { FixtureSymbol } from './symbols';
 import { FLOOR_OF } from './floors-kind';
@@ -33,6 +36,8 @@ const NICE = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200];
 /** A comment pinned to the plan (plan metres). */
 export type PinMark = { id: string; n: number; x: number; y: number; resolved: boolean; label: string };
 type Props = {
+  /** The latest answer, shown beside the part of the plan it is about. */ note?: AnswerNote | null; onNoteClose?(): void;
+  /** What the marked region holds: shown beside the region, above the answer, never over it. */ regionCard?: ComponentChildren;
   plan: Plan; compact?: boolean; sourceUrl?: string | null; /** 0-1: how strongly the source drawing and the model over it are drawn */ sourceOpacity?: number; modelOpacity?: number; title?: string;
   /** Comment pins on this plan; drawn at a constant screen size. */
   pins?: PinMark[]; activePin?: string | null; onPin?(id: string): void;
@@ -51,7 +56,7 @@ type Props = {
 /** plan: the drawing with overall sizes; dims: every wall, opening and room dimensioned in millimetres. */
 export type PlanMode = 'plan' | 'dims';
 
-export function Plan2D({ plan, compact, sourceUrl, sourceOpacity = 0.45, modelOpacity = 1, title = 'Plan', pins, activePin, onPin, placing, onPlace, draft, popover, diff, focusAt, tool = 'select', region, onRegion, layers = ALL_LAYERS, apiRef, onMenu }: Props) {
+export function Plan2D({ plan, compact, note, onNoteClose, regionCard, sourceUrl, sourceOpacity = 0.45, modelOpacity = 1, title = 'Plan', pins, activePin, onPin, placing, onPlace, draft, popover, diff, focusAt, tool = 'select', region, onRegion, layers = ALL_LAYERS, apiRef, onMenu }: Props) {
   const [mode, setMode] = useState<PlanMode>(() => { try { return localStorage.getItem('bimp.planMode') === 'dims' ? 'dims' : 'plan'; } catch { return 'plan'; } });
   // Dimension strings sit outside the building: three tiers on every side need about twice the margin.
   const pad = Math.max(plan.width, plan.height) * (mode === 'dims' && !compact ? 0.2 : 0.1), top = compact ? 0 : pad * 0.35; // room for the toolbar
@@ -95,6 +100,29 @@ export function Plan2D({ plan, compact, sourceUrl, sourceOpacity = 0.45, modelOp
   })), [plan]);
   const exits = useMemo(() => (showEscape ? doorLinks(plan).filter((d) => d.exit) : []), [plan, showEscape]);
   useEffect(() => setVb(home), [plan, mode]);
+  // The answer note: its area on the plan, and the measured size of its card.
+  const noteAt = useMemo(() => (note ? noteArea(plan, note) : null), [plan, note]);
+  // the side panel stands beside the marked region while there is one, else beside the area the answer is about
+  const sideBox: [number, number, number, number] | null = region && regionCard ? [region.x0, region.y0, region.x1, region.y1] : noteAt?.box ?? null;
+  const noteEl = useRef<HTMLDivElement>(null);
+  const [noteSize, setNoteSize] = useState({ w: 300, h: 150 });
+  useLayoutEffect(() => { const el = noteEl.current; if (el && (el.offsetWidth !== noteSize.w || el.offsetHeight !== noteSize.h)) setNoteSize({ w: el.offsetWidth, h: el.offsetHeight }); });
+  // A new note brings its area into view, with room beside it for the note; if the area still fills the view when
+  // the card has been measured, more of the plan is shown until the note fits clear of it.
+  useEffect(() => {
+    if (!sideBox || !size.w || size.w < 560) return;
+    const [x0, y0, x1, y1] = sideBox, k = size.h / size.w, pad = 0.6;
+    setVb((v) => {
+      const vis = x0 >= v.x && x1 <= v.x + v.w && y0 >= v.y && y1 <= v.y + v.h;
+      const s = Math.min(size.w / v.w, size.h / v.h), need = (noteSize.w + 40) / s, needH = (noteSize.h + 40) / s;
+      const roomBeside = Math.max(v.x + v.w - x1, x0 - v.x) >= need || Math.max(v.y + v.h - y1, y0 - v.y) >= needH;
+      if (vis && roomBeside) return v;
+      // frame the area with the note's width to spare on the right
+      // wide enough that, at the resulting zoom, the note's own width (plus its gap) is left over beside the area
+      const w = Math.max(((x1 - x0 + 2 * pad) * size.w) / Math.max(120, size.w - noteSize.w - 48), (y1 - y0 + 2 * pad) / k, 4), h = w * k;
+      return { x: x0 - pad, y: (y0 + y1) / 2 - h / 2, w, h };
+    });
+  }, [note?.key, sideBox?.join(), noteSize.w, noteSize.h, size.w > 0]);
   useEffect(() => {
     if (!focusAt) return;
     const [x, y] = focusAt.p;
@@ -339,6 +367,12 @@ export function Plan2D({ plan, compact, sourceUrl, sourceOpacity = 0.45, modelOp
         </g>
       )}
       </g>
+      {!compact && noteAt && pxPerM > 0 && (
+        <g class="note-area" pointer-events="none" aria-hidden="true">
+          {noteAt.polys.map((q, i) => <polygon key={`p${i}`} points={q.map((p) => p.join(',')).join(' ')} />)}
+          {noteAt.marks.map((b, i) => <rect key={`m${i}`} x={b[0]} y={b[1]} width={b[2] - b[0]} height={b[3] - b[1]} rx={0.08} />)}
+        </g>
+      )}
       {!compact && pxPerM > 0 && (region || rubber) && <RegionMark r={rubber ? normRegion(rubber[0], rubber[1]) : region!} live={!!rubber} u={1 / pxPerM} />}
       {!compact && pxPerM > 0 && (measures.length > 0 || mFrom) && (
         <g class="measures" pointer-events="none" aria-hidden="true">
@@ -380,6 +414,29 @@ export function Plan2D({ plan, compact, sourceUrl, sourceOpacity = 0.45, modelOp
   return (
     <div class="plan2d-wrap">
       {drawing}
+      {sideBox && !rubber && pxPerM > 0 && (() => {
+        const a = toScreen([sideBox[0], sideBox[1]]), b = toScreen([sideBox[2], sideBox[3]]);
+        const sheet = size.w < 560, p = placeNote([a[0], a[1], b[0], b[1]], noteSize.w, noteSize.h, size.w, size.h);
+        return (
+          <>
+            {!sheet && <svg class="note-lead" aria-hidden="true"><line x1={p.from[0]} y1={p.from[1]} x2={p.to[0]} y2={p.to[1]} /><circle cx={p.to[0]} cy={p.to[1]} r="3.5" /></svg>}
+            <div ref={noteEl} class={`note-stack${sheet ? ' sheet-bottom' : ''}`} onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}
+              style={sheet ? undefined : { left: `${p.left}px`, top: `${p.top}px` }}>
+              {region && regionCard}
+              {note && noteAt && (
+                <div class="note-card" role="note" aria-label="Answer about the highlighted area">
+                  <div class="note-head">
+                    <span class="note-q" title={note.question}>{note.question}</span>
+                    <button type="button" class="icon-btn xs" aria-label="Close the note" onClick={onNoteClose}><Icon name="close" size={14} /></button>
+                  </div>
+                  <div class="note-body"><Markdown text={note.text} /></div>
+                  {note.verified === false && <p class="unverified small">Unverified: check the figures</p>}
+                </div>
+              )}
+            </div>
+          </>
+        );
+      })()}
       {popover && at && (
         <div class={`pin-pop${size.w < 560 ? ' sheet-bottom' : ''}`} onPointerDown={(e) => e.stopPropagation()}
           style={size.w < 560 ? undefined : { left: `${Math.max(8, Math.min(at[0] + 20, size.w - 328))}px`, top: `${Math.max(8, Math.min(at[1] - 40, size.h - 230))}px` }}>

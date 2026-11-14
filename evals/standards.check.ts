@@ -4,6 +4,7 @@ import { regularize, snapPolygon, parseLevel, parseCeiling, buildPlan, dominantA
 import { quickAnswer } from '../apps/api/src/quick';
 import { costUsd, joinStream, meter } from '../apps/api/src/gemini';
 import { evidenceFor } from '../apps/shared/plan';
+import { noteArea, placeNote } from '../apps/web/src/canvas/note';
 import { verify, runTool } from '../apps/api/src/agent';
 import { calculate } from '../apps/api/src/calc';
 import { diffPlans } from '../apps/shared/diff';
@@ -294,6 +295,20 @@ void doorSweep; void fixtureContains;
   eq('cost: tokens are the last totals of the stream, thinking counted as output', joinStream(sse).usage, { in: 1000, out: 500 });
   const m = { ...meter(), calls: 1, tokens_in: 1_000_000, tokens_out: 1_000_000 };
   eq('cost: list price per million tokens, overridable', [costUsd({} as never, m), costUsd({ GEMINI_PRICE_IN: '0.1', GEMINI_PRICE_OUT: '0.4' } as never, m)], [4.5, 0.5]);
+}
+// The answer note on the plan: the area an answer is about, and a place for the note that never covers it
+{
+  const p = samplePlan(), r = p.rooms[0];
+  eq('note: the cited room is the area', noteArea(p, { rooms: [r.id], items: [], region: null })?.polys, [r.polygon]);
+  eq('note: counted items are marked instead of their rooms', noteArea(p, { rooms: [r.id], items: [p.openings[0].id], region: null })?.marks.length, 1);
+  eq('note: a marked region is the area', noteArea(p, { rooms: [r.id], items: [], region: { x0: 1, y0: 1, x1: 3, y1: 2 } })?.box, [1, 1, 3, 2]);
+  eq('note: nothing cited, nothing to point at', noteArea(p, { rooms: [], items: [], region: null }), null);
+  const covers = (n: { left: number; top: number }, a: number[], w: number, h: number) => !(n.left + w <= a[0] || n.left >= a[2] || n.top + h <= a[1] || n.top >= a[3]);
+  const cases: [number[], string][] = [[[100, 200, 300, 400], 'right'], [[700, 200, 950, 400], 'left'], [[350, 20, 650, 120], 'below'], [[350, 450, 650, 590], 'above']];
+  eq('note: stands on the side with the most room', cases.map(([a]) => placeNote(a as never, 300, 150, 1000, 600).side), cases.map((c) => c[1]));
+  eq('note: never covers the area when a side has room, and stays in view', cases.map(([a]) => { const n = placeNote(a as never, 300, 150, 1000, 600); return [n.clear, covers(n, a, 300, 150), n.left >= 8 && n.left + 300 <= 992 && n.top >= 8 && n.top + 150 <= 592]; }),
+    cases.map(() => [true, false, true]));
+  eq('note: an area that fills the view is reported, so the plan zooms out to make room', placeNote([20, 20, 980, 580], 300, 150, 1000, 600).clear, false);
 }
 // Level and ceiling strings (FN-13)
 eq('level "1.OG OKFF +3.05"', parseLevel('1.OG OKFF +3.05'), 3.05);

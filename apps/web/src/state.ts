@@ -54,6 +54,9 @@ export const projectsVersion = signal(0);
 export const hoverRoom = signal<string | null>(null);
 export const selectedRooms = signal<string[]>([]);
 
+/** The latest answer, shown as a note beside the part of the plan it is about (2D). null = none, or dismissed. */
+export const answerNote = signal<import('./canvas/note').AnswerNote | null>(null);
+
 /** A question for the chat to send (set by the canvas, e.g. 'Ask AI for an overview'). */
 export const chatPrompt = signal<string | null>(null);
 

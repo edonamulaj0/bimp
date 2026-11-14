@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Plan } from '../../shared/plan';
 import { api } from './api';
-import { AI_OFF, ACCEPT, ai, chatPrompt, pendingDrawing, queueFiles, region, say, uploadQueue } from './state';
+import { AI_OFF, ACCEPT, ai, answerNote, chatPrompt, pendingDrawing, queueFiles, region, say, selectedRooms, uploadQueue } from './state';
 import { regionSize } from '../../shared/region';
 import { BimpMark, Spinner } from './brand';
 import { Icon } from './icons';
@@ -54,7 +54,7 @@ export function Chat({ projectId, planId, messages, hasPlan, shared, resumeJob, 
   };
   useEffect(() => {
     if (resumeJob) { setT0(Date.now()); setJob('Reading the drawing…'); follow(resumeJob).catch(fail).finally(done); }
-    return () => { alive.current = false; pendingDrawing.value = null; if (local.current) URL.revokeObjectURL(local.current); };
+    return () => { alive.current = false; answerNote.value = null; pendingDrawing.value = null; if (local.current) URL.revokeObjectURL(local.current); };
   }, []);
 
   /** Polls an ingestion job (a Cloudflare Workflow) until it finishes, showing its stage. Stops on unmount; rides out brief network errors. */
@@ -100,7 +100,17 @@ export function Chat({ projectId, planId, messages, hasPlan, shared, resumeJob, 
     const r = region.peek();
     push({ role: 'user', content: r ? { text: q, region: r } : { text: q } });
     asker.current = new AbortController();
-    try { const d = await api(`/projects/${projectId}/chat`, { json: { message: q, ...(r ? { region: r } : {}), ...(planId ? { plan_id: planId } : {}) }, signal: asker.current.signal }); push(d.message); }
+    answerNote.value = null;
+    try {
+      const d = await api<{ message: Msg }>(`/projects/${projectId}/chat`, { json: { message: q, ...(r ? { region: r } : {}), ...(planId ? { plan_id: planId } : {}) }, signal: asker.current.signal });
+      push(d.message);
+      // the answer goes onto the plan too: the rooms or items it rests on are highlighted, with the answer beside them
+      const c = d.message.content, rooms = [...new Set((c.claims ?? []).flatMap((cl) => cl.room_ids))], items = [...new Set((c.claims ?? []).flatMap((cl) => cl.item_ids ?? []))];
+      if (alive.current && !c.not_found && (r || rooms.length || items.length)) {
+        answerNote.value = { key: Date.now(), planId: planId ?? null, question: q, text: c.text, rooms, items, region: r, verified: c.verified };
+        if (rooms.length) selectedRooms.value = rooms;
+      }
+    }
     catch (e) {
       if ((e as Error).name === 'AbortError') push({ role: 'assistant', content: { text: 'Stopped waiting for the answer. If bimp had already finished it, it appears here when the project is opened again.', kind: 'system', claims: [] } });
       else fail(e);

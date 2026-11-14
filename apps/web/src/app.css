@@ -406,6 +406,20 @@ details { margin-top: var(--s2); } details summary { cursor: pointer; } details 
 .reply textarea:focus, .pin-composer textarea:focus { outline: 2px solid var(--focus); outline-offset: 0; border-color: var(--ink); }
 .reply-actions, .pc-actions { display: flex; justify-content: flex-end; align-items: center; gap: var(--s2); }
 .pin-pop { position: absolute; z-index: 5; width: 320px; }
+/* the answer note: the area it is about is outlined on the plan, the note stands beside it, a leader joins them */
+.plan2d .note-area polygon, .plan2d .note-area rect { fill: var(--accent); fill-opacity: .1; stroke: var(--accent); stroke-width: 2.5px; stroke-dasharray: 7 4; vector-effect: non-scaling-stroke; }
+.note-lead { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; overflow: visible; }
+.note-lead line { stroke: var(--accent); stroke-width: 1.5; }
+.note-lead circle { fill: var(--accent); }
+.note-stack { position: absolute; z-index: 5; width: 300px; max-width: calc(100% - 16px); display: flex; flex-direction: column; gap: var(--s2); }
+.note-stack.sheet-bottom { left: 8px; right: 8px; bottom: 8px; width: auto; }
+.note-stack .region-card { position: static; width: auto; max-width: none; max-height: none; inset: auto; }
+.note-stack.sheet-bottom { max-height: 55%; overflow: auto; }
+.note-card { padding: var(--s2) var(--s3) var(--s3); background: var(--surface); border: 1px solid var(--line-strong); border-left: 3px solid var(--accent); border-radius: 3px 10px 10px 3px; box-shadow: 0 10px 30px -12px rgb(30 29 27 / .35); font-size: var(--t-sm); }
+.note-head { display: flex; align-items: center; gap: var(--s2); margin-bottom: 2px; }
+.note-q { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: var(--t-xs); color: var(--muted); }
+.note-body { max-height: 190px; overflow: auto; overflow-wrap: anywhere; }
+.note-card .unverified { margin: var(--s2) 0 0 !important; }
 .pin-pop.sheet-bottom { left: 8px; right: 8px; bottom: 8px; width: auto; }
 .pin-composer { display: flex; flex-direction: column; gap: var(--s2); padding: var(--s3); background: var(--surface); border: 1px solid var(--line-strong); border-radius: 8px; box-shadow: 0 12px 32px -10px rgb(30 29 27 / .35); }
 .cbx { display: inline-flex; align-items: center; gap: 6px; cursor: pointer; align-self: flex-start; min-height: 28px; }
