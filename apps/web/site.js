@@ -2,6 +2,9 @@
 // mask; rules, guides and drawings draft themselves as they enter; photographs and plates drift slightly against the scroll. Without JS (no .js class) or with reduced motion, everything is
 // simply shown and the page scrolls natively.
 import Lenis from 'lenis';
+import { showSplash, splashPending } from './src/brand/wordmark';
+
+if (splashPending()) showSplash({ ready: document.fonts?.ready ?? Promise.resolve() });
 
 const root = document.documentElement;
 const still = matchMedia('(prefers-reduced-motion: reduce)').matches;

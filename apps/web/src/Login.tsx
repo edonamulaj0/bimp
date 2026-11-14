@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api, loadMe } from './api';
 import { go, route, user } from './state';
-import { Logo } from './brand';
+import { AnimatedLogo } from './brand';
 
 type Mode = 'login' | 'signup';
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
@@ -52,7 +52,7 @@ export function Login() {
       <main class="login-left" id="main">
         <a class="home small link" href="/">← Back to the site</a>
         <div class="login-box">
-          <div class="logo big"><Logo height={72} /></div>
+          <div class="logo big"><AnimatedLogo height={72} /></div>
           <h1 class="login-h">{mode === 'login' ? 'Sign in to bimp' : 'Create your bimp account'}</h1>
           <p class="lead">{mode === 'login' ? 'Ask your drawings. See the answer on the sheet.' : 'Your first project is the pilot house, ready to explore.'}</p>
           <form class="login-form" onSubmit={submit} autocomplete="on" noValidate>

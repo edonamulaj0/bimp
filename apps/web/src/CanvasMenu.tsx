@@ -13,6 +13,11 @@ export function CanvasMenu({ x, y, title, sections, onClose }: { x: number; y: n
   const [pos, setPos] = useState({ left: x, top: y });
   const back = useRef(document.activeElement as HTMLElement | null);
   const sheet = matchMedia('(max-width: 899px)').matches;
+  // A menu opened by a double tap or long press appears under the finger, and the click the browser sends when that
+  // finger lifts would land on an item and choose it. Only a press that starts inside the open menu (or the keyboard,
+  // whose clicks have detail 0) chooses an item.
+  const armed = useRef(false);
+  const chosen = (e: MouseEvent) => armed.current || e.detail === 0;
   useLayoutEffect(() => {
     const el = ref.current!, r = el.getBoundingClientRect(), m = 8;
     setPos({ left: Math.max(m, Math.min(x, innerWidth - r.width - m)), top: Math.max(m, Math.min(y, innerHeight - r.height - m)) });
@@ -36,8 +41,8 @@ export function CanvasMenu({ x, y, title, sections, onClose }: { x: number; y: n
   };
   return (
     <>
-      {sheet && <div class="cm-scrim" aria-hidden="true" />}
-      <div ref={ref} class={`cm${sheet ? ' as-sheet' : ''}`} role="menu" aria-label={title ?? 'Canvas'} onKeyDown={keys} onContextMenu={(e) => e.preventDefault()}
+      {sheet && <div class="cm-scrim" aria-hidden="true" onPointerDown={() => (armed.current = true)} onClick={(e) => { if (chosen(e)) onClose(); }} />}
+      <div ref={ref} onPointerDown={() => (armed.current = true)} class={`cm${sheet ? ' as-sheet' : ''}`} role="menu" aria-label={title ?? 'Canvas'} onKeyDown={keys} onContextMenu={(e) => e.preventDefault()}
         style={sheet ? undefined : { left: `${pos.left}px`, top: `${pos.top}px` }}>
         {title && <div class="cm-title" aria-hidden="true">{title}</div>}
         {sections.map((s, i) => (
@@ -45,7 +50,7 @@ export function CanvasMenu({ x, y, title, sections, onClose }: { x: number; y: n
             {s.title && <div class="cm-h" aria-hidden="true">{s.title}</div>}
             {s.items.map((it) => (
               <button key={it.label} type="button" role={it.checked === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={it.checked} disabled={it.disabled}
-                class={`cm-item${it.danger ? ' danger' : ''}`} onClick={() => { onClose(); it.onSelect(); }}>
+                class={`cm-item${it.danger ? ' danger' : ''}`} onClick={(e) => { if (!chosen(e)) return; onClose(); it.onSelect(); }}>
                 <span class="cm-ico" aria-hidden="true">{it.checked !== undefined ? (it.checked ? <Icon name="check" size={16} /> : null) : it.icon ? <Icon name={it.icon} size={16} /> : null}</span>
                 <span class="cm-label">{it.label}</span>
                 {it.hint && <kbd aria-hidden="true">{it.hint}</kbd>}

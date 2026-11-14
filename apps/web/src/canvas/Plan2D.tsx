@@ -72,6 +72,10 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
   const [mFrom, setMFrom] = useState<Pt | null>(null);
   const [cursor, setCursor] = useState<Pt | null>(null);
   const press = useRef<{ t: number; x: number; y: number } | null>(null);
+  // Touch: iOS Safari never fires dblclick for taps, so a double tap is detected here; a menu opened that way
+  // suppresses the dblclick some browsers send afterwards.
+  const lastTap = useRef<{ t: number; x: number; y: number } | null>(null);
+  const tapMenuAt = useRef(0);
   useEffect(() => { if (tool !== 'measure') { setMFrom(null); setCursor(null); } if (tool !== 'region') setRubber(null); }, [tool]);
   const pickMode = (m: PlanMode) => { setMode(m); try { localStorage.setItem('bimp.planMode', m); } catch { /* private mode */ } };
   const escape = useMemo(() => (showEscape ? escapeRoutes(plan) : null), [plan, showEscape]);
@@ -222,6 +226,14 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
         setVb({ ...d.vb, x: d.vb.x - dx * s, y: d.vb.y - dy * s });
       }}
       onPointerUp={(e) => {
+        if (e.pointerType === 'touch' && onMenu && !drag.current?.moved && !pinch.current && ptrs.current.size <= 1) {
+          const t = performance.now(), prev = lastTap.current;
+          if (prev && t - prev.t < 350 && Math.hypot(e.clientX - prev.x, e.clientY - prev.y) < 30) {
+            lastTap.current = null; tapMenuAt.current = t;
+            if (drag.current) drag.current.moved = true; // not a click on a room
+            menuAt(e.clientX, e.clientY);
+          } else lastTap.current = { t, x: e.clientX, y: e.clientY };
+        }
         ptrs.current.delete(e.pointerId); if (!ptrs.current.size) pinch.current = null;
         if (press.current) { clearTimeout(press.current.t); press.current = null; }
         if (rubber) {
@@ -235,7 +247,7 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
       onPointerCancel={(e) => { ptrs.current.delete(e.pointerId); if (!ptrs.current.size) pinch.current = null; drag.current = null; setRubber(null); if (press.current) { clearTimeout(press.current.t); press.current = null; } }}
       onKeyDown={compact ? undefined : keys}
       onPointerLeave={() => (hoverRoom.value = null)}
-      onDblClick={(e) => { if (onMenu) menuAt(e.clientX, e.clientY); else setVb(home); }}
+      onDblClick={(e) => { if (performance.now() - tapMenuAt.current < 700) return; if (onMenu) menuAt(e.clientX, e.clientY); else setVb(home); }}
       role={compact ? 'img' : 'group'}
       aria-label={compact ? '2D floor plan' : placing
         ? `2D floor plan. Comment tool: click a spot, or tab to a room and press Enter, to pin a comment there.`
