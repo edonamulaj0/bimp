@@ -81,9 +81,26 @@ Symbols: bimp names 29 kinds of fitting, appliance and furniture. One it cannot 
 
 Questions are answered from the stored plan. Counts, room areas, the total area, the largest or smallest room and the room list are answered by code (`apps/api/src/quick.ts`): no model call, 0¢. Everything else goes to the agent, and the answer shows what it cost at the model's list price (`GEMINI_PRICE_IN` / `GEMINI_PRICE_OUT`, US dollars per million tokens, in both `wrangler.jsonc` files: update them when the model or its price changes). Each citation carries a crop of the source sheet with the cited rooms or items outlined.
 
+### Cloudinary (optional)
+
+Two things use Cloudinary; both are off until its three settings are present (`CLOUDINARY_CLOUD_NAME` and
+`CLOUDINARY_API_KEY` in `wrangler.jsonc`, `CLOUDINARY_API_SECRET` as a secret):
+
+```bash
+npx wrangler secret put CLOUDINARY_API_SECRET -c apps/web/dist/bimp/wrangler.json
+```
+
+- **Presentation images** (the Images button on the canvas): a snapshot of the 2D plan, as a sheet, is set on a
+  drawing desk, a site office table or a presentation board. The scenes use Cloudinary's generative AI, which must be
+  enabled on the account and uses its credits; each person can make 20 images a day. Scene prompts are plain words
+  only: a comma or slash in a prompt breaks the image URL, so `cleanPrompt` removes them.
+- **Evidence images** ("Share as image" under a citation's crop): Cloudinary cuts the cited piece out of the source
+  sheet and serves it from its CDN, so the proof of an answer can be pasted into a report or a message. The sheet is
+  uploaded once per drawing, into `bimp/<project id>/sheets/`. This sends the drawing to Cloudinary.
+
 ### Site images
 
 The marketing site uses photographs and plan sheets in `apps/web/public/photos/` (credits in the docs), not generated
-images. The `site_images` and `visuals` tables (`db/migrations/0004`, `0005`) are no longer read: the 3D view and the images generated from it were removed, and the app is 2D only.
+images. The `site_images` table (`db/migrations/0005`) is no longer read. The app is 2D only: the 3D view was removed, and presentation images are made from the 2D plan.
 
 Set `ALLOW_SIGNUP` to `"false"` in `wrangler.jsonc` to close sign-up after creating your accounts.

@@ -10,7 +10,7 @@ import { ALL_LAYERS, type CanvasTool, type Layers, type MenuAt, type PinMark, Pl
 import { ROOM_COLORS } from './canvas/colors';
 import { signal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
-import { answerNote, chatPrompt, hoverRoom, pendingDrawing, projectsVersion, queueFiles, region, say, selectedRooms, tourStep, tutorialOpen, toggleTheme } from './state';
+import { answerNote, chatPrompt, hoverRoom, pendingDrawing, projectsVersion, queueFiles, region, say, selectedRooms, tourStep, tutorialOpen, toggleTheme, visualsOpen } from './state';
 import { InfoPanel } from './InfoPanel';
 import { PageHeader } from './Shell';
 import { Spinner } from './brand';
@@ -22,6 +22,7 @@ import { FileTree, type FileRow } from './FileTree';
 import { CanvasMenu, type CmSection } from './CanvasMenu';
 import { Menu } from './ui';
 import { Shortcuts, Tour, Tutorial } from './Tour';
+import { VisualsDialog } from './Visuals';
 import type { Comment, ProjectData } from './types';
 
 type Tab = 'comments' | 'revisions' | 'info';
@@ -78,7 +79,7 @@ export function ProjectPage({ id }: { id: string }) {
   const setTab = (t: Tab) => { setTabState(t); store('bimp.tab', t); setRightOpen(true); if (phone) setMPane(t); };
   const load = () => api<ProjectData>(`/projects/${id}`).then((d) => { if (d.plan && d.plan_id) plans.current.set(d.plan_id, d.plan); setData(d); }).catch((e) => setErr(e.message));
   useEffect(() => {
-    hoverRoom.value = null; selectedRooms.value = []; chatPrompt.value = null; region.value = null;
+    hoverRoom.value = null; selectedRooms.value = []; chatPrompt.value = null; region.value = null; visualsOpen.value = false;
     load();
     api<{ comments: Comment[] }>(`/projects/${id}/comments`).then((d) => setComments(d.comments)).catch(() => setComments([]));
     return () => { region.value = null; };
@@ -467,6 +468,7 @@ function CanvasPane({ onRelabel, plan: drawn, planId, projectId, name, loading, 
             </button>
           ))}
         </div>
+        <button class="tool" onClick={() => (visualsOpen.value = true)} title="Make presentation images of this plan (Cloudinary)"><Icon name="sparkle" size={16} /><span class="tool-l">Images</span></button>
         {drawingUrl && (
           <div class="overlay-ctl">
             <button class="tool" onClick={() => setOverlayOpen(!overlayOpen)} aria-expanded={overlayOpen} aria-controls="overlay-pop" title="Show the uploaded drawing under the model, and set how strongly each is drawn"><Icon name="layers" size={16} /><span class="tool-l">Overlay</span></button>
@@ -523,6 +525,7 @@ function CanvasPane({ onRelabel, plan: drawn, planId, projectId, name, loading, 
         {types.map((t) => <span key={t} class="lg-type"><i class="sw" style={{ background: ROOM_COLORS[t] }} />{t}</span>)}
         <span class="muted">· {plan.rooms.length} rooms · <span class="mono">{plan.width} × {plan.height} m</span></span>
       </div>
+      {visualsOpen.value && <VisualsDialog projectId={projectId} snapshot={() => p2.current?.snapshot() ?? null} onClose={() => (visualsOpen.value = false)} />}
       {menu && <CanvasMenu x={menu.x} y={menu.y} title={menu.kind === 'canvas' ? (room ? room.name : 'Plan') : undefined} sections={sections} onClose={() => setMenu(null)} />}
     </section>
   );

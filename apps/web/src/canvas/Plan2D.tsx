@@ -9,7 +9,7 @@ import { hoverRoom, selectedRooms } from '../state';
 import { ROOM_COLORS } from './colors';
 import { type AnswerNote, noteArea, placeNote } from './note';
 import { Icon } from '../icons';
-import { printPlan } from './print';
+import { planSnapshot, printPlan } from './print';
 import { FixtureSymbol } from './symbols';
 import { FLOOR_OF } from './floors-kind';
 import { inside, roomDims } from '../../../shared/rooms';
@@ -26,6 +26,8 @@ export type MenuAt = { x: number; y: number; p: Pt | null; roomId: string | null
 export type Plan2DApi = {
   fit(): void; zoom(k: number): void; mode(): PlanMode; setMode(m: PlanMode): void;
   escape(): boolean; toggleEscape(): void; measures(): number; clearMeasures(): void; print(): void;
+  /** The whole plan as a PNG on a white sheet, for presentation images. */
+  snapshot(): Promise<Blob>;
 };
 
 /** CSS pixels per metre of screen (96 px per inch). Screens vary, so on-screen 1:x is nominal; print is exact. */
@@ -170,6 +172,7 @@ export function Plan2D({ plan, compact, onRelabel, note, onNoteClose, regionCard
     fit: () => setVb(home), zoom, mode: () => mode, setMode: pickMode, escape: () => showEscape, toggleEscape: () => setShowEscape((v) => !v),
     measures: () => measures.length, clearMeasures: () => { setMeasures([]); setMFrom(null); },
     print: () => setPrinting(String(printRatio)),
+    snapshot: () => planSnapshot(svg.current!, plan, pad),
   };
   // Snapping for the measure tool: room corners, wall footprint corners and opening ends within 10 px.
   const snapPts = useMemo(() => [
@@ -385,7 +388,7 @@ export function Plan2D({ plan, compact, onRelabel, note, onNoteClose, regionCard
             return (
               <text key={r.id} x={x} y={y} font-size={fs}>
                 {/* over the source drawing the room's name is already on the sheet: only the measured figures are added */}
-                <tspan x={x} font-weight="600">{sourceUrl && sourceOpacity >= 0.3 ? '' : r.name}</tspan>
+                <tspan x={x} font-weight="600" data-name visibility={sourceUrl && sourceOpacity >= 0.3 ? 'hidden' : undefined}>{r.name}</tspan>
                 <tspan x={x} dy={fs * 1.2} font-size={fs * 0.85}>{mode === 'dims' ? `A: ${area(r.polygon).toFixed(2).replace('.', ',')} m²` : `${round(area(r.polygon), 1)} m²`}</tspan>
                 {mode === 'plan' && <tspan x={x} dy={fs * 1.05} font-size={fs * 0.72} opacity={0.75}>{(() => { const d = roomDims(r.polygon); return `${d.length.toFixed(2)} × ${d.width.toFixed(2)}`; })()}</tspan>}
               </text>

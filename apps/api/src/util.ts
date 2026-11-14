@@ -12,6 +12,10 @@ export interface Env {
   GEMINI_PRICE_IN?: string;
   GEMINI_PRICE_OUT?: string;
   ALLOW_SIGNUP?: string;
+  /** Cloudinary (optional): presentation images of the plan and shareable evidence images. Cloud name and API key as vars, the API secret as a secret. */
+  CLOUDINARY_CLOUD_NAME?: string;
+  CLOUDINARY_API_KEY?: string;
+  CLOUDINARY_API_SECRET?: string;
   /** Only bound in the bimp-ingest Worker. */
   INGEST: DurableObjectNamespace<import('./ingest').IngestContainer>;
   INGEST_URL?: string;

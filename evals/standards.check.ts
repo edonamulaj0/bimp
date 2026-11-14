@@ -390,6 +390,20 @@ eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
 }
 
 
+// Cloudinary: request signing (the documented example), and prompts that cannot break the transformation
+{
+  const { signParams, transformationFor, cropTransformation } = await import('../apps/api/src/visuals');
+  eq('evidence image: the crop is cut by position and size, then framed', cropTransformation([120, 40, 520, 340]), 'c_crop,x_120,y_40,w_400,h_300/c_limit,w_1400/bo_6px_solid_rgb:ff682b/f_jpg,q_auto');
+  const { VISUAL_STYLES, cleanPrompt } = await import('../apps/shared/visual-styles');
+  const sig = await signParams({ eager: 'w_400,h_300,c_pad|w_260,h_200,c_crop', public_id: 'sample_image', timestamp: '1315060510' }, 'abcd');
+  eq('Cloudinary signature matches the documented example', sig, 'bfd09f95f331f558cbd1320e67aa8d488770583e');
+  eq('a prompt goes in as plain words: commas, slashes and percent signs never reach the transformation', transformationFor('custom', 'garden, trees/sky 100%'), 'e_gen_background_replace:prompt_garden%20trees%20sky%20100/c_limit,w_1600/f_jpg,q_auto');
+  eq('custom prompts are cleaned', cleanPrompt('  a <b>garden</b> | with "trees", low sun.  '), 'a b garden b with trees low sun');
+  // the image URL is decoded before Cloudinary reads it: after decoding, a transformation must still split into the same parts
+  const parts = (t: string) => decodeURIComponent(t).split('/').map((c) => c.split(',').length);
+  eq('every preset survives the decoding of its image URL', VISUAL_STYLES.map((s) => { const t = transformationFor(s.key, s.prompt); return JSON.stringify(parts(t)) === JSON.stringify(t.split('/').map((c) => c.split(',').length)) && !/%2C|%2F|%25/i.test(t); }), VISUAL_STYLES.map(() => true));
+}
+
 // Gemini: a retired model (404) is replaced by the newest Flash model the key can use, and the call succeeds
 {
   const { generate, joinStream } = await import('../apps/api/src/gemini');
