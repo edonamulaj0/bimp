@@ -15,7 +15,10 @@
     "GEMINI_MODEL": "gemini-2.5-flash",
     "ALLOW_SIGNUP": "true",
     // Optional: https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>
-    "AI_GATEWAY_URL": ""
+    "AI_GATEWAY_URL": "",
+    "CLOUDINARY_CLOUD_NAME": "fg8gkylc",
+    "CLOUDINARY_API_KEY": "541313966371196"
+
   }
   // Secrets (never commit): GEMINI_API_KEY via `wrangler secret put GEMINI_API_KEY`, locally in .dev.vars
 }
