@@ -11,6 +11,7 @@
     "deploy:ingest": "wrangler deploy -c ingest/wrangler.jsonc",
     "preview:web": "vite build && wrangler versions upload -c apps/web/dist/bimp/wrangler.json",
     "test": "esbuild evals/standards.check.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/bimp/standards.check.mjs --log-level=warning && node node_modules/.cache/bimp/standards.check.mjs",
+    "eval": "esbuild evals/eval.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/bimp/eval.mjs --log-level=warning && node node_modules/.cache/bimp/eval.mjs",
     "typecheck": "tsc -p apps/api && tsc -p apps/web",
     "ingest:dev": "cd ingest && uvicorn service:app --port 8090 --reload",
     "ingest:fixtures": "cd ingest && python3 make_fixtures.py ../evals/fixtures",

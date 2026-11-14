@@ -3,13 +3,17 @@
 Ordered by what moves the judged score most. Each step has a test for "done". Keep this file current in the same
 change as the work; decisions also go in the decision log in `docs/BIMP.md`.
 
-## Where we are (2026-11-14)
-- **Live:** site and app on Cloudflare (`bimp` Worker); ingestion Worker `bimp-ingest` deployed **without its
-  container image**; D1 and R2 created; dataset upload to `r2://bimp-files/dataset/` in progress.
-- **Works without AI:** login, projects, sample house, 2D/3D, scale and print, info panel, net/gross, checks,
-  escape routes, feng shui, door rules.
-- **Built but not running live:** reading drawings and chat. They need the Gemini key and the container image.
-- **Never measured:** accuracy on the real dataset. Every result so far is on generated fixtures with a mock model.
+## Where we are (2026-11-14, evening)
+- **Live:** site and app (`bimp` Worker); ingestion Worker `bimp-ingest` **with its container image and the symbol
+  detector** (`fixtures-v1`); Gemini key on both Workers; the dataset in `r2://bimp-files/dataset/`.
+- **Tested live end to end:** a CubiCasa scan uploaded, read (detector + Gemini), and asked count questions in chat.
+- **Measured (`npm run eval -- --sample 500`, dev split, code only, no language model):** 31.0 % of scored questions
+  correct. Only five CubiCasa templates are answered so far: toilets 98 %, sinks 95 %, showers/baths 76 %, doors 76 %,
+  windows 62 %. Everything else is unanswered and counts as wrong. The sample includes plans the detector was trained
+  on, so these five are optimistic (72 % overall on its own test plans).
+- **Not built:** Swiss vector reading, Finnish room-label rules, IFC, boxes on the source sheet, the agent in the eval.
+- **Known problems:** the chat agent sometimes ends with "Agent did not finish" on count questions (2 of 7 live);
+  a slow Gemini read used to be cut at about 125 s (now streamed).
 
 ## How we will be judged (from the dataset README)
 127,044 questions over ~5,900 drawings. **Counts must be exact; areas, lengths and volumes within 2 %.**
@@ -34,6 +38,9 @@ About 30 question templates (each in English and Finnish) cover most of it. **Ro
 **Done when:** a vector PDF, a scan and a DXF each become a plan on the live site, and chat answers about them with citations.
 
 ## Phase 1: eval harness first (1 day)
+0. **Built:** `evals/eval.ts` (split by drawing, stratified sample, official scoring, tables by source × type and by
+   template, reports in `evals/reports/`) and the question router `apps/shared/templates.ts`. Still to do below: the
+   agent as an answerer, latency and cost, comparison with the previous run.
 1. `evals/split.ts`: split `questions.jsonl` **by drawing** into dev (80 %) and held-out (20 %), stratified by source and type.
 2. `evals/run.ts`: for each question, ingest its drawing (cached), ask, and score with the official rules (exact counts,
    ±2 % measures, text by review). Per run, record answer, citations, latency and model cost.

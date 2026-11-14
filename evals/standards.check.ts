@@ -297,5 +297,23 @@ eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
   } finally { globalThis.fetch = real; }
 }
 
+// Question router and official scoring (evals/eval.ts)
+{
+  const { route, templateOf } = await import('../apps/shared/templates');
+  const { score, splitOf } = await import('./eval');
+  const det = (kind: string) => ({ kind, conf: 0.9, bbox: [0, 0, 1, 1] as [number, number, number, number] });
+  const ev = { kind: 'image', detections: [det('door'), det('door'), det('window'), det('toilet')] };
+  eq('router: English door template counts detector doors', route('How many doors are shown on this floor plan? Count doorways fitted with a door.', ev)?.answer, 2);
+  eq('router: Finnish window template', route('Kuinka monta ikkunaa pohjapiirustuksessa on?', ev)?.answer, 1);
+  eq('router: Finnish toilet template', route('Kuinka monta WC-istuinta pohjapiirustukseen on piirretty?', ev)?.answer, 1);
+  eq('router: a class with no detections is zero, not unknown', route('How many showers and bathtubs are drawn on this floor plan in total?', ev)?.answer, 0);
+  eq('router: no detector results (vector sheet) gives no answer', route('How many windows are shown on this floor plan?', { kind: 'pdf-vector', detections: null })?.answer, null);
+  eq('router: other questions are left to the agent', templateOf('How many saunas are on this floor plan?'), null);
+  eq('scoring: counts must be exact', [score({ type: 'count', answer: 5 }, 5), score({ type: 'count', answer: 5 }, 6), score({ type: 'count', answer: 5 }, null)], [true, false, false]);
+  eq('scoring: areas within 2 %', [score({ type: 'area', answer: 100 }, 101.9), score({ type: 'area', answer: 100 }, 102.1)], [true, false]);
+  eq('scoring: text answers are not scored', score({ type: 'text', answer: 'oak' }, null), null);
+  eq('split: a drawing always lands on the same side', splitOf('data/cubicasa5k/colorful-10052.png'), splitOf('data/cubicasa5k/colorful-10052.png'));
+}
+
 console.log(fail ? `\n${fail} failed` : '\nall passed');
 process.exit(fail ? 1 : 0);
