@@ -36,7 +36,7 @@
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
-body { margin: 0; background: var(--paper); color: var(--ink); font: 400 var(--t-base)/1.6 var(--font); font-feature-settings: 'ss01'; -webkit-font-smoothing: antialiased; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 400 var(--t-base)/1.5 var(--font); font-feature-settings: 'ss01'; -webkit-font-smoothing: antialiased; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
 ::selection { background: var(--accent); color: var(--on-accent); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
@@ -44,9 +44,10 @@ body { margin: 0; background: var(--paper); color: var(--ink); font: 400 var(--t
 .skip { position: absolute; left: var(--s4); top: -3rem; z-index: 100; background: var(--ink); color: var(--paper); padding: var(--s2) var(--s4); border-radius: var(--radius); }
 .skip:focus { top: var(--s4); }
 
-/* annotation label: like text on a drawing */
-.mono, .label { font-family: var(--mono); font-size: var(--t-xs); letter-spacing: .04em; }
-.label { text-transform: uppercase; color: var(--muted); }
+/* One sans for everything. Monospace only where the characters mean something: dimensions, revision ids, file names. */
+.mono { font-family: var(--mono); font-size: .92em; font-variant-numeric: tabular-nums; }
+.label { font-size: var(--t-sm); font-weight: 500; color: var(--muted); }
+.num { font-variant-numeric: tabular-nums; }
 
 /* buttons: 44 px targets, charcoal on orange */
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 44px; padding: 0 var(--s5); border: 1px solid transparent; border-radius: var(--radius);
