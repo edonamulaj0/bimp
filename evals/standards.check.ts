@@ -3,6 +3,7 @@ import { parseDimension, nearestPreferredScale, checkPlan } from '../apps/shared
 import { regularize, snapPolygon, parseLevel, parseCeiling } from '../apps/api/src/extract';
 import { verify } from '../apps/api/src/agent';
 import { calculate } from '../apps/api/src/calc';
+import { diffPlans } from '../apps/shared/diff';
 import { samplePlan } from '../apps/shared/sample-plan';
 import { area, wallsFromFaces, wallPieces, type Plan } from '../apps/shared/plan';
 import { escapeRoutes } from '../apps/shared/escape';
@@ -198,6 +199,23 @@ eq('calc -2^2', calculate('-2^2'), -4);
 eq('calc 2^-1', calculate('2^-1'), 0.5);
 eq('calc 2^3^2', calculate('2^3^2'), 512);
 eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
+// Revision comparison
+{
+  const a = samplePlan();
+  eq('same plan: no changes', diffPlans(a, a).rooms.every((r) => r.status === 'same') && !diffPlans(a, a).walls.added.length, true);
+  const b: Plan = JSON.parse(JSON.stringify(a));
+  const k = b.rooms.find((r) => r.type === 'kitchen')!;
+  k.polygon = k.polygon.map(([x, y]) => [x, y === Math.max(...k.polygon.map((p) => p[1])) ? y + 0.5 : y]);
+  b.rooms.push({ id: 'rx', name: 'Pantry', type: 'storage', polygon: [[20, 0], [22, 0], [22, 1.5], [20, 1.5]] });
+  b.rooms = b.rooms.filter((r) => r.type !== 'office');
+  b.walls.push({ id: 'wx', a: [20, 0], b: [22, 0], thickness: 0.12 });
+  const d = diffPlans(a, b);
+  eq('added room found', d.rooms.filter((r) => r.status === 'added').map((r) => r.name), ['Pantry']);
+  eq('removed room found', d.rooms.filter((r) => r.status === 'removed').map((r) => r.name), ['Office']);
+  eq('kitchen grew by 2.75 m²', d.rooms.find((r) => r.b?.id === k.id)!.delta, 2.75);
+  eq('added wall found', d.walls.added.map((w) => w.id), ['wx']);
+  eq('summary mentions net area', d.summary.some((x) => x.startsWith('Net floor area')), true);
+}
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');
 process.exit(fail ? 1 : 0);

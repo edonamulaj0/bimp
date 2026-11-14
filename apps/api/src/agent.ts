@@ -4,7 +4,7 @@ import { ACCESS, BED, CORRIDOR, DOOR, FLAT_TRAVEL, GARAGE, OCCUPANCY, OCCUPANCY_
 import { escapeRoutes } from '../../shared/escape';
 import { openingsOfRoom, planAreas, roomInfo } from '../../shared/rooms';
 import { fengShui } from '../../shared/fengshui';
-import { type Content, generate } from './gemini';
+import { type Content, type Part, generate } from './gemini';
 import type { Env } from './util';
 
 export type Answer = {
@@ -162,8 +162,9 @@ export function verify(ans: Omit<Answer, 'verified' | 'issues'>, results: unknow
   return issues;
 }
 
-export async function ask(env: Env, plan: Plan, question: string, history: { role: 'user' | 'model'; text: string }[]): Promise<Answer> {
-  const contents: Content[] = [...history.map((h) => ({ role: h.role, parts: [{ text: h.text }] })), { role: 'user', parts: [{ text: question }] }];
+/** `context` goes in front of the question: e.g. the drawing sheet and where on it a comment is pinned. */
+export async function ask(env: Env, plan: Plan, question: string, history: { role: 'user' | 'model'; text: string }[], context: Part[] = []): Promise<Answer> {
+  const contents: Content[] = [...history.map((h) => ({ role: h.role, parts: [{ text: h.text }] })), { role: 'user', parts: [...context, { text: question }] }];
   const results: unknown[] = [];
   for (let step = 0; step < 8; step++) {
     const reply = await generate(env, {
