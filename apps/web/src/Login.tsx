@@ -17,7 +17,7 @@ export function Login() {
   const [show, setShow] = useState(false);
   // the site's Cloudinary image of the pilot model, when one has been generated (see apps/api/src/site-images.ts)
   const [photo, setPhoto] = useState<string | null>(null);
-  useEffect(() => { fetch('/api/site/images').then((r) => r.json()).then((d) => { const u = d.images?.model; if (u) { const i = new Image(); i.onload = () => setPhoto(u); i.src = u; } }).catch(() => {}); }, []);
+  useEffect(() => { fetch('/api/site/images').then((r) => r.json()).then((d) => { const u = d.images?.aerial; if (u) { const i = new Image(); i.onload = () => setPhoto(u); i.src = u; } }).catch(() => {}); }, []);
   const emailRef = useRef<HTMLInputElement>(null), pwRef = useRef<HTMLInputElement>(null), pw2Ref = useRef<HTMLInputElement>(null);
   useEffect(() => { emailRef.current?.focus(); }, []);
   useEffect(() => { document.title = `${mode === 'login' ? 'Sign in' : 'Create account'} · bimp`; }, [mode]);
@@ -95,7 +95,7 @@ export function Login() {
       </main>
       <aside class={`login-right${photo ? ' photo' : ''}`} aria-hidden="true" style={photo ? { backgroundImage: `url(${photo})` } : undefined}>
         {!photo && <div class="bp-grid" />}
-        <p class="bp-caption"><span>Pilot house · courtyard</span><span>{photo ? 'Generated with Cloudinary from the model' : 'Drawn by bimp from the plan'}</span></p>
+        <p class="bp-caption"><span>Pilot house · courtyard house</span><span>{photo ? 'Generated with Cloudinary from the model' : 'Drawn by bimp from the plan'}</span></p>
       </aside>
     </div>
   );
