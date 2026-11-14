@@ -101,6 +101,6 @@ npx wrangler secret put CLOUDINARY_API_SECRET -c apps/web/dist/bimp/wrangler.jso
 ### Site images
 
 The marketing site uses photographs and plan sheets in `apps/web/public/photos/` (credits in the docs), not generated
-images. The `site_images` table (`db/migrations/0005`) is no longer read. The app is 2D only: the 3D view was removed, and presentation images are made from the 2D plan.
+images. `db/migrations/0008` drops the unused `site_images` table and clears the images of the removed 3D view from `visuals`. The app is 2D only: the 3D view was removed, and presentation images are made from the 2D plan.
 
 Set `ALLOW_SIGNUP` to `"false"` in `wrangler.jsonc` to close sign-up after creating your accounts.
