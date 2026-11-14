@@ -2,7 +2,6 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { housePlan } from '../../shared/house-plan';
 import { visuals, visualsOn } from './visuals';
-import { site } from './site-images';
 import { clipPlan, parseRegion, regionContents, regionSize, type Region } from '../../shared/region';
 import { type Plan, area } from '../../shared/plan';
 import { ask } from './agent';
@@ -315,7 +314,6 @@ function regionBrief(plan: Plan, r: Region) {
 
 projects.route('/:id/comments', comments);
 projects.route('/:id/visuals', visuals);
-app.route('/site', site);
 app.route('/projects', projects);
 app.route('/teams', teams);
 app.all('*', () => { throw fail(404, 'Not found.'); });
