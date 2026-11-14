@@ -20,7 +20,7 @@ const TOOLS = [
   { name: 'plan_info', description: 'Overview of the plan: how it was produced, whether measured, scale source, assumptions, extent, counts.', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'list_rooms', description: 'All rooms with id, name, type, area_m2 and perimeter_m (computed from geometry).', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'get_room', description: 'One room by id: area, perimeter, bounding dimensions, doors and windows on its boundary.', parameters: S('OBJECT', undefined, { properties: { id: S('STRING') }, required: ['id'] }) },
-  { name: 'count', description: 'Count doors, windows, or rooms of a type.', parameters: S('OBJECT', undefined, { properties: { what: S('STRING', 'door | window | room'), room_type: S('STRING', 'optional room type filter') }, required: ['what'] }) },
+  { name: 'count', description: 'Count doors, windows, rooms of a type, or fittings/furniture drawn on the plan (each counted item is cited by id).', parameters: S('OBJECT', undefined, { properties: { what: S('STRING', 'door | window | room | wc | sink | bathtub | shower | sauna_stove | stove | fridge | washer | bed | sofa | table | desk | wardrobe'), room_type: S('STRING', 'optional room type filter for rooms'), room_id: S('STRING', 'optional: only items in this room') }, required: ['what'] }) },
   { name: 'check_plan', description: 'Plausibility checks of the plan against design standards (room minimum sizes, corridor and door widths, scale). Each check cites its source.', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'space_standard', description: 'Design standard figures with their source: room minimum areas by type, door, corridor, stair, bed, wheelchair turning, preferred plan scales.', parameters: S('OBJECT', undefined, { properties: { topic: S('STRING', 'room type (bedroom, living, kitchen...), or door | corridor | stair | bed | turning | scale') }, required: ['topic'] }) },
   { name: 'escape_route', description: 'Estimated travel distance from the furthest point of each room (or one room) to an exit door, through doors, with the path and the limits that apply (Metric Handbook Ch. 41).', parameters: S('OBJECT', undefined, { properties: { room_id: S('STRING', 'optional room id') } }) },
@@ -79,6 +79,10 @@ function runTool(plan: Plan, name: string, args: any): unknown {
     }
     case 'count': {
       if (args.what === 'door' || args.what === 'window') return { what: args.what, count: plan.openings.filter((o) => o.kind === args.what).length };
+      if (args.what !== 'room') {
+        const fx = (plan.fixtures ?? []).filter((f) => f.kind === args.what && (!args.room_id || f.room_id === args.room_id));
+        return { what: args.what, count: fx.length, items: fx.map((f) => ({ id: f.id, room_id: f.room_id })), note: plan.fixtures ? undefined : 'This plan has no fittings data.' };
+      }
       const rs = plan.rooms.filter((r) => !args.room_type || r.type === args.room_type);
       return { what: 'room', room_type: args.room_type ?? null, count: rs.length, room_ids: rs.map((r) => r.id) };
     }

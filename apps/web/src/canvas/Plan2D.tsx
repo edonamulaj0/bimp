@@ -4,6 +4,7 @@ import { type Plan, type Pt, area, centroid, dist, round } from '../../../shared
 import { hoverRoom, selectedRooms } from '../state';
 import { ROOM_COLORS } from './colors';
 import { printPlan } from './print';
+import { FixtureSymbol } from './symbols';
 
 /** CSS pixels per metre of screen (96 px per inch). Screens vary, so on-screen 1:x is nominal; print is exact. */
 const SCREEN_PX_PER_M = 96 / 0.0254;
@@ -13,7 +14,7 @@ const NICE = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200];
 type Props = { plan: Plan; compact?: boolean; sourceUrl?: string | null; title?: string };
 
 export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
-  const pad = Math.max(plan.width, plan.height) * 0.06;
+  const pad = Math.max(plan.width, plan.height) * 0.1;
   const home = { x: -pad, y: -pad, w: plan.width + 2 * pad, h: plan.height + 2 * pad };
   const [vb, setVb] = useState(home);
   const svg = useRef<SVGSVGElement>(null);
@@ -100,12 +101,13 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
         const on = hovered === r.id || selected.includes(r.id);
         return (
           <polygon key={r.id} points={r.polygon.map((p) => p.join(',')).join(' ')}
-            fill={ROOM_COLORS[r.type]} fill-opacity={on ? 0.85 : sourceUrl ? 0.3 : 0.5}
+            fill={ROOM_COLORS[r.type]} fill-opacity={on ? 0.75 : sourceUrl ? 0.25 : 0.38}
             stroke={on ? 'var(--accent)' : 'none'} stroke-width={fs * 0.15} class="room"
             onPointerEnter={() => (hoverRoom.value = r.id)}
             onClick={() => { if (!drag.current?.moved) selectedRooms.value = selected.includes(r.id) ? [] : [r.id]; }} />
         );
       })}
+      <g pointer-events="none" class="fixtures">{(plan.fixtures ?? []).map((f) => <FixtureSymbol key={f.id} f={f} />)}</g>
       <g stroke="var(--wall)" stroke-linecap="square" pointer-events="none">
         {plan.walls.map((w) => <line key={w.id} x1={w.a[0]} y1={w.a[1]} x2={w.b[0]} y2={w.b[1]} stroke-width={w.thickness} />)}
       </g>
@@ -124,6 +126,7 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
           );
         })}
       </g>
+      {!compact && <Dimensions plan={plan} fs={fs} />}
       {route && (
         <g pointer-events="none" class="escape">
           <polyline points={route.path.map((p) => p.join(',')).join(' ')} fill="none" stroke="#dc2626" stroke-width={fs * 0.18} stroke-dasharray={`${fs * 0.6} ${fs * 0.35}`} stroke-linejoin="round" />
@@ -133,7 +136,7 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
       )}
       {exits.map((d) => <g key={d.id} pointer-events="none"><circle cx={d.mid[0]} cy={d.mid[1]} r={fs * 0.6} fill="#15803d" /><text x={d.mid[0]} y={d.mid[1] + fs * 0.35} font-size={fs * 0.8} text-anchor="middle" fill="#fff" font-weight="700">EXIT</text></g>)}
       {!compact && (
-        <g pointer-events="none" text-anchor="middle" class="labels">
+        <g pointer-events="none" text-anchor="middle" class="labels" stroke="var(--paper)" stroke-width={fs * 0.22} paint-order="stroke" stroke-linejoin="round">
           {plan.rooms.map((r) => {
             const [x, y] = centroid(r.polygon);
             return (
@@ -177,5 +180,30 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
         </div>
       )}
     </div>
+  );
+}
+
+/** Overall dimension lines above and left of the plan, architectural style (tick marks, value in metres). */
+function Dimensions({ plan, fs }: { plan: Plan; fs: number }) {
+  if (!plan.walls.length) return null;
+  let x0 = Infinity, y0 = Infinity, x1 = -Infinity, y1 = -Infinity;
+  for (const w of plan.walls) for (const p of [w.a, w.b]) {
+    x0 = Math.min(x0, p[0] - w.thickness / 2); x1 = Math.max(x1, p[0] + w.thickness / 2);
+    y0 = Math.min(y0, p[1] - w.thickness / 2); y1 = Math.max(y1, p[1] + w.thickness / 2);
+  }
+  const off = fs * 1.6, t = fs * 0.35, sw = fs * 0.05;
+  const tick = (x: number, y: number) => <line x1={x - t} y1={y + t} x2={x + t} y2={y - t} stroke="var(--fg)" stroke-width={sw * 1.6} />;
+  const ty = y0 - off, tx = x0 - off;
+  return (
+    <g pointer-events="none" class="dims" fill="var(--fg)" font-size={fs * 0.9}>
+      <line x1={x0} y1={ty} x2={x1} y2={ty} stroke="var(--fg)" stroke-width={sw} />
+      <line x1={x0} y1={ty - t} x2={x0} y2={y0 - fs * 0.3} stroke="var(--fg)" stroke-width={sw} /><line x1={x1} y1={ty - t} x2={x1} y2={y0 - fs * 0.3} stroke="var(--fg)" stroke-width={sw} />
+      {tick(x0, ty)}{tick(x1, ty)}
+      <text x={(x0 + x1) / 2} y={ty - fs * 0.35} text-anchor="middle">{(x1 - x0).toFixed(2)}</text>
+      <line x1={tx} y1={y0} x2={tx} y2={y1} stroke="var(--fg)" stroke-width={sw} />
+      <line x1={tx - t} y1={y0} x2={x0 - fs * 0.3} y2={y0} stroke="var(--fg)" stroke-width={sw} /><line x1={tx - t} y1={y1} x2={x0 - fs * 0.3} y2={y1} stroke="var(--fg)" stroke-width={sw} />
+      {tick(tx, y0)}{tick(tx, y1)}
+      <text x={tx - fs * 0.35} y={(y0 + y1) / 2} text-anchor="middle" transform={`rotate(-90 ${tx - fs * 0.35} ${(y0 + y1) / 2})`}>{(y1 - y0).toFixed(2)}</text>
+    </g>
   );
 }

@@ -1,11 +1,11 @@
 // Drawing -> Plan. The model reads (labels, room outlines, openings); code measures (snapping, scale, areas).
-import { type Plan, type Pt, type Room, type Opening, ROOM_TYPES, bounds, dist, wallsFromFaces, wallsFromRooms, round } from '../../shared/plan';
+import { type Plan, type Pt, type Room, type Opening, type Fixture, FIXTURE_KINDS, placeFixture, ROOM_TYPES, bounds, dist, wallsFromFaces, wallsFromRooms, round } from '../../shared/plan';
 import { generate, textOf } from './gemini';
 import type { Analysis } from './ingest';
 import { BOOK, nearestPreferredScale, parseDimension } from '../../shared/standards';
 import type { Env } from './util';
 
-const PROMPT_VERSION = 'read-v3';
+const PROMPT_VERSION = 'read-v4';
 const P = { type: 'ARRAY', items: { type: 'NUMBER' } }; // [y, x] normalised 0-1000
 const SCHEMA = {
   type: 'OBJECT',
@@ -32,13 +32,17 @@ const SCHEMA = {
       type: 'ARRAY',
       items: { type: 'OBJECT', properties: { kind: { type: 'STRING', enum: ['door', 'window'] }, a: P, b: P }, required: ['kind', 'a', 'b'] },
     },
+    fixtures: {
+      type: 'ARRAY',
+      items: { type: 'OBJECT', properties: { kind: { type: 'STRING', enum: [...FIXTURE_KINDS] }, box: { type: 'ARRAY', items: { type: 'NUMBER' } } }, required: ['kind', 'box'] },
+    },
   },
-  required: ['rooms', 'openings'],
+  required: ['rooms', 'openings', 'fixtures'],
 };
 
 // Reading conventions follow standard drawing practice (Metric Handbook Ch. 1, BS 8541-2 / BS 1192 conventions).
 const PROMPT = `You are reading an architectural floor plan (any language, any drawing style).
-Return its rooms and openings as JSON. Every point is [y, x], normalised 0-1000 over the full image, origin top-left.
+Return its rooms, openings and fixtures as JSON. Every point is [y, x], normalised 0-1000 over the full image, origin top-left.
 How to read the drawing:
 - Walls are the thick (often hatched or filled) double lines. Rooms are the spaces they enclose.
 - A door is a gap in a wall with a leaf line and a quarter-circle swing arc. A window is a thin multi-line infill within the wall thickness.
@@ -53,6 +57,9 @@ openings: each door and window as the segment spanning the opening along its wal
 scale_evidence: one dimension string with its dimension line (prefer the longest overall dimension). text = exactly as written
   ("12000", "12.00", "12,00", "3'-6\""). Drawings use millimetres without decimals or metres with decimals; value_m = that length
   in metres. a, b = the two ends of the dimension line. null if there are no dimensions.
+fixtures: every fitting and furniture item drawn: toilet bowls (wc), wash basins and kitchen sinks (sink; a double-bowl sink
+  is one), bathtubs, showers, sauna stoves (kiuas), cookers/hobs (stove), fridges, washing machines (washer), beds, sofas, tables,
+  desks, wardrobes. box = [ymin, xmin, ymax, xmax] normalised 0-1000. One entry per item; skip anything you cannot see.
 stated_scale: the drawing scale written on the sheet (title block or under the plan, e.g. "1:100", "M 1:50", "Scale 1/100"),
   text as written and ratio as a number (100). null if none is written. If several, the one for the main plan.
 If the sheet has several plans, use only the main floor plan. Never invent rooms that are not drawn.`;
@@ -62,6 +69,7 @@ export type Raw = {
   stated_scale?: { text: string; ratio: number } | null;
   rooms: { name: string; type: string; polygon: number[][] }[];
   openings: { kind: 'door' | 'window'; a: number[]; b: number[] }[];
+  fixtures?: { kind: string; box: number[] }[];
 };
 
 export async function readDrawing(env: Env, png: string, renderSha: string, an: Pick<Analysis, 'kind' | 'texts' | 'width' | 'height'>): Promise<Raw> {
@@ -76,7 +84,7 @@ export async function readDrawing(env: Env, png: string, renderSha: string, an: 
     generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0 },
   }, `${PROMPT_VERSION}:${renderSha}`);
   const raw = JSON.parse(textOf(content)) as Raw;
-  return { scale_evidence: raw.scale_evidence ?? null, stated_scale: raw.stated_scale ?? null, rooms: raw.rooms ?? [], openings: raw.openings ?? [] };
+  return { scale_evidence: raw.scale_evidence ?? null, stated_scale: raw.stated_scale ?? null, rooms: raw.rooms ?? [], openings: raw.openings ?? [], fixtures: raw.fixtures ?? [] };
 }
 
 type Seg = [number, number, number, number];
@@ -295,6 +303,15 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
   const faceWalls = wallsFromFaces(rooms);
   const walls = faceWalls.some((w) => w.thickness !== 0.3 && w.thickness !== 0.12) ? faceWalls : wallsFromRooms(rooms);
   const bb = bounds([...rooms.flatMap((r) => r.polygon), ...walls.flatMap((w) => [w.a, w.b])]);
+  const fixtures: Fixture[] = (raw.fixtures ?? [])
+    .filter((f) => (FIXTURE_KINDS as readonly string[]).includes(f.kind) && f.box?.length === 4)
+    .map((f, i) => {
+      const [y0, x0, y1, x1] = f.box;
+      const a = toM(px([y0, x0])), b = toM(px([y1, x1]));
+      const w = Math.abs(b[0] - a[0]), h = Math.abs(b[1] - a[1]);
+      return placeFixture(f.kind as Fixture['kind'], [round((a[0] + b[0]) / 2, 3), round((a[1] + b[1]) / 2, 3)], round(w, 3), round(h, 3), walls, rooms, `f${i + 1}`);
+    })
+    .filter((f) => f.size[0] > 0.1 && f.size[1] > 0.1 && f.size[0] < 4 && f.size[1] < 4);
 
   return {
     version: 1,
@@ -306,6 +323,7 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     rooms,
     walls,
     openings,
+    fixtures,
     scale: { metersPerPx: m, source: scaleSource, ...(ratio ? { ratio } : {}) },
     source: { fileId, renderSha, mime: 'image/png', imageWidth: W, imageHeight: H, offset: [round(-ox * m, 3), round(-oy * m, 3)] },
     provenance: { kind: an.kind, scaleExact: !!exact, snapped: round(snapRatio, 3), segments: an.segments.length },

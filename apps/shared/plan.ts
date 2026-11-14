@@ -7,6 +7,16 @@ export interface Room { id: string; name: string; type: RoomType; polygon: Pt[] 
 export interface Wall { id: string; a: Pt; b: Pt; thickness: number }
 export interface Opening { id: string; kind: 'door' | 'window'; a: Pt; b: Pt }
 
+/** Fittings and furniture drawn on the plan. Read from the drawing, never invented. */
+export const FIXTURE_KINDS = ['wc', 'sink', 'bathtub', 'shower', 'sauna_stove', 'stove', 'fridge', 'washer', 'bed', 'sofa', 'table', 'desk', 'wardrobe'] as const;
+export type FixtureKind = (typeof FIXTURE_KINDS)[number];
+/** center/size in metres; size[0] runs along the wall it backs onto, size[1] away from it; angle in radians (local +y = front). */
+export interface Fixture { id: string; kind: FixtureKind; center: Pt; size: Pt; angle: number; room_id: string | null }
+export const FIXTURE_LABEL: Record<FixtureKind, string> = {
+  wc: 'toilet', sink: 'sink / wash basin', bathtub: 'bathtub', shower: 'shower', sauna_stove: 'sauna stove', stove: 'cooker / hob',
+  fridge: 'fridge', washer: 'washing machine', bed: 'bed', sofa: 'sofa', table: 'table', desk: 'desk', wardrobe: 'wardrobe',
+};
+
 export interface Plan {
   version: 1;
   method: 'sample' | 'gemini' | 'hybrid';
@@ -17,6 +27,7 @@ export interface Plan {
   rooms: Room[];
   walls: Wall[];
   openings: Opening[];
+  fixtures?: Fixture[];
   /** ratio = the drawing's own stated scale (1:ratio) when known. */
   scale: { metersPerPx: number | null; source: string; ratio?: number };
   /** The drawing as rendered for reading; geometry maps onto it via scale.metersPerPx and offset. */
@@ -184,6 +195,32 @@ export function wallPieces(w: Wall, openings: Opening[], H: number) {
   }
   if (cur < len) pieces.push({ s: cur, e: len, z0: 0, z1: H });
   return { dir, pieces: pieces.filter((p) => p.z1 > p.z0 && p.e - p.s > 0.01) };
+}
+
+/** Rotates a fixture so its back faces the nearest wall, and assigns it to the room it stands in. */
+export function placeFixture(kind: FixtureKind, center: Pt, w: number, h: number, walls: Wall[], rooms: Room[], id: string): Fixture {
+  let best: { d: number; u: Pt; n: Pt } | null = null;
+  for (const wl of walls) {
+    const L = dist(wl.a, wl.b) || 1, u: Pt = [(wl.b[0] - wl.a[0]) / L, (wl.b[1] - wl.a[1]) / L];
+    const t = Math.max(0, Math.min(L, (center[0] - wl.a[0]) * u[0] + (center[1] - wl.a[1]) * u[1]));
+    const q: Pt = [wl.a[0] + u[0] * t, wl.a[1] + u[1] * t];
+    const d = dist(center, q);
+    if (!best || d < best.d) best = { d, u, n: d > 1e-6 ? [(center[0] - q[0]) / d, (center[1] - q[1]) / d] : [-u[1], u[0]] };
+  }
+  let angle = 0, size: Pt = [w, h];
+  if (best) {
+    angle = Math.atan2(-best.n[0], best.n[1]); // rotate local +y (front) onto the normal pointing away from the wall
+    if (Math.abs(best.u[0]) < Math.abs(best.u[1])) size = [h, w]; // wall runs vertically: along-wall size is the box height
+  }
+  const inside = (p: Pt, poly: Pt[]) => {
+    let c = false;
+    for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      const [xi, yi] = poly[i], [xj, yj] = poly[j];
+      if (yi > p[1] !== yj > p[1] && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) c = !c;
+    }
+    return c;
+  };
+  return { id, kind, center, size, angle: round(angle, 4), room_id: rooms.find((r) => inside(center, r.polygon))?.id ?? null };
 }
 
 export const roomStats = (r: Room) => ({ id: r.id, name: r.name, type: r.type, area_m2: round(area(r.polygon)), perimeter_m: round(perimeter(r.polygon)) });

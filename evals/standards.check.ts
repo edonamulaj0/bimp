@@ -68,5 +68,11 @@ eq('outer walls outside the rooms (net areas kept)', fw.filter((w) => w.thicknes
 const gar: Plan = { ...samplePlan(), openings: [], rooms: [{ id: 'g', name: 'Garage', type: 'garage', polygon: [[0, 0], [2.2, 0], [2.2, 4.5], [0, 4.5]] }] };
 eq('2.2 × 4.5 m garage flagged (Fig. 31.30)', checkPlan(gar).some((c) => c.room_id === 'g' && c.level === 'warn'), true);
 
+// Fixtures: the sample WC sits against the bathroom's east wall (x = 6.5), so its front faces west (-x)
+const wc = samplePlan().fixtures!.find((f) => f.kind === 'wc')!;
+near('WC faces away from its wall (+90°)', wc.angle, Math.PI / 2, 1e-3);
+eq('WC is in the bathroom', wc.room_id, 'r5');
+eq('every sample fixture is inside a room', samplePlan().fixtures!.every((f) => f.room_id), true);
+
 console.log(fail ? `\n${fail} failed` : '\nall passed');
 process.exit(fail ? 1 : 0);
