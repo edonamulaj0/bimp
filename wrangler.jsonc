@@ -16,7 +16,10 @@
     "ALLOW_SIGNUP": "true",
     // Optional: https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>
     "AI_GATEWAY_URL": "",
-    "AI_GATEWAY_URL": "",
+    // List price in US dollars per million tokens of the model above, for the cost shown with each answer.
+    // Gemini Flash paid tier through 2026-12-31; change these when the model or its price changes.
+    "GEMINI_PRICE_IN": "0.75",
+    "GEMINI_PRICE_OUT": "3.75",
     // Cloudinary image generation from the 3D model and for the site. The cloud name and API key are not secret;
     // the API secret is: set it with `wrangler secret put CLOUDINARY_API_SECRET`, never here.
     "CLOUDINARY_CLOUD_NAME": "fg8gkylc",

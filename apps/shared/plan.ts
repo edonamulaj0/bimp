@@ -3,16 +3,18 @@ export type Pt = [number, number];
 export const ROOM_TYPES = ['living', 'dining', 'bedroom', 'kitchen', 'bathroom', 'wc', 'utility', 'circulation', 'stair', 'lift', 'storage', 'office', 'garage', 'plant', 'outdoor', 'other'] as const;
 export type RoomType = (typeof ROOM_TYPES)[number];
 
-export interface Room { id: string; name: string; type: RoomType; polygon: Pt[] }
+/** Where on the source drawing an item was read: the page of the file and its box in render pixels [x0, y0, x1, y1]. */
+export type Src = { page: number; box: [number, number, number, number] };
+export interface Room { id: string; name: string; type: RoomType; polygon: Pt[]; src?: Src }
 export interface Wall { id: string; a: Pt; b: Pt; thickness: number }
 /** a = hinge for doors; the leaf swings toward swing × leftNormal(a→b) (swing defaults to 1). */
-export interface Opening { id: string; kind: 'door' | 'window'; a: Pt; b: Pt; swing?: 1 | -1 }
+export interface Opening { id: string; kind: 'door' | 'window'; a: Pt; b: Pt; swing?: 1 | -1; src?: Src }
 
 /** Fittings and furniture drawn on the plan. Read from the drawing, never invented. */
 export const FIXTURE_KINDS = ['wc', 'sink', 'bathtub', 'shower', 'sauna_stove', 'stove', 'fridge', 'washer', 'bed', 'sofa', 'table', 'desk', 'wardrobe'] as const;
 export type FixtureKind = (typeof FIXTURE_KINDS)[number];
 /** center/size in metres; size[0] runs along the wall it backs onto, size[1] away from it; angle in radians (local +y = front). */
-export interface Fixture { id: string; kind: FixtureKind; center: Pt; size: Pt; angle: number; room_id: string | null;
+export interface Fixture { id: string; kind: FixtureKind; center: Pt; size: Pt; angle: number; room_id: string | null; src?: Src;
   /** 'suggested' = placed by bimp (feng shui layout), not read from the drawing. */
   source?: 'drawing' | 'suggested' }
 export const FIXTURE_LABEL: Record<FixtureKind, string> = {
@@ -50,9 +52,9 @@ export interface Plan {
   /** ratio = the drawing's own stated scale (1:ratio) when known. */
   scale: { metersPerPx: number | null; source: string; ratio?: number };
   /** The drawing as rendered for reading; geometry maps onto it via scale.metersPerPx and offset. */
-  source: { fileId: string; mime: string; imageWidth: number; imageHeight: number; offset: Pt; renderSha?: string } | null;
+  source: { fileId: string; mime: string; imageWidth: number; imageHeight: number; offset: Pt; renderSha?: string; /** page of the file this plan was read from, and how many it has */ page?: number; pages?: number } | null;
   /** How the geometry was obtained: input kind, whether the scale is stated exactly, share of corners snapped to line work. */
-  provenance?: { kind: string; scaleExact: boolean; snapped: number; segments: number };
+  provenance?: { kind: string; scaleExact: boolean; snapped: number; segments: number; /** rooms whose outline was traced from the drawing's wall lines */ traced?: number };
   assumptions: string[];
 }
 
@@ -284,3 +286,36 @@ export function placeFixture(kind: FixtureKind, center: Pt, w: number, h: number
 }
 
 export const roomStats = (r: Room) => ({ id: r.id, name: r.name, type: r.type, area_m2: round(area(r.polygon)), perimeter_m: round(perimeter(r.polygon)) });
+
+/** A box on the source drawing (render pixels) around points given in plan metres; null when the plan has no drawing. */
+export function sourceBox(plan: Plan, pts: Pt[], pad = 0): [number, number, number, number] | null {
+  const s = plan.source, mpp = plan.scale.metersPerPx;
+  if (!s || !mpp || !pts.length) return null;
+  const b = bounds(pts), k = (v: number, o: number, max: number) => Math.round(Math.min(max, Math.max(0, (v - o) / mpp)));
+  return [k(b.x0 - pad, s.offset[0], s.imageWidth), k(b.y0 - pad, s.offset[1], s.imageHeight), k(b.x1 + pad, s.offset[0], s.imageWidth), k(b.y1 + pad, s.offset[1], s.imageHeight)];
+}
+
+/** What a citation shows of the source sheet: the crop (`box`), the cited items inside it (`marks`), on which page of which render. */
+export type Evidence = { render: string; size: [number, number]; page: number; pages?: number; box: [number, number, number, number]; marks: [number, number, number, number][] };
+
+/** The evidence for a claim: the boxes of the rooms and items it cites, and one crop that holds them all. */
+export function evidenceFor(plan: Plan, roomIds: string[], itemIds: string[] = []): Evidence | null {
+  const s = plan.source;
+  if (!s?.renderSha) return null;
+  const marks: [number, number, number, number][] = [];
+  const add = (b: [number, number, number, number] | null | undefined) => { if (b && b[2] > b[0] && b[3] > b[1]) marks.push(b); };
+  for (const id of itemIds) {
+    const o = plan.openings.find((x) => x.id === id), f = plan.fixtures?.find((x) => x.id === id), d = plan.detected?.items.find((x) => x.id === id);
+    if (o) add(o.src?.box ?? sourceBox(plan, [o.a, o.b], 0.5));
+    else if (f) add(f.src?.box ?? sourceBox(plan, [f.center], Math.max(...f.size) / 2 + 0.1));
+    else if (d) add(sourceBox(plan, [[d.box[0], d.box[1]], [d.box[2], d.box[3]]], 0.1));
+  }
+  if (!marks.length) for (const id of roomIds) { const r = plan.rooms.find((x) => x.id === id); if (r) add(r.src?.box ?? sourceBox(plan, r.polygon, 0.15)); }
+  if (!marks.length) return null;
+  // the crop: everything cited, with a margin, never less than a tenth of the sheet so the surroundings are recognisable
+  const x0 = Math.min(...marks.map((b) => b[0])), y0 = Math.min(...marks.map((b) => b[1])), x1 = Math.max(...marks.map((b) => b[2])), y1 = Math.max(...marks.map((b) => b[3]));
+  const W = s.imageWidth, H = s.imageHeight, w = Math.max(x1 - x0, W * 0.1) * 1.25, h = Math.max(y1 - y0, H * 0.1) * 1.25, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+  const bx = Math.max(0, Math.min(W - w, cx - w / 2)), by = Math.max(0, Math.min(H - h, cy - h / 2));
+  return { render: s.renderSha, size: [W, H], page: s.page ?? 1, ...(s.pages ? { pages: s.pages } : {}),
+    box: [Math.round(bx), Math.round(by), Math.round(Math.min(W, bx + w)), Math.round(Math.min(H, by + h))], marks: marks.slice(0, 60) };
+}

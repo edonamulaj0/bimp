@@ -569,6 +569,11 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 | 2026-11-14 | Review fixes (security, UI/UX, functionality): wall builder closes corners and pairs faces of any thickness; detail scales no longer win over the plan scale; scale/dimension conflicts make a plan a preview; escape distance sampled along edges and inside rooms; verifier hardened; per-user quotas; ingest parse limits; keyboard access to rooms, live chat regions, info panel docking |
 | 2026-11-14 | Room/plan info panel (net/gross, heights), door swing rules, feng shui checks and suggested layout |
 | 2026-11-14 | Dollhouse cutaway is the default 3D mode; procedural floor materials by room type |
+| 2026-11-14 | Room outlines are traced from the drawing's wall lines by the ingestion service (`/trace`); the model's outline only says which enclosed space is which room, and is the fallback when none matches |
+| 2026-11-14 | Every page of a PDF is read (8 per file); each page with a floor plan is its own revision, and chat answers about the revision on the canvas |
+| 2026-11-14 | Every room, opening and fitting keeps its page and box on the render (`src`); each citation returns a crop of the sheet (`evidence`) |
+| 2026-11-14 | Counts, areas and room lists are answered by code from the stored plan (0¢); every answer and every reading reports its cost at the model's list price |
+| 2026-11-14 | The uploaded drawing is on the canvas while it is read, and stays under the model afterwards with adjustable strength for both |
 | 2026-11-14 | Mitered wall footprints + baked occlusion (after neonplan3d, MIT); minimised inset views removed |
 | 2026-11-14 | 3D fixtures use the CC0 Kenney Furniture Kit; VespeneLabs floor-view code not reused (UNLICENSED) |
 | 2026-11-13 | Marketing page v1: plain static HTML + one CSS file in `apps/web/`, system fonts, no build step, default styling; focus stays on functionality. Results section is a placeholder until evals run. Demo CTA points to `/app` |

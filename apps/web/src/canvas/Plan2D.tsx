@@ -33,7 +33,7 @@ const NICE = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200];
 /** A comment pinned to the plan (plan metres). */
 export type PinMark = { id: string; n: number; x: number; y: number; resolved: boolean; label: string };
 type Props = {
-  plan: Plan; compact?: boolean; sourceUrl?: string | null; title?: string;
+  plan: Plan; compact?: boolean; sourceUrl?: string | null; /** 0-1: how strongly the source drawing and the model over it are drawn */ sourceOpacity?: number; modelOpacity?: number; title?: string;
   /** Comment pins on this plan; drawn at a constant screen size. */
   pins?: PinMark[]; activePin?: string | null; onPin?(id: string): void;
   /** Comment tool: a click (or Enter on a room) drops a pin at that spot instead of selecting. */
@@ -51,7 +51,7 @@ type Props = {
 /** plan: the drawing with overall sizes; dims: every wall, opening and room dimensioned in millimetres. */
 export type PlanMode = 'plan' | 'dims';
 
-export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activePin, onPin, placing, onPlace, draft, popover, diff, focusAt, tool = 'select', region, onRegion, layers = ALL_LAYERS, apiRef, onMenu }: Props) {
+export function Plan2D({ plan, compact, sourceUrl, sourceOpacity = 0.45, modelOpacity = 1, title = 'Plan', pins, activePin, onPin, placing, onPlace, draft, popover, diff, focusAt, tool = 'select', region, onRegion, layers = ALL_LAYERS, apiRef, onMenu }: Props) {
   const [mode, setMode] = useState<PlanMode>(() => { try { return localStorage.getItem('bimp.planMode') === 'dims' ? 'dims' : 'plan'; } catch { return 'plan'; } });
   // Dimension strings sit outside the building: three tiers on every side need about twice the margin.
   const pad = Math.max(plan.width, plan.height) * (mode === 'dims' && !compact ? 0.2 : 0.1), top = compact ? 0 : pad * 0.35; // room for the toolbar
@@ -279,8 +279,9 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
       {sourceUrl && plan.source && (
         <image aria-hidden="true" href={sourceUrl} x={plan.source.offset[0]} y={plan.source.offset[1]}
           width={plan.source.imageWidth * (plan.scale.metersPerPx ?? 1)} height={plan.source.imageHeight * (plan.scale.metersPerPx ?? 1)}
-          opacity={0.45} preserveAspectRatio="none" />
+          opacity={sourceOpacity} preserveAspectRatio="none" />
       )}
+      <g class="model" opacity={modelOpacity}>
       {plan.rooms.map((r) => {
         const on = hovered === r.id || selected.includes(r.id);
         return (
@@ -328,7 +329,8 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
             const [x, y] = labelAt.get(r.id) ?? centroid(r.polygon);
             return (
               <text key={r.id} x={x} y={y} font-size={fs}>
-                <tspan x={x} font-weight="600">{r.name}</tspan>
+                {/* over the source drawing the room's name is already on the sheet: only the measured figures are added */}
+                <tspan x={x} font-weight="600">{sourceUrl && sourceOpacity >= 0.3 ? '' : r.name}</tspan>
                 <tspan x={x} dy={fs * 1.2} font-size={fs * 0.85}>{mode === 'dims' ? `A: ${area(r.polygon).toFixed(2).replace('.', ',')} m²` : `${round(area(r.polygon), 1)} m²`}</tspan>
                 {mode === 'plan' && <tspan x={x} dy={fs * 1.05} font-size={fs * 0.72} opacity={0.75}>{(() => { const d = roomDims(r.polygon); return `${d.length.toFixed(2)} × ${d.width.toFixed(2)}`; })()}</tspan>}
               </text>
@@ -336,6 +338,7 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
           })}
         </g>
       )}
+      </g>
       {!compact && pxPerM > 0 && (region || rubber) && <RegionMark r={rubber ? normRegion(rubber[0], rubber[1]) : region!} live={!!rubber} u={1 / pxPerM} />}
       {!compact && pxPerM > 0 && (measures.length > 0 || mFrom) && (
         <g class="measures" pointer-events="none" aria-hidden="true">

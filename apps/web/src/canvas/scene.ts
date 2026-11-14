@@ -20,8 +20,11 @@ export type SceneApi = {
   planPoint(clientX: number, clientY: number): Pt | null; setControls(on: boolean): void; setRegion(r: Region | null): void;
   /** The current view as a PNG with a transparent background (no region box), for image generation. */
   snapshot(): Promise<Blob>; dispose(): void;
+  /** The source drawing laid on the floor: 0 hides it. */
+  setUnderlay(opacity: number): void;
 };
-type Opts = { compact?: boolean; walls?: WallMode; furniture?: boolean; projection?: Projection; view?: CameraView | null;
+type Opts = { /** The source drawing (same-origin URL), laid on the floor under the walls so the model can be checked against it. */ underlay?: { url: string; opacity: number } | null;
+  compact?: boolean; walls?: WallMode; furniture?: boolean; projection?: Projection; view?: CameraView | null;
   onHover(id: string | null, x: number, y: number): void; onClick(id: string | null): void;
   onLabels?(labels: { id: string; name: string; x: number; y: number }[]): void;
   /** Context menu at a client position (right click without dragging, double click, long press). */
@@ -68,6 +71,22 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
   ground.receiveShadow = true;
   scene.add(ground);
   const disposables: { dispose(): void }[] = [ground.geometry, ground.material as THREE.Material];
+
+  // The source drawing on the floor, at the plan's scale and position: walls rise from the lines they were read from.
+  let underlay: THREE.Mesh<THREE.PlaneGeometry, THREE.MeshBasicMaterial> | null = null;
+  if (opts.underlay && plan.source && plan.scale.metersPerPx) {
+    const w = plan.source.imageWidth * plan.scale.metersPerPx, h = plan.source.imageHeight * plan.scale.metersPerPx;
+    const tex = new THREE.TextureLoader().load(opts.underlay.url, () => render());
+    tex.colorSpace = THREE.SRGBColorSpace;
+    tex.anisotropy = renderer.capabilities.getMaxAnisotropy();
+    underlay = new THREE.Mesh(new THREE.PlaneGeometry(w, h), new THREE.MeshBasicMaterial({ map: tex, transparent: true, opacity: opts.underlay.opacity, depthWrite: false }));
+    underlay.rotation.x = -Math.PI / 2; // image top lies toward plan y = 0
+    underlay.position.set(plan.source.offset[0] + w / 2, 0.015, plan.source.offset[1] + h / 2);
+    underlay.visible = opts.underlay.opacity > 0;
+    underlay.renderOrder = 1;
+    scene.add(underlay);
+    disposables.push(underlay.geometry, underlay.material, tex);
+  }
 
   // Floors: a slab per room with a procedural material by room type (wood, tiles, concrete, decking), tinted by type.
   const floors = plan.rooms.map((r) => {
@@ -431,12 +450,19 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
       setupControls(); controls.target.copy(tgt);
       fit();
     },
+    setUnderlay(opacity: number) {
+      if (!underlay) return;
+      underlay.material.opacity = opacity; underlay.visible = opacity > 0;
+      render();
+    },
     async snapshot() {
-      const hidden = regionObj?.visible;
+      const hidden = regionObj?.visible, under = underlay?.visible;
       if (regionObj) regionObj.visible = false;
+      if (underlay) underlay.visible = false; // generated images show the model alone
       renderer.render(scene, camera); // read back in the same task, before the drawing buffer is cleared
       const url = el.toDataURL('image/png');
       if (regionObj) regionObj.visible = hidden ?? true;
+      if (underlay) underlay.visible = under ?? false;
       render();
       const bin = atob(url.slice(url.indexOf(',') + 1)), bytes = new Uint8Array(bin.length); // not fetch(): CSP allows no data: connections
       for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);

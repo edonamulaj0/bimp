@@ -1,15 +1,16 @@
-import { type Plan, area, roomStats, round, detectedKindOf, detectedCount } from '../../shared/plan';
+import { type Plan, type Evidence, area, roomStats, round, detectedKindOf, detectedCount } from '../../shared/plan';
 import { calculate } from './calc';
 import { ACCESS, BED, CORRIDOR, DOOR, FLAT_TRAVEL, GARAGE, OCCUPANCY, OCCUPANCY_REF, PLAN_SCALES, ROOM_STANDARDS, STAIR, TRAVEL, TRAVEL_REF, TURNING, WALL, checkPlan, escapeWidth } from '../../shared/standards';
 import { escapeRoutes } from '../../shared/escape';
 import { openingsOfRoom, planAreas, roomInfo } from '../../shared/rooms';
 import { fengShui } from '../../shared/fengshui';
-import { type Content, type Part, generate } from './gemini';
+import { type Content, type Meter, type Part, generate } from './gemini';
 import type { Env } from './util';
 
 export type Answer = {
   text: string;
-  claims: { text: string; room_ids: string[] }[];
+  /** item_ids: the openings and fittings a claim counts; evidence: the crop of the source sheet that shows them. */
+  claims: { text: string; room_ids: string[]; item_ids?: string[]; evidence?: Evidence }[];
   calculation: string | null;
   assumptions: string[];
   not_found: boolean;
@@ -36,7 +37,7 @@ const TOOLS = [
     description: 'Return the answer. Call exactly once, last.',
     parameters: S('OBJECT', undefined, {
       properties: {
-        text: S('STRING', 'Answer in the user\'s language, plain and short.'),
+        text: S('STRING', 'Answer in the user\'s language, short. Markdown: a blank line between paragraphs, a bullet list when listing several rooms or items, **bold** for the key figure, a small table only for comparing several rooms. No headings in a short answer.'),
         claims: S('ARRAY', 'Each factual claim with the room ids it comes from', { items: S('OBJECT', undefined, { properties: { text: S('STRING'), room_ids: S('ARRAY', undefined, { items: S('STRING') }) }, required: ['text', 'room_ids'] }) }),
         calculation: S('STRING', 'Formula with inputs and result, if any arithmetic was done', { nullable: true }),
         assumptions: S('ARRAY', undefined, { items: S('STRING') }),
@@ -158,7 +159,11 @@ export function verify(ans: Omit<Answer, 'verified' | 'issues'>, results: unknow
   const nums = (s: string) => (s.match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => n.replace(',', '.'));
   const known = [...numbersIn(results), ...nums(question), ...plan.assumptions.flatMap((a) => nums(a.replace(/"[^"]*"/g, '')))].map(Number);
   const issues: string[] = [];
-  const said = [ans.text, ...ans.claims.map((c) => c.text), ans.calculation ?? ''].join(' ');
+  // numbered-list markers ("1. ", "2) ") are formatting, not figures
+  // room names quoted in the answer ("Bedroom 2", "Flat 3 kitchen") are labels, not figures: taken out before the numbers are checked
+  const names = plan.rooms.map((r) => r.name).filter((n) => /\d/.test(n)).sort((a, b) => b.length - a.length);
+  const unnamed = (t: string) => names.reduce((x, n) => x.split(n).join(' '), t);
+  const said = unnamed([ans.text.replace(/^[ \t]*\d{1,3}[.)][ \t]+/gm, ''), ...ans.claims.map((c) => c.text), ans.calculation ?? ''].join(' '));
   for (const n of new Set(nums(said))) {
     const d = n.split('.')[1]?.length ?? 0;
     if (!known.some((k) => Math.abs(round(k, d) - Number(n)) < 1e-9)) issues.push(`The number ${n} does not come from the plan or a calculation`);
@@ -177,7 +182,7 @@ export function verify(ans: Omit<Answer, 'verified' | 'issues'>, results: unknow
 }
 
 /** `context` goes in front of the question: e.g. the drawing sheet and where on it a comment is pinned. */
-export async function ask(env: Env, plan: Plan, question: string, history: { role: 'user' | 'model'; text: string }[], context: Part[] = []): Promise<Answer> {
+export async function ask(env: Env, plan: Plan, question: string, history: { role: 'user' | 'model'; text: string }[], context: Part[] = [], meter?: Meter): Promise<Answer> {
   const contents: Content[] = [...history.map((h) => ({ role: h.role, parts: [{ text: h.text }] })), { role: 'user', parts: [...context, { text: question }] }];
   const results: unknown[] = [];
   for (let step = 0; step < 8; step++) {
@@ -187,7 +192,7 @@ export async function ask(env: Env, plan: Plan, question: string, history: { rol
       tools: [{ functionDeclarations: TOOLS }],
       toolConfig: { functionCallingConfig: { mode: 'ANY' } },
       generationConfig: { temperature: 0 },
-    });
+    }, undefined, undefined, meter);
     contents.push(reply);
     const calls = reply.parts.filter((p) => p.functionCall).map((p) => p.functionCall!);
     const final = calls.find((c) => c.name === 'final_answer');

@@ -1,6 +1,6 @@
 import { ai, teams, user, visualsOn } from './state';
 
-type Opts = { method?: string; json?: unknown; body?: BodyInit; headers?: Record<string, string> };
+type Opts = { method?: string; json?: unknown; body?: BodyInit; headers?: Record<string, string>; signal?: AbortSignal };
 
 export async function api<T = any>(path: string, o: Opts = {}): Promise<T> {
   const hasBody = o.json !== undefined || o.body !== undefined;
@@ -9,6 +9,7 @@ export async function api<T = any>(path: string, o: Opts = {}): Promise<T> {
     headers: { ...(o.json !== undefined ? { 'content-type': 'application/json' } : {}), ...o.headers },
     body: o.json !== undefined ? JSON.stringify(o.json) : o.body,
     credentials: 'same-origin',
+    signal: o.signal,
   });
   const data = await res.json().catch(() => ({}));
   if (res.status === 401 && !path.startsWith('/auth')) user.value = null;

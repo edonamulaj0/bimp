@@ -6,6 +6,9 @@ export interface Env {
   GEMINI_API_KEY?: string;
   GEMINI_MODEL: string;
   AI_GATEWAY_URL?: string;
+  /** List price in US dollars per million tokens, for the cost shown with each answer (defaults: Gemini Flash paid tier). */
+  GEMINI_PRICE_IN?: string;
+  GEMINI_PRICE_OUT?: string;
   ALLOW_SIGNUP?: string;
   /** Cloudinary image generation from the 3D model (optional): cloud name and API key as vars, API secret as a secret. */
   CLOUDINARY_CLOUD_NAME?: string;
