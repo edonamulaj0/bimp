@@ -154,7 +154,7 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
       const L = dist(o.a, o.b);
       if (L < 0.2) continue;
       const H = heightAt([(o.a[0] + o.b[0]) / 2, (o.a[1] + o.b[1]) / 2]);
-      const u = [(o.b[0] - o.a[0]) / L, (o.b[1] - o.a[1]) / L], n = [-u[1], u[0]];
+      const u = [(o.b[0] - o.a[0]) / L, (o.b[1] - o.a[1]) / L], sw = o.swing ?? 1, n = [-u[1] * sw, u[0] * sw];
       if (o.kind === 'door' && H > 0.5) {
         const h = Math.min(2.05, H), g = new THREE.BoxGeometry(L, h, 0.04);
         g.rotateY(-Math.atan2(n[1], n[0]));

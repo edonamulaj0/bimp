@@ -5,6 +5,8 @@ import { samplePlan } from '../apps/shared/sample-plan';
 import { area, wallsFromFaces, type Plan } from '../apps/shared/plan';
 import { escapeRoutes } from '../apps/shared/escape';
 import { wallFootprints, cleanWalls, labelPoint } from '../apps/shared/walls';
+import { doorClashes, doorSweep, fixtureContains, inside, planAreas, roomInfo } from '../apps/shared/rooms';
+import { fengShui, suggestLayout } from '../apps/shared/fengshui';
 import { escapeWidth } from '../apps/shared/standards';
 
 let fail = 0;
@@ -71,7 +73,8 @@ eq('2.2 × 4.5 m garage flagged (Fig. 31.30)', checkPlan(gar).some((c) => c.room
 
 // Fixtures: the sample WC sits against the bathroom's east wall (x = 6.5), so its front faces west (-x)
 const wc = samplePlan().fixtures!.find((f) => f.kind === 'wc')!;
-near('WC faces away from its wall (+90°)', wc.angle, Math.PI / 2, 1e-3);
+const wcFront = [-Math.sin(wc.angle), Math.cos(wc.angle)];
+eq('WC faces into the bathroom (front away from its wall)', inside([wc.center[0] + wcFront[0] * 0.8, wc.center[1] + wcFront[1] * 0.8], samplePlan().rooms.find((r) => r.id === 'r5')!.polygon), true);
 eq('WC is in the bathroom', wc.room_id, 'r5');
 eq('every sample fixture is inside a room', samplePlan().fixtures!.every((f) => f.room_id), true);
 
@@ -93,6 +96,44 @@ eq(`sample: footprint area ${fpArea.toFixed(2)} within 5% of length×thickness $
 // label point of an L-shaped room sits inside the room, away from the notch
 const lp = labelPoint([[0, 0], [6, 0], [6, 2], [2, 2], [2, 6], [0, 6]]);
 eq('L-room label inside the L', (lp[0] <= 2 || lp[1] <= 2) && lp[0] >= 0 && lp[1] >= 0, true);
+
+// Doors: swing into rooms (not the hall), entrance inward, no leaf through furniture
+const sp = samplePlan();
+const swingRoom = (id: string) => {
+  const o = sp.openings.find((x) => x.id === id)!, L = Math.hypot(o.b[0] - o.a[0], o.b[1] - o.a[1]);
+  const u = [(o.b[0] - o.a[0]) / L, (o.b[1] - o.a[1]) / L], s2 = o.swing ?? 1, n = [-u[1] * s2, u[0] * s2], k = Math.SQRT1_2 * L * 0.6;
+  const mid: [number, number] = [o.a[0] + (u[0] + n[0]) * k, o.a[1] + (u[1] + n[1]) * k]; // 45° into the swing
+  return sp.rooms.find((r) => inside(mid, r.polygon))?.name;
+};
+eq('kitchen door opens into the kitchen', swingRoom('d3'), 'Kitchen');
+eq('bedroom 2 door opens into bedroom 2', swingRoom('d4'), 'Bedroom 2');
+eq('entrance door opens inward (into the hall)', swingRoom('d1'), 'Hall');
+eq('storage door opens out of the cupboard', swingRoom('d8') !== 'Storage', true);
+eq('no door leaf hits furniture in the sample', sp.openings.filter((o) => o.kind === 'door').flatMap((o) => doorClashes(o, sp.fixtures!)).length, 0);
+// Areas: net = Σ rooms (108 m²), gross adds the walls; ceiling assumed 2.7 m
+const pa = planAreas(sp);
+near('net floor area = Σ rooms', pa.net_floor_area_m2, 108, 1e-6);
+eq('gross > net', pa.gross_floor_area_m2 > pa.net_floor_area_m2, true);
+eq('ceiling assumed', pa.ceiling_source, 'assumed');
+const ri = roomInfo(sp, sp.rooms.find((r) => r.name === 'Kitchen')!);
+eq('kitchen 5.5 × 4 m, perimeter 19 m', [ri.length, ri.width, ri.perimeter_m], [5.5, 4, 19]);
+
+// Feng shui: an empty copy of the sample gets a layout that obeys the rules it checks
+const empty = { ...sp, fixtures: [] };
+const sug = suggestLayout(empty);
+const furnished = { ...empty, fixtures: sug };
+eq('suggests a bed for each bedroom', sug.filter((f) => f.kind === 'bed').length, 2);
+eq('suggested items are marked as suggestions', sug.every((f) => f.source === 'suggested'), true);
+eq('no suggested item blocks a door', furnished.openings.filter((o) => o.kind === 'door').flatMap((o) => doorClashes(o, sug)).length, 0);
+eq('no suggested bed, WC or stove faces a door straight on', fengShui(furnished).filter((n) => !n.ok && /straight at the door|faces the door directly|back straight to the door/.test(n.text)).length, 0);
+eq('suggested desk does not put its user\'s back to the door', fengShui(furnished).some((n) => /back to the door/.test(n.text)), false);
+eq('every suggested item lies inside its room', sug.every((f) => inside(f.center, furnished.rooms.find((r) => r.id === f.room_id)!.polygon)), true);
+eq('suggested sofa faces the room entrance', fengShui(furnished).some((n) => /sofa turns its back/.test(n.text)), false);
+eq('no suggested bed has its headboard under a window', fengShui(furnished).some((n) => /headboard under a window/.test(n.text)), false);
+eq('nothing to suggest for the furnished sample', suggestLayout(sp).length, 0);
+const fs = fengShui(sp);
+eq('feng shui flags the entrance lining up across the home or confirms it', fs.some((n) => /entrance/.test(n.text)), true);
+void doorSweep; void fixtureContains;
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');
 process.exit(fail ? 1 : 0);

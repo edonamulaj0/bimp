@@ -1,4 +1,5 @@
 import { type Plan, type Room, type Opening, type Pt, type FixtureKind, placeFixture, wallsFromRooms } from './plan';
+import { orientDoors } from './rooms';
 
 const rect = (x0: number, y0: number, x1: number, y1: number): Pt[] => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
 const rooms: Room[] = [
@@ -33,17 +34,18 @@ const openings: Opening[] = [
 ];
 
 const walls = wallsFromRooms(rooms);
-// [kind, centre x, centre y, width, depth] as boxes on the plan; placeFixture turns each to back onto its wall.
-const items: [FixtureKind, number, number, number, number][] = [
-  ['wc', 6.2, 6.0, 0.4, 0.65], ['sink', 6.25, 6.9, 0.35, 0.55], ['bathtub', 5.5, 7.1, 1.7, 0.7],
-  ['stove', 11.7, 1.2, 0.6, 0.6], ['sink', 11.7, 2.2, 0.6, 0.9], ['fridge', 11.7, 3.2, 0.65, 0.65], ['table', 8.6, 1.9, 1.6, 0.9],
+// [kind, centre x, centre y, width, depth, turn?] as boxes on the plan; placeFixture turns each to back onto its wall.
+// turn = face the wall instead (a desk in the command position: chair between desk and wall, facing the room).
+const items: [FixtureKind, number, number, number, number, boolean?][] = [
+  ['wc', 6.1, 5.37, 0.4, 0.65], ['sink', 6.25, 6.45, 0.35, 0.55], ['bathtub', 5.5, 7.1, 1.7, 0.7],
+  ['stove', 11.7, 1.0, 0.6, 0.6], ['sink', 11.7, 2.3, 0.6, 0.9], ['fridge', 11.65, 3.5, 0.65, 0.65], ['table', 8.6, 1.9, 1.6, 0.9],
   ['sofa', 0.5, 2.5, 0.9, 2.2], ['table', 2.1, 2.5, 0.6, 1.2],
-  ['bed', 1.1, 6.2, 1.6, 2.0], ['wardrobe', 3.9, 8.7, 1.2, 0.6],
-  ['bed', 8.0, 8.0, 0.9, 2.0], ['wardrobe', 6.9, 6.2, 0.6, 1.2],
-  ['desk', 10.7, 8.6, 1.4, 0.7], ['washer', 5.5, 8.7, 0.6, 0.6],
+  ['bed', 1.5, 6.05, 1.6, 2.0], ['wardrobe', 3.9, 8.7, 1.2, 0.6],
+  ['bed', 8.7, 6.25, 0.9, 2.0], ['wardrobe', 9.2, 8.2, 0.6, 1.2],
+  ['desk', 10.75, 7.9, 1.4, 0.7, true], ['washer', 5.5, 8.7, 0.6, 0.6],
 ];
 
-export const samplePlan = (): Plan => ({
+const base = (): Plan => ({
   version: 1,
   method: 'sample',
   measured: false,
@@ -53,8 +55,14 @@ export const samplePlan = (): Plan => ({
   rooms,
   walls,
   openings,
-  fixtures: items.map(([k, x, y, w, h], i) => placeFixture(k, [x, y], w, h, walls, rooms, `f${i + 1}`)),
+  fixtures: items.map(([k, x, y, w, h, turn], i) => {
+    const f = placeFixture(k, [x, y], w, h, walls, rooms, `f${i + 1}`);
+    return turn ? { ...f, angle: f.angle + Math.PI } : f;
+  }),
   scale: { metersPerPx: null, source: 'Hand-made sample plan' },
   source: null,
   assumptions: ['Sample plan for demonstration, not from a real drawing', 'Wall height 2.7 m', 'Exterior walls 0.30 m, interior 0.12 m'],
 });
+
+/** The sample, with doors swung by the same rules applied to drawings. */
+export const samplePlan = (): Plan => { const p = base(); return { ...p, openings: orientDoors(p) }; };

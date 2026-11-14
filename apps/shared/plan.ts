@@ -5,13 +5,16 @@ export type RoomType = (typeof ROOM_TYPES)[number];
 
 export interface Room { id: string; name: string; type: RoomType; polygon: Pt[] }
 export interface Wall { id: string; a: Pt; b: Pt; thickness: number }
-export interface Opening { id: string; kind: 'door' | 'window'; a: Pt; b: Pt }
+/** a = hinge for doors; the leaf swings toward swing × leftNormal(a→b) (swing defaults to 1). */
+export interface Opening { id: string; kind: 'door' | 'window'; a: Pt; b: Pt; swing?: 1 | -1 }
 
 /** Fittings and furniture drawn on the plan. Read from the drawing, never invented. */
 export const FIXTURE_KINDS = ['wc', 'sink', 'bathtub', 'shower', 'sauna_stove', 'stove', 'fridge', 'washer', 'bed', 'sofa', 'table', 'desk', 'wardrobe'] as const;
 export type FixtureKind = (typeof FIXTURE_KINDS)[number];
 /** center/size in metres; size[0] runs along the wall it backs onto, size[1] away from it; angle in radians (local +y = front). */
-export interface Fixture { id: string; kind: FixtureKind; center: Pt; size: Pt; angle: number; room_id: string | null }
+export interface Fixture { id: string; kind: FixtureKind; center: Pt; size: Pt; angle: number; room_id: string | null;
+  /** 'suggested' = placed by bimp (feng shui layout), not read from the drawing. */
+  source?: 'drawing' | 'suggested' }
 export const FIXTURE_LABEL: Record<FixtureKind, string> = {
   wc: 'toilet', sink: 'sink / wash basin', bathtub: 'bathtub', shower: 'shower', sauna_stove: 'sauna stove', stove: 'cooker / hob',
   fridge: 'fridge', washer: 'washing machine', bed: 'bed', sofa: 'sofa', table: 'table', desk: 'desk', wardrobe: 'wardrobe',
@@ -28,6 +31,8 @@ export interface Plan {
   walls: Wall[];
   openings: Opening[];
   fixtures?: Fixture[];
+  /** Floor level (FFL, m) and clear ceiling height (m) when read from the drawing; null = not stated. */
+  levels?: { floor: number | null; ceiling: number | null; source: string };
   /** ratio = the drawing's own stated scale (1:ratio) when known. */
   scale: { metersPerPx: number | null; source: string; ratio?: number };
   /** The drawing as rendered for reading; geometry maps onto it via scale.metersPerPx and offset. */
@@ -205,7 +210,10 @@ export function placeFixture(kind: FixtureKind, center: Pt, w: number, h: number
     const t = Math.max(0, Math.min(L, (center[0] - wl.a[0]) * u[0] + (center[1] - wl.a[1]) * u[1]));
     const q: Pt = [wl.a[0] + u[0] * t, wl.a[1] + u[1] * t];
     const d = dist(center, q);
-    if (!best || d < best.d) best = { d, u, n: d > 1e-6 ? [(center[0] - q[0]) / d, (center[1] - q[1]) / d] : [-u[1], u[0]] };
+    const n: Pt = d > 1e-6 ? [(center[0] - q[0]) / d, (center[1] - q[1]) / d] : [-u[1], u[0]];
+    // gap between the item's edge (not its centre) and the wall: long items back onto the wall at their short end
+    const gap = d - (Math.abs(n[0]) * w + Math.abs(n[1]) * h) / 2;
+    if (!best || gap < best.d) best = { d: gap, u, n };
   }
   let angle = 0, size: Pt = [w, h];
   if (best) {

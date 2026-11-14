@@ -9,3 +9,6 @@ export const go = (hash: string) => { location.hash = hash; };
 /** Linked selection across chat, 2D and 3D. */
 export const hoverRoom = signal<string | null>(null);
 export const selectedRooms = signal<string[]>([]);
+
+/** A question for the chat to send (set by the canvas, e.g. 'Ask AI for an overview'). */
+export const chatPrompt = signal<string | null>(null);

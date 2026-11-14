@@ -150,3 +150,16 @@ details { margin-top: .4rem; } details ul { margin: .3rem 0 0; padding-left: 1.1
   .views.mode-split { grid-template-columns: minmax(0, 1fr); grid-template-rows: minmax(0, 1fr) minmax(0, 1fr); }
   .views.mode-split .view + .view { border-left: 0; border-top: 1px solid var(--line); }
 }
+
+/* info panel */
+.infopanel { position: absolute; top: .6rem; right: .75rem; width: min(330px, calc(100% - 1.5rem)); max-height: calc(100% - 4rem); overflow: auto; background: color-mix(in srgb, var(--bg) 96%, transparent); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: 0 4px 16px rgb(0 0 0 / .1); padding: .7rem .8rem; z-index: 3; font-size: .85rem; }
+.ip-head { display: flex; justify-content: space-between; align-items: baseline; gap: .5rem; margin-bottom: .4rem; }
+.ip-grid { display: grid; grid-template-columns: auto 1fr; gap: .2rem .8rem; margin: 0 0 .4rem; }
+.ip-grid dt { color: var(--muted); } .ip-grid dd { margin: 0; text-align: right; font-variant-numeric: tabular-nums; }
+.ip-items { margin: .2rem 0 .4rem; }
+.infopanel h4 { margin: .6rem 0 .3rem; font-size: .85rem; }
+.fs { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: .3rem; }
+.fs li { line-height: 1.35; } .fs li.ok { color: #15803d; } .fs li.warn { color: #b45309; }
+.ip-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .7rem; }
+.fixtures .suggested * { stroke-dasharray: 0.06 0.04; opacity: .85; }
+@media (max-width: 760px) { .infopanel { top: auto; bottom: 2.4rem; max-height: 45%; } }
