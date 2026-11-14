@@ -19,6 +19,6 @@ export default defineConfig({
   root: 'apps/web',
   plugins: [partials, preact(), cloudflare({ configPath: r('wrangler.jsonc'), auxiliaryWorkers: [{ configPath: r('ingest/wrangler.jsonc') }], persistState: { path: r('.wrangler/state') } })],
   environments: {
-    client: { build: { chunkSizeWarningLimit: 700, rollupOptions: { input: { main: r('apps/web/index.html'), product: r('apps/web/product/index.html'), pricing: r('apps/web/pricing/index.html'), changelog: r('apps/web/changelog/index.html'), docs: r('apps/web/docs/index.html'), app: r('apps/web/app/index.html') } } } },
+    client: { build: { chunkSizeWarningLimit: 700, rollupOptions: { input: { main: r('apps/web/index.html'), product: r('apps/web/product/index.html'), pricing: r('apps/web/pricing/index.html'), changelog: r('apps/web/changelog/index.html'), docs: r('apps/web/docs/index.html'), privacy: r('apps/web/privacy/index.html'), terms: r('apps/web/terms/index.html'), company: r('apps/web/company/index.html'), app: r('apps/web/app/index.html') } } } },
   },
 });

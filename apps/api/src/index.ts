@@ -1,6 +1,7 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { samplePlan } from '../../shared/sample-plan';
+import { clipPlan, parseRegion, regionContents, regionSize, type Region } from '../../shared/region';
 import { type Plan, area } from '../../shared/plan';
 import { ask } from './agent';
 import { comments } from './comments';
@@ -28,7 +29,7 @@ app.post('/auth/signup', async (c) => {
   const { email, password } = validate(await c.req.json().catch(() => null));
   await signupThrottle(c.env, c.req.header('cf-connecting-ip') ?? 'local');
   const user = await createUser(c.env, email, password);
-  await createProject(c.env, user.id, 'Sample house', samplePlan());
+  await createProject(c.env, user.id, 'Pilot house', samplePlan());
   await startSession(c, user.id);
   return c.json({ user });
 });
@@ -270,7 +271,7 @@ projects.get('/:id/files/:fid', async (c) => {
 // --- chat
 projects.post('/:id/chat', async (c) => {
   const project = await projectAccess(c, c.req.param('id'));
-  const { message } = (await c.req.json().catch(() => ({}))) as { message?: unknown };
+  const { message, region: rawRegion } = (await c.req.json().catch(() => ({}))) as { message?: unknown; region?: unknown };
   const q = typeof message === 'string' ? message.trim().slice(0, 2000) : '';
   if (!q) throw fail(400, 'Type a question.');
   const plan = await latestPlan(c.env, project.id);
@@ -285,16 +286,30 @@ projects.post('/:id/chat', async (c) => {
     if (last?.role === role) last.text += `\n${content.text}`; else if (history.length || role === 'user') history.push({ role, text: content.text });
   }
   if (history[history.length - 1]?.role === 'user') history.pop(); // an unanswered question; the new one follows
+  // Markup region: the agent only sees the plan clipped to it, so every tool result (and so every answer) comes from inside.
+  const region = rawRegion == null ? null : parseRegion(rawRegion, plan);
+  if (rawRegion != null && !region) throw fail(400, 'The marked region is too small or not on the plan. Drag a larger area.');
   await chatQuota(c.env, c.get('user').id);
-  const answer = await ask(c.env, plan, q, history);
+  const scope = region ? clipPlan(plan, region) : plan;
+  const context = region ? [{ text: regionBrief(plan, region) }] : [];
+  const answer = await ask(c.env, scope, q, region ? [] : history, context);
   const t = now();
   await c.env.DB.batch([
-    c.env.DB.prepare('INSERT INTO messages (project_id, role, content, created_at, user_id) VALUES (?,?,?,?,?)').bind(project.id, 'user', JSON.stringify({ text: q }), t, c.get('user').id),
+    c.env.DB.prepare('INSERT INTO messages (project_id, role, content, created_at, user_id) VALUES (?,?,?,?,?)').bind(project.id, 'user', JSON.stringify(region ? { text: q, region } : { text: q }), t, c.get('user').id),
     c.env.DB.prepare('INSERT INTO messages (project_id, role, content, created_at) VALUES (?,?,?,?)').bind(project.id, 'assistant', JSON.stringify(answer), t),
     c.env.DB.prepare('UPDATE projects SET updated_at = ? WHERE id = ?').bind(t, project.id),
   ]);
   return c.json({ message: { role: 'assistant', content: answer } });
 });
+
+/** Tells the agent the question is scoped to a region, and what the region holds (computed, not read from the model). */
+function regionBrief(plan: Plan, r: Region) {
+  const { w, h, area } = regionSize(r), inside = regionContents(plan, r);
+  const rooms = inside.rooms.map((x) => `${x.id} ${JSON.stringify(x.name)}: ${x.area_in_region_m2} m² inside (${Math.round(x.share_of_room * 100)}% of the room)`).join('; ');
+  return `The user marked a region on the plan (${w} × ${h} m, ${area} m²). Answer ONLY from what lies inside it: the tools below see the plan clipped to the region. `
+    + `If the question needs anything outside the region, say so and set not_found. Rooms in the region: ${rooms || 'none'}. `
+    + `Openings in it: ${inside.openings.length}; fittings: ${inside.fixtures.length}.`;
+}
 
 projects.route('/:id/comments', comments);
 app.route('/projects', projects);

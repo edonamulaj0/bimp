@@ -11,6 +11,8 @@ export type ProjectRow = {
 export type Content = {
   text: string; kind?: 'system' | 'error'; claims?: { text: string; room_ids: string[] }[]; calculation?: string | null;
   assumptions?: string[]; not_found?: boolean; verified?: boolean; issues?: string[];
+  /** A question asked about a marked region of the plan. */
+  region?: import('../../shared/region').Region;
 };
 export type Msg = { id?: string; role: 'user' | 'assistant'; content: Content; created_at?: number; user_email?: string | null };
 export type Job = { id: string; status: string; stage: string; error?: string | null };

@@ -6,7 +6,8 @@ import { Logo } from './brand';
 import { Icon } from './icons';
 import { Dialog, Menu } from './ui';
 
-const narrow = () => matchMedia('(max-width: 899px)').matches;
+/** The sidebar is a drawer on narrow screens, and in a project workspace (which needs the width for its three columns). */
+const narrow = () => matchMedia('(max-width: 899px)').matches || parsed.peek().page === 'project';
 const setCollapsed = (v: boolean) => { sidebarCollapsed.value = v; try { localStorage.setItem('bimp.sidebar', v ? 'collapsed' : 'open'); } catch { /* private mode */ } };
 
 /** Left sidebar of the signed-in app: projects, teams and the account. A drawer under 900 px. */
@@ -66,7 +67,7 @@ export type Crumb = { label: string; href?: string };
 export function PageHeader({ crumbs = [], title, actions }: { crumbs?: Crumb[]; title: ComponentChildren; actions?: ComponentChildren }) {
   return (
     <header class="topbar">
-      <button class={`icon-btn nav-toggle${sidebarCollapsed.value ? ' show' : ''}`} aria-label="Show sidebar" title="Show sidebar"
+      <button class={`icon-btn nav-toggle${sidebarCollapsed.value ? ' show' : ''}`} aria-label="Show projects and teams" title="Projects and teams"
         aria-expanded={narrow() ? drawerOpen.value : !sidebarCollapsed.value}
         onClick={() => (narrow() ? (drawerOpen.value = true) : setCollapsed(false))}><Icon name={sidebarCollapsed.value ? 'sidebar' : 'menu'} /></button>
       <nav class="crumbs" aria-label="Breadcrumb">

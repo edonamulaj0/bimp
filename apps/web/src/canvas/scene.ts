@@ -1,16 +1,30 @@
-// three.js isometric scene. Loaded lazily so the 3D library only downloads when a 3D view is shown.
+// three.js model scene with a free orbit camera. Loaded lazily so the 3D library only downloads when a 3D view is shown.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import type { Region } from '../../../shared/region';
 import { type Plan, type Pt, type Fixture, type FixtureKind, type Room, dist, wallPieces } from '../../../shared/plan';
 import { clipHalf, labelPoint, wallFootprints } from '../../../shared/walls';
 import { ROOM_COLORS } from './colors';
 import { floorTexture } from './floors';
 
 export type WallMode = 'dollhouse' | 'cut' | 'full';
-export type SceneApi = { highlight(hover: string | null, selected: string[]): void; rotate(steps: number): void; dispose(): void };
-type Opts = { compact?: boolean; walls?: WallMode; onHover(id: string | null, x: number, y: number): void; onClick(id: string | null): void;
-  onLabels?(labels: { id: string; name: string; x: number; y: number }[]): void };
+export type ViewPreset = 'iso' | 'top' | 'front' | 'side' | 'eye' | 'reset';
+export type Projection = 'persp' | 'ortho';
+export type CameraView = { pos: [number, number, number]; target: [number, number, number]; zoom?: number };
+export type SceneApi = {
+  highlight(hover: string | null, selected: string[]): void; rotate(steps: number): void; orbit(dAz: number, dEl: number): void;
+  pan(dx: number, dy: number): void; zoom(k: number): void; view(v: ViewPreset): void;
+  projection(): Projection; setProjection(p: Projection): void; getView(): CameraView;
+  planPoint(clientX: number, clientY: number): Pt | null; setControls(on: boolean): void; setRegion(r: Region | null): void; dispose(): void;
+};
+type Opts = { compact?: boolean; walls?: WallMode; furniture?: boolean; projection?: Projection; view?: CameraView | null;
+  onHover(id: string | null, x: number, y: number): void; onClick(id: string | null): void;
+  onLabels?(labels: { id: string; name: string; x: number; y: number }[]): void;
+  /** Context menu at a client position (right click without dragging, double click, long press). */
+  onMenu?(x: number, y: number, roomId: string | null, p: Pt | null): void;
+  onView?(): void };
 
 const ISO_ELEVATION = Math.atan(1 / Math.SQRT2); // true isometric: 35.264°
 const CUT = 1.2, LOW = 0.3; // section cut height; dollhouse: front exterior walls drop to a low base
@@ -94,16 +108,16 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
 
   // Walls, openings and frames: rebuilt when the dollhouse view rotates (front walls change).
   let envelope = new THREE.Group(), envBin: { dispose(): void }[] = [];
-  const buildEnvelope = (rot: number) => {
+  const buildEnvelope = (cam: THREE.Vector3) => {
     scene.remove(envelope); envBin.forEach((d) => d.dispose());
     envelope = new THREE.Group(); envBin = [];
-    const a = Math.PI / 4 + (rot * Math.PI) / 2, toCam: Pt = [Math.cos(a), Math.sin(a)];
+    const dx = cam.x - plan.width / 2, dz = cam.z - plan.height / 2, cl = Math.hypot(dx, dz) || 1, toCam: Pt = [dx / cl, dz / cl];
     const heightOf = (id: string) => {
       if (mode === 'full') return HF;
       if (mode === 'cut') return Math.min(CUT, HF);
       const nIn = indoor.get(id);
       if (!nIn) return Math.min(CUT, HF);                                   // interior partition: cut
-      return nIn[0] * toCam[0] + nIn[1] * toCam[1] < 0 ? LOW : HF;          // camera outside it: front wall drops
+      return nIn[0] * toCam[0] + nIn[1] * toCam[1] < -0.02 ? LOW : HF;      // camera outside it: front wall drops
     };
     const pieces: { poly: Pt[]; z0: number; z1: number }[] = [];
     const wallH = new Map<string, number>();
@@ -191,7 +205,7 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
   const boxed: Fixture[] = [];
   let alive = true;
   const placed: THREE.Object3D[] = [];
-  for (const f of plan.fixtures ?? []) {
+  for (const f of opts.furniture === false ? [] : plan.fixtures ?? []) {
     const name = modelFor(f, plan);
     if (!name) { boxed.push(f); continue; }
     loadModel(name).then((src) => {
@@ -213,78 +227,154 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
   for (const f of boxed) for (const g of fixtureParts(f, FH)) fx.push(g);
   addMerged(scene, disposables, fx, new THREE.MeshLambertMaterial({ vertexColors: true }), 0.35);
 
-  // Isometric orthographic camera.
-  const camera = new THREE.OrthographicCamera();
+  // Free camera: orbit (left drag / one finger), pan (right drag, Shift+drag / two fingers), zoom (wheel / pinch),
+  // in perspective or parallel projection. Starts at the isometric angle the views used before.
   const target = new THREE.Vector3(plan.width / 2, 0, plan.height / 2);
-  let rot = 0, zoom = 1;
-  buildEnvelope(rot);
+  const radius = Math.hypot(plan.width, plan.height) / 2 + HF;
+  const persp = new THREE.PerspectiveCamera(35, 1, 0.05, radius * 40);
+  const ortho = new THREE.OrthographicCamera(-1, 1, 1, -1, -radius * 20, radius * 20);
+  let camera: THREE.PerspectiveCamera | THREE.OrthographicCamera = opts.projection === 'ortho' ? ortho : persp;
+  const homeDist = () => radius / Math.sin(THREE.MathUtils.degToRad(persp.fov / 2)) * (opts.compact ? 0.8 : 0.82);
+  const presetPos = (v: ViewPreset): THREE.Vector3 => {
+    const d = homeDist(), at = (az: number, el: number) => new THREE.Vector3(Math.cos(az) * Math.cos(el) * d, Math.sin(el) * d, Math.sin(az) * Math.cos(el) * d).add(target);
+    switch (v) {
+      case 'top': return at(Math.PI / 2, Math.PI / 2 - 0.001);
+      case 'front': return at(Math.PI / 2, 0.12);   // from the south (plan +y), looking north
+      case 'side': return at(0, 0.12);              // from the east (plan +x)
+      case 'eye': return at(Math.PI / 4, 0.32);
+      default: return at(Math.PI / 4, ISO_ELEVATION);
+    }
+  };
+  const el = renderer.domElement;
+  let controls = new OrbitControls(camera, el);
+  const setupControls = () => {
+    controls.enableDamping = true; controls.dampingFactor = 0.12; controls.screenSpacePanning = true; controls.zoomToCursor = true;
+    controls.maxPolarAngle = Math.PI / 2 - 0.02; // never under the ground
+    controls.minDistance = 1.5; controls.maxDistance = radius * 12; controls.minZoom = 0.3; controls.maxZoom = 12;
+    controls.target.copy(target);
+    controls.enabled = !opts.compact;
+    controls.addEventListener('change', onChange);
+  };
+  const fitOrtho = () => {
+    const { clientWidth: w, clientHeight: h } = host, aspect = w / (h || 1), half = radius * 1.05;
+    Object.assign(ortho, { left: -half * aspect, right: half * aspect, top: half, bottom: -half });
+    ortho.updateProjectionMatrix();
+  };
+  if (opts.view) { camera.position.fromArray(opts.view.pos); target.fromArray(opts.view.target); if (camera === ortho) ortho.zoom = opts.view.zoom ?? 1; }
+  else camera.position.copy(presetPos('iso'));
+  let lowKey = '';
+  const lowered = () => {
+    if (mode !== 'dollhouse') return '';
+    const dx = camera.position.x - controls.target.x, dz = camera.position.z - controls.target.z, L = Math.hypot(dx, dz) || 1, toCam: Pt = [dx / L, dz / L];
+    return footprints.map((f) => { const n = indoor.get(f.wall.id); return n && n[0] * toCam[0] + n[1] * toCam[1] < -0.02 ? '1' : '0'; }).join('');
+  };
+  const render = () => {
+    renderer.render(scene, camera);
+    if (opts.onLabels) {
+      const v = new THREE.Vector3(), { clientWidth: w, clientHeight: h } = host;
+      opts.onLabels(plan.rooms.flatMap((r) => {
+        const [x, z] = labelPoint(r.polygon);
+        v.set(x, 0.1, z).project(camera);
+        return v.z > 1 || v.z < -1 ? [] : [{ id: r.id, name: r.name, x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h }];
+      }));
+    }
+  };
+  let raf = 0;
+  const kick = () => { if (!raf) raf = requestAnimationFrame(tick); };
+  const tick = () => { raf = 0; if (flight) stepFlight(); if (controls.update()) kick(); };
+  function onChange() {
+    const k = lowered();
+    if (k !== lowKey) { lowKey = k; buildEnvelope(camera.position); }
+    render(); kick();
+    opts.onView?.();
+  }
+  // animated moves to a preset
+  let flight: { t0: number; p0: THREE.Vector3; p1: THREE.Vector3; c0: THREE.Vector3; c1: THREE.Vector3; z0: number; z1: number } | null = null;
+  const flyTo = (pos: THREE.Vector3, tgt: THREE.Vector3, zoom = 1) => {
+    const quick = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    flight = { t0: performance.now() - (quick ? 1e4 : 0), p0: camera.position.clone(), p1: pos, c0: controls.target.clone(), c1: tgt.clone(), z0: camera.zoom, z1: zoom };
+    kick();
+  };
+  const stepFlight = () => {
+    const f = flight!, k = Math.min(1, (performance.now() - f.t0) / 480), e = 1 - (1 - k) ** 3;
+    camera.position.lerpVectors(f.p0, f.p1, e); controls.target.lerpVectors(f.c0, f.c1, e);
+    if (camera === ortho) { ortho.zoom = f.z0 + (f.z1 - f.z0) * e; ortho.updateProjectionMatrix(); }
+    if (k >= 1) flight = null; else kick();
+    controls.update(); onChange();
+  };
+  setupControls();
+  lowKey = lowered();
+  buildEnvelope(camera.position);
   const fit = () => {
     const { clientWidth: w, clientHeight: h } = host;
     if (!w || !h) return;
     renderer.setSize(w, h);
-    const aspect = w / h;
-    const span = (plan.width + plan.height) * 0.72 * (opts.compact ? 1.0 : 1.12);
-    const half = Math.max(span / 2 / aspect, (span * 0.62 + HF) / 2) / zoom;
-    Object.assign(camera, { left: -half * aspect, right: half * aspect, top: half, bottom: -half, near: -1000, far: 1000 });
-    const a = Math.PI / 4 + (rot * Math.PI) / 2, d = 100;
-    camera.position.set(target.x + Math.cos(a) * Math.cos(ISO_ELEVATION) * d, target.y + Math.sin(ISO_ELEVATION) * d, target.z + Math.sin(a) * Math.cos(ISO_ELEVATION) * d);
-    camera.lookAt(target);
-    camera.updateProjectionMatrix();
+    persp.aspect = w / h; persp.updateProjectionMatrix();
+    fitOrtho();
+    controls.update();
     render();
-    if (opts.onLabels) {
-      const v = new THREE.Vector3();
-      opts.onLabels(plan.rooms.map((r) => {
-        const [x, z] = labelPoint(r.polygon);
-        v.set(x, 0.1, z).project(camera);
-        return { id: r.id, name: r.name, x: ((v.x + 1) / 2) * w, y: ((1 - v.y) / 2) * h };
-      }));
-    }
   };
-  const render = () => renderer.render(scene, camera);
-  // Picking: rooms under the pointer.
+  // Picking: rooms under the pointer; points on the floor plane (y = 0) in plan metres.
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
-  const pick = (e: PointerEvent | MouseEvent) => {
-    const r = renderer.domElement.getBoundingClientRect();
-    ndc.set(((e.clientX - r.left) / r.width) * 2 - 1, -((e.clientY - r.top) / r.height) * 2 + 1);
-    ray.setFromCamera(ndc, camera);
-    return (ray.intersectObjects(floors)[0]?.object.userData.id as string | undefined) ?? null;
-  };
-  const el = renderer.domElement;
-  let dragFrom: { x: number; y: number; t: THREE.Vector3; moved: boolean } | null = null;
-  const onMove = (e: PointerEvent) => {
-    if (dragFrom && e.buttons & 1 && !opts.compact) {
-      const dx = e.clientX - dragFrom.x, dy = e.clientY - dragFrom.y;
-      if (Math.abs(dx) + Math.abs(dy) > 3) dragFrom.moved = true;
-      const k = (camera.top - camera.bottom) / el.clientHeight;
-      const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0);
-      const up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
-      target.copy(dragFrom.t).addScaledVector(right, -dx * k).addScaledVector(up, dy * k);
-      fit();
-      return;
-    }
+  const aim = (cx: number, cy: number) => {
     const r = el.getBoundingClientRect();
-    opts.onHover(pick(e), e.clientX - r.left, e.clientY - r.top);
+    ndc.set(((cx - r.left) / r.width) * 2 - 1, -((cy - r.top) / r.height) * 2 + 1);
+    ray.setFromCamera(ndc, camera);
   };
-  const onDown = (e: PointerEvent) => { dragFrom = { x: e.clientX, y: e.clientY, t: target.clone(), moved: false }; };
-  const onUp = (e: PointerEvent) => { if (dragFrom && !dragFrom.moved) opts.onClick(pick(e)); dragFrom = null; };
+  const pick = (cx: number, cy: number) => { aim(cx, cy); return (ray.intersectObjects(floors)[0]?.object.userData.id as string | undefined) ?? null; };
+  const floorPlane = new THREE.Plane(new THREE.Vector3(0, 1, 0), 0);
+  const planPoint = (cx: number, cy: number): Pt | null => {
+    aim(cx, cy);
+    const hit = ray.ray.intersectPlane(floorPlane, new THREE.Vector3());
+    return hit ? [hit.x, hit.z] : null;
+  };
+  let down: { x: number; y: number; b: number; t: number } | null = null, hoverRaf = 0, press = 0;
+  const onMove = (e: PointerEvent) => {
+    if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) { clearTimeout(press); press = 0; }
+    if (e.buttons || hoverRaf) return;
+    hoverRaf = requestAnimationFrame(() => {
+      hoverRaf = 0;
+      const r = el.getBoundingClientRect();
+      opts.onHover(pick(e.clientX, e.clientY), e.clientX - r.left, e.clientY - r.top);
+    });
+  };
+  const onDown = (e: PointerEvent) => {
+    down = { x: e.clientX, y: e.clientY, b: e.button, t: performance.now() };
+    if (e.pointerType === 'touch' && opts.onMenu) press = window.setTimeout(() => { press = 0; down = null; opts.onMenu!(e.clientX, e.clientY, pick(e.clientX, e.clientY), planPoint(e.clientX, e.clientY)); }, 550);
+  };
+  const onUp = (e: PointerEvent) => {
+    clearTimeout(press); press = 0;
+    if (!down) return;
+    const still = Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5;
+    if (still && down.b === 0) opts.onClick(pick(e.clientX, e.clientY));
+    if (still && down.b === 2 && opts.onMenu) opts.onMenu(e.clientX, e.clientY, pick(e.clientX, e.clientY), planPoint(e.clientX, e.clientY));
+    down = null;
+  };
   const onLeave = () => opts.onHover(null, 0, 0);
-  const onWheel = (e: WheelEvent) => { e.preventDefault(); zoom = Math.min(Math.max(zoom * Math.exp(-e.deltaY * 0.0015), 0.4), 8); fit(); };
+  const onDbl = (e: MouseEvent) => { if (opts.onMenu) opts.onMenu(e.clientX, e.clientY, pick(e.clientX, e.clientY), planPoint(e.clientX, e.clientY)); else api.view('iso'); };
   el.addEventListener('pointermove', onMove);
   el.addEventListener('pointerdown', onDown);
   el.addEventListener('pointerup', onUp);
   el.addEventListener('pointerleave', onLeave);
-  if (!opts.compact) {
-    el.addEventListener('wheel', onWheel, { passive: false });
-    el.addEventListener('dblclick', () => { zoom = 1; target.set(plan.width / 2, 0, plan.height / 2); fit(); });
-  }
+  if (!opts.compact) el.addEventListener('dblclick', onDbl);
 
   const ro = new ResizeObserver(fit);
   ro.observe(host);
   fit();
 
+  // markup region: a translucent volume over the floor with an outline
+  let regionObj: THREE.Group | null = null;
+  const regionBin: { dispose(): void }[] = [];
+  const clearRegion = () => { if (regionObj) scene.remove(regionObj); regionBin.splice(0).forEach((d) => d.dispose()); regionObj = null; };
+
   const white = new THREE.Color(0xffffff);
-  return {
+  const orbitBy = (dAz: number, dEl = 0) => {
+    const off = camera.position.clone().sub(controls.target), sph = new THREE.Spherical().setFromVector3(off);
+    sph.theta -= dAz; sph.phi = THREE.MathUtils.clamp(sph.phi - dEl, 0.01, controls.maxPolarAngle);
+    flyTo(new THREE.Vector3().setFromSpherical(sph).add(controls.target), controls.target.clone(), camera.zoom);
+  };
+  const api: SceneApi = {
     highlight(hover, selected) {
       for (const m of floors) {
         const on = m.userData.id === hover || selected.includes(m.userData.id);
@@ -293,15 +383,65 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
       }
       render();
     },
-    rotate(steps) { rot = (rot + steps + 4) % 4; if (mode === 'dollhouse' && steps) buildEnvelope(rot); fit(); },
+    rotate(steps) { if (steps) orbitBy((steps * Math.PI) / 2); },
+    orbit(dAz, dEl) { orbitBy(dAz, dEl); },
+    pan(dx, dy) {
+      const right = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 0), up = new THREE.Vector3().setFromMatrixColumn(camera.matrixWorld, 1);
+      const k = radius * 0.15 / (camera === ortho ? ortho.zoom : 1), d = right.multiplyScalar(dx * k).add(up.multiplyScalar(dy * k));
+      flyTo(camera.position.clone().add(d), controls.target.clone().add(d), camera.zoom);
+    },
+    zoom(k) {
+      if (camera === ortho) flyTo(camera.position.clone(), controls.target.clone(), THREE.MathUtils.clamp(ortho.zoom / k, controls.minZoom, controls.maxZoom));
+      else { const off = camera.position.clone().sub(controls.target).multiplyScalar(k); flyTo(controls.target.clone().add(off), controls.target.clone()); }
+    },
+    view(v) {
+      const t = new THREE.Vector3(plan.width / 2, 0, plan.height / 2);
+      if (v === 'reset') v = 'iso';
+      target.copy(t);
+      flyTo(presetPos(v), t, 1);
+    },
+    projection() { return camera === ortho ? 'ortho' : 'persp'; },
+    setProjection(p) {
+      const next = p === 'ortho' ? ortho : persp;
+      if (next === camera) return;
+      next.position.copy(camera.position); next.zoom = 1; next.updateProjectionMatrix();
+      const tgt = controls.target.clone();
+      controls.removeEventListener('change', onChange); controls.dispose();
+      camera = next;
+      controls = new OrbitControls(camera, el);
+      setupControls(); controls.target.copy(tgt);
+      fit();
+    },
+    getView() { return { pos: camera.position.toArray() as [number, number, number], target: controls.target.toArray() as [number, number, number], zoom: camera.zoom }; },
+    planPoint,
+    setControls(on) { controls.enabled = on && !opts.compact; },
+    setRegion(r) {
+      clearRegion();
+      if (!r) return render();
+      const w = r.x1 - r.x0, d = r.y1 - r.y0, h = Math.min(HF, 2.4);
+      regionObj = new THREE.Group();
+      const box = new THREE.BoxGeometry(w, h, d); box.translate(r.x0 + w / 2, h / 2, r.y0 + d / 2);
+      const fill = new THREE.MeshBasicMaterial({ color: 0xff682b, transparent: true, opacity: 0.08, depthWrite: false });
+      const edges = new THREE.EdgesGeometry(box), line = new THREE.LineBasicMaterial({ color: 0xff682b, transparent: true, opacity: 0.95, depthTest: false });
+      const base = new THREE.PlaneGeometry(w, d); base.rotateX(-Math.PI / 2); base.translate(r.x0 + w / 2, 0.015, r.y0 + d / 2);
+      const baseMat = new THREE.MeshBasicMaterial({ color: 0xff682b, transparent: true, opacity: 0.16, depthWrite: false });
+      regionObj.add(new THREE.Mesh(box, fill), new THREE.LineSegments(edges, line), new THREE.Mesh(base, baseMat));
+      regionObj.renderOrder = 10;
+      regionBin.push(box, fill, edges, line, base, baseMat);
+      scene.add(regionObj);
+      render();
+    },
     dispose() {
       alive = false;
+      cancelAnimationFrame(raf); cancelAnimationFrame(hoverRaf); clearTimeout(press);
+      clearRegion();
       placed.forEach((o) => o.traverse((m) => {
         if (!(m as THREE.Mesh).isMesh) return;
         ((m as THREE.Mesh).material as THREE.Material).dispose();
         if (m.userData.ownGeometry) (m as THREE.Mesh).geometry.dispose();
       }));
       ro.disconnect();
+      controls.removeEventListener('change', onChange); controls.dispose();
       floors.forEach((m) => { m.geometry.dispose(); (m.material as THREE.Material).dispose(); });
       disposables.forEach((d) => d.dispose());
       envBin.forEach((d) => d.dispose());
@@ -310,6 +450,7 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
       el.remove();
     },
   };
+  return api;
 }
 
 /** Low-poly volumes for a fixture, in world coordinates, with per-face colours. */
