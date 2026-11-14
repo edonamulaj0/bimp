@@ -27,7 +27,7 @@ npm run dev                      # http://localhost:5173 (marketing) and /app/ (
 ```
 
 `npm test` checks the drawing-convention and standards rules. Without a Gemini key, everything works except reading new drawings and chat. Every new account gets a
-"Pilot house" project (a three-bedroom single-storey model). `npm run ingest:fixtures` writes test drawings (vector PDF at 1:100, a scan, a DXF) to `evals/fixtures/`.
+"Pilot house" project (an L-shaped, two-bedroom courtyard house). `npm run ingest:fixtures` writes test drawings (vector PDF at 1:100, a scan, a DXF) to `evals/fixtures/`.
 
 ## Deploy
 
@@ -67,5 +67,25 @@ Connect the repo twice in the dashboard (Workers & Pages → each Worker → Set
 Every push to a non-production branch then gives a link like `https://<version>-bimp.<your-subdomain>.workers.dev`
 (shown on the build and in the PR check). Preview versions use the **same** D1 and R2 as production.
 Version URLs are public: put Cloudflare Access in front if the data must stay private.
+
+### Architectural images (Cloudinary, optional)
+
+The 3D view can generate architectural images (the model set in a garden, a street at dusk, a 16:9 panorama, or a
+presentation board) with Cloudinary's generative AI. Enable generative AI on your Cloudinary account, then:
+
+```bash
+# in wrangler.jsonc "vars": CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY
+npx wrangler secret put CLOUDINARY_API_SECRET -c apps/web/dist/bimp/wrangler.json
+npm run db:migrate:remote   # adds the visuals table (0004)
+```
+
+Snapshots are uploaded with signed requests into `bimp/<project id>/`, and each image is generated as an eager
+transformation, so it works with "strict transformations" on. Generative styles use Cloudinary credits; each user can
+make 20 images a day.
+
+The marketing site's images are made the same way: `apps/web/public/renders/*.png` are renders of the pilot house's
+own 3D model. On the first visit to the deployed site, `GET /api/site/images` has Cloudinary fetch each render from the
+site and generate its image (scenes listed in `apps/shared/site-images.ts`, once each, `db/migrations/0005`). Until they
+are ready, and on a local dev server, the renders themselves are shown.
 
 Set `ALLOW_SIGNUP` to `"false"` in `wrangler.jsonc` to close sign-up after creating your accounts.

@@ -8,7 +8,7 @@ import type { CanvasTool, MenuAt } from './Plan2D';
 import { Spinner } from '../brand';
 
 /** Imperative controls for the toolbar and the context menu. */
-export type Plan3DApi = { view(v: ViewPreset): void; zoom(k: number): void; rotate(steps: number): void; projection(): Projection; setProjection(p: Projection): void };
+export type Plan3DApi = { view(v: ViewPreset): void; zoom(k: number): void; rotate(steps: number): void; projection(): Projection; setProjection(p: Projection): void; snapshot(): Promise<Blob> | null };
 
 type Props = {
   plan: Plan; compact?: boolean; rotation?: number; walls?: WallMode; furniture?: boolean; labels?: boolean; projection?: Projection;
@@ -75,6 +75,7 @@ export function Plan3D({ plan, compact, rotation = 0, walls = 'dollhouse', furni
   if (apiRef) apiRef.current = {
     view: (v) => sceneRef.current?.view(v), zoom: (k) => sceneRef.current?.zoom(k), rotate: (n) => sceneRef.current?.rotate(n),
     projection: () => sceneRef.current?.projection() ?? projection, setProjection: (p) => sceneRef.current?.setProjection(p),
+    snapshot: () => sceneRef.current?.snapshot() ?? null,
   };
 
   // Markup tool: drag a rectangle on the floor. Runs in the capture phase so the orbit controls never see the drag.
