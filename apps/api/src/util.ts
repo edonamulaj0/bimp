@@ -7,6 +7,10 @@ export interface Env {
   GEMINI_MODEL: string;
   AI_GATEWAY_URL?: string;
   ALLOW_SIGNUP?: string;
+  /** Cloudinary image generation from the 3D model (optional): cloud name and API key as vars, API secret as a secret. */
+  CLOUDINARY_CLOUD_NAME?: string;
+  CLOUDINARY_API_KEY?: string;
+  CLOUDINARY_API_SECRET?: string;
   /** Only bound in the bimp-ingest Worker. */
   INGEST: DurableObjectNamespace<import('./ingest').IngestContainer>;
   INGEST_URL?: string;

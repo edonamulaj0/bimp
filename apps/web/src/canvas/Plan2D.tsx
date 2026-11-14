@@ -383,15 +383,15 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
           <button aria-pressed={mode === 'dims'} onClick={() => pickMode('dims')} title="Every wall, opening and room dimensioned, in millimetres">Dimensioned</button>
         </div>
         <datalist id="std-scales">{STANDARD.map((x) => <option key={x} value={x} />)}</datalist>
-        {plan.scale.ratio && <button class="link small" onClick={() => setRatio(plan.scale.ratio!)} title="The drawing's own scale">Drawing 1:{plan.scale.ratio}</button>}
+        {plan.scale.ratio && <button class="link small opt" onClick={() => setRatio(plan.scale.ratio!)} title="The drawing's own scale">Drawing 1:{plan.scale.ratio}</button>}
         <button class="link small zoom" onClick={() => zoom(1.25)} aria-label="Zoom out" title="Zoom out">−</button>
         <button class="link small zoom" onClick={() => zoom(0.8)} aria-label="Zoom in" title="Zoom in">+</button>
         <button class="link small" onClick={() => setVb(home)}>Fit</button>
-        <button class="link small" aria-pressed={showEscape} onClick={() => setShowEscape(!showEscape)}
+        <button class="link small opt" aria-pressed={showEscape} onClick={() => setShowEscape(!showEscape)}
           title="Escape routes: travel distance from the furthest point of the room to an exit (Metric Handbook Ch. 41). Hover a room.">
           {showEscape && <span aria-hidden="true">✓ </span>}Escape</button>
         {showEscape && !escape && <span class="small muted">No exit door found</span>}
-        <button class="link small" title={`Print to scale at 1:${printRatio}`} aria-expanded={printing !== null} aria-controls="print-form"
+        <button class="link small opt" title={`Print to scale at 1:${printRatio}`} aria-expanded={printing !== null} aria-controls="print-form"
           onClick={() => setPrinting(printing === null ? String(printRatio) : null)}>Print…</button>
       </div>
       {printing !== null && (

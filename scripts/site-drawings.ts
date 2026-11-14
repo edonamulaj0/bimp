@@ -3,7 +3,7 @@
 import { writeFileSync } from 'node:fs';
 import { samplePlan } from '../apps/shared/sample-plan';
 import { wallFootprints, labelPoint } from '../apps/shared/walls';
-import { dist, wallPieces, type Pt } from '../apps/shared/plan';
+import { area, dist, wallPieces, type Pt } from '../apps/shared/plan';
 import { clipHalf } from '../apps/shared/walls';
 
 const p = samplePlan(), S = 50, M = 70; // px per metre, margin
@@ -11,12 +11,12 @@ const f = (n: number) => Math.round(n * 10) / 10;
 const X = (x: number) => f(M + x * S), Y = (y: number) => f(M + y * S);
 const poly = (q: Pt[]) => 'M' + q.map(([x, y]) => `${X(x)},${Y(y)}`).join('L') + 'Z';
 let i = 0;
-const el = (d: string, cls: string) => `<path class="${cls}" d="${d}" pathLength="1" style="--i:${i++}"/>`;
+const el = (d: string, cls: string) => `<path class="${cls}" d="${d}" style="--i:${i++}"/>`;
 const out: string[] = [];
 // grid
 const W = M * 2 + p.width * S, H = M * 2 + p.height * S;
-for (let x = 0; x <= p.width + 0.01; x += 1.2) out.push(`<path class="g" d="M${X(x)},${f(M - 30)}V${f(H - M + 30)}" pathLength="1" style="--i:${i++ % 12}"/>`);
-for (let y = 0; y <= p.height + 0.01; y += 1.2) out.push(`<path class="g" d="M${f(M - 30)},${Y(y)}H${f(W - M + 30)}" pathLength="1" style="--i:${i++ % 12}"/>`);
+for (let x = 0; x <= p.width + 0.01; x += 1.2) out.push(`<path class="g" d="M${X(x)},${f(M - 30)}V${f(H - M + 30)}" style="--i:${i++ % 12}"/>`);
+for (let y = 0; y <= p.height + 0.01; y += 1.2) out.push(`<path class="g" d="M${f(M - 30)},${Y(y)}H${f(W - M + 30)}" style="--i:${i++ % 12}"/>`);
 i = 0;
 // walls, with openings cut out
 const fps = wallFootprints(p.walls);
@@ -47,11 +47,14 @@ const dim = (x1: number, y1: number, x2: number, y2: number, t: string, vert = f
   const mx = (x1 + x2) / 2, my = (y1 + y2) / 2;
   out.push(`<text class="dt" x="${vert ? mx - 8 : mx}" y="${vert ? my : my - 8}" ${vert ? `transform="rotate(-90 ${mx - 8} ${my})"` : ''} text-anchor="middle">${t}</text>`);
 };
-dim(X(-0.15), Y(-0.15) - 34, X(p.width + 0.15), Y(-0.15) - 34, '14 700');
-dim(X(-0.15) - 34, Y(-0.15), X(-0.15) - 34, Y(p.height + 0.15), '10 500', true);
+// overall sizes, outside faces of the outer walls
+const ext = fps.flatMap((q) => q.poly), ex0 = Math.min(...ext.map((q) => q[0])), ex1 = Math.max(...ext.map((q) => q[0])), ey0 = Math.min(...ext.map((q) => q[1])), ey1 = Math.max(...ext.map((q) => q[1]));
+const mm = (m: number) => String(Math.round(m * 1000)).replace(/\B(?=(\d{3})+(?!\d))/g, ' ');
+dim(X(ex0), Y(ey0) - 34, X(ex1), Y(ey0) - 34, mm(ex1 - ex0));
+dim(X(ex0) - 34, Y(ey0), X(ex0) - 34, Y(ey1), mm(ey1 - ey0), true);
 // room labels
-const labels = p.rooms.filter((r) => !/Linen|wardrobe|WC|Utility/.test(r.name)).map((r) => { const [x, y] = labelPoint(r.polygon); return `<text class="rl" x="${X(x)}" y="${Y(y)}" text-anchor="middle">${r.name}</text>`; });
-const plan = `<svg class="drawing plan-drawing" viewBox="0 0 ${f(W)} ${f(H)}" role="img" aria-label="Floor plan of the pilot house, drawn line by line: walls, doors with their swings, windows and overall dimensions of 14.7 by 10.5 metres.">
+const labels = p.rooms.filter((r) => area(r.polygon) >= 9 && r.type !== 'circulation' || r.name === 'Gallery').map((r) => { const [x, y] = labelPoint(r.polygon); return `<text class="rl" x="${X(x)}" y="${Y(y)}" text-anchor="middle">${r.name}</text>`; });
+const plan = `<svg class="drawing plan-drawing anim" viewBox="0 0 ${f(W)} ${f(H)}" role="img" aria-label="Floor plan of the pilot house, drawn line by line: walls, doors with their swings, windows and overall dimensions of 14.7 by 10.5 metres.">
 <g class="grid" aria-hidden="true">${out.filter((s) => s.includes('class="g"')).join('')}</g>
 <g class="lines" aria-hidden="true">${out.filter((s) => !s.includes('class="g"')).join('')}</g>
 <g class="labels" aria-hidden="true">${labels.join('')}</g>
@@ -71,15 +74,25 @@ for (const r of p.rooms) for (const q of r.polygon) corners.set(q.join(','), q);
 const HT = 2.7;
 for (const q of corners.values()) layers.up.push(seg([q[0], q[1], 0], [q[0], q[1], HT]));
 for (const w of p.walls) layers.top.push(seg([w.a[0], w.a[1], HT], [w.b[0], w.b[1], HT]));
-const R = 1.6, ridgeY = p.height / 2; // a simple gabled roof along x
-const e: [number, number, number][] = [[0, 0, HT], [p.width, 0, HT], [p.width, p.height, HT], [0, p.height, HT]];
-layers.roof.push(seg([0, ridgeY, HT + R], [p.width, ridgeY, HT + R]), seg(e[0], [0, ridgeY, HT + R]), seg(e[3], [0, ridgeY, HT + R]), seg(e[1], [p.width, ridgeY, HT + R]), seg(e[2], [p.width, ridgeY, HT + R]));
-for (let x = 1.2; x < p.width; x += 1.2) layers.roof.push(seg([x, 0, HT], [x, ridgeY, HT + R]), seg([x, p.height, HT], [x, ridgeY, HT + R]));
+// a gabled roof over each wing of the L: [x0, y0, x1, y1, ridge along x?]
+const R = 1.6, wings: [number, number, number, number, boolean][] = [[0, 0, p.width, 7.2, true], [0, 7.2, 7.2, p.height, false]];
+for (const [x0, y0, x1, y1, alongX] of wings) {
+  const H2 = HT + R;
+  if (alongX) {
+    const ym = (y0 + y1) / 2;
+    layers.roof.push(seg([x0, ym, H2], [x1, ym, H2]), seg([x0, y0, HT], [x0, ym, H2]), seg([x0, y1, HT], [x0, ym, H2]), seg([x1, y0, HT], [x1, ym, H2]), seg([x1, y1, HT], [x1, ym, H2]));
+    for (let x = x0 + 1.2; x < x1 - 0.1; x += 1.2) layers.roof.push(seg([x, y0, HT], [x, ym, H2]), seg([x, y1, HT], [x, ym, H2]));
+  } else {
+    const xm = (x0 + x1) / 2;
+    layers.roof.push(seg([xm, y0, H2], [xm, y1, H2]), seg([x0, y1, HT], [xm, y1, H2]), seg([x1, y1, HT], [xm, y1, H2]));
+    for (let y = y0 + 1.2; y < y1 - 0.1; y += 1.2) layers.roof.push(seg([x0, y, HT], [xm, y, H2]), seg([x1, y, HT], [xm, y, H2]));
+  }
+}
 const all = Object.values(layers).flat().join('').match(/-?\d+(\.\d+)?,-?\d+(\.\d+)?/g)!.map((v) => v.split(',').map(Number));
 const minX = Math.min(...all.map((v) => v[0])) - 20, maxX = Math.max(...all.map((v) => v[0])) + 20, minY = Math.min(...all.map((v) => v[1])) - 20, maxY = Math.max(...all.map((v) => v[1])) + 20;
 let n = 0;
-const wire = `<svg class="drawing wire-drawing" viewBox="${f(minX)} ${f(minY)} ${f(maxX - minX)} ${f(maxY - minY)}" role="img" aria-label="Isometric wireframe of the pilot house assembling: floor outlines, wall edges, wall heads, then the roof.">
-${Object.entries(layers).map(([k, ds]) => `<g class="layer ${k}" aria-hidden="true">${ds.map((d) => `<path d="${d}" pathLength="1" style="--i:${n++ % 40}"/>`).join('')}</g>`).join('\n')}
+const wire = `<svg class="drawing wire-drawing anim scroll" viewBox="${f(minX)} ${f(minY)} ${f(maxX - minX)} ${f(maxY - minY)}" role="img" aria-label="Isometric wireframe of the pilot house assembling: floor outlines, wall edges, wall heads, then the roof.">
+${Object.entries(layers).map(([k, ds]) => `<g class="layer ${k}" aria-hidden="true">${ds.map((d) => `<path d="${d}" style="--i:${n++ % 40}"/>`).join('')}</g>`).join('\n')}
 </svg>`;
 writeFileSync('apps/web/partials/wire-drawing.html', wire + '\n');
 console.log('ok', plan.length, wire.length);

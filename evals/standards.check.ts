@@ -12,6 +12,8 @@ import { doorClashes, doorSweep, fixtureContains, inside, planAreas, roomInfo } 
 import { fengShui, suggestLayout } from '../apps/shared/fengshui';
 import { escapeWidth } from '../apps/shared/standards';
 import { clipPlan, clipSegment, parseRegion, regionContents } from '../apps/shared/region';
+import { signParams, transformationFor } from '../apps/api/src/visuals';
+import { cleanPrompt } from '../apps/shared/visual-styles';
 
 let fail = 0;
 const eq = (name: string, got: unknown, want: unknown) => {
@@ -51,13 +53,13 @@ eq('4 m² bedroom flagged (Table IV 6.5 m²)', checkPlan(tiny).some((c) => c.lev
 const big = samplePlan();
 const doubled: Plan = { ...big, openings: big.openings.map((o) => ({ ...o, a: [o.a[0] * 2, o.a[1] * 2], b: [o.b[0] * 2, o.b[1] * 2] })) };
 eq('doors twice too wide -> scale warning', checkPlan(doubled).some((c) => /scale is probably off/.test(c.text)), true);
-near('sample living room 6.0 × 4.8 m', area(big.rooms[0].polygon), 28.8);
+near('sample living room 4.8 × 7.2 m', area(big.rooms[0].polygon), 34.56);
 
-// Ch. 41 escape routes on the pilot house: two exits (front door, garden door); bedroom 2 is the furthest room
+// Ch. 41 escape routes on the courtyard house: three exits (front, terrace, gallery); the wardrobe is the furthest room
 const esc = escapeRoutes(samplePlan())!;
-eq('two exit doors', esc.exits, ['d1', 'd2']);
+eq('three exit doors', esc.exits, ['d1', 'd2', 'd3']);
 eq('every room reachable', esc.unreachable, []);
-near('bedroom 2 worst distance ≈ 13 m', esc.routes.find((r) => r.room_id === 'r12')!.distance_m, 13, 0.05);
+near('wardrobe worst distance ≈ 11.2 m', esc.routes.find((r) => r.room_id === 'r9')!.distance_m, 11.18, 0.05);
 eq('sample flags > 9 m travel (info)', checkPlan(samplePlan()).some((c) => /9 m/.test(c.text) && c.level === 'info'), true);
 // Ch. 41 Table XIV
 eq('escape width 100 people', escapeWidth(100).min_width_mm, 850);
@@ -75,11 +77,11 @@ eq('outer walls outside the rooms (net areas kept)', fw.filter((w) => w.thicknes
 const gar: Plan = { ...samplePlan(), openings: [], rooms: [{ id: 'g', name: 'Garage', type: 'garage', polygon: [[0, 0], [2.2, 0], [2.2, 4.5], [0, 4.5]] }] };
 eq('2.2 × 4.5 m garage flagged (Fig. 31.30)', checkPlan(gar).some((c) => c.room_id === 'g' && c.level === 'warn'), true);
 
-// Fixtures: the family bathroom WC sits against its west wall (x = 4.2), so its front faces east (+x)
-const wc = samplePlan().fixtures!.find((f) => f.kind === 'wc' && f.room_id === 'r11')!;
+// Fixtures: the bathroom WC sits against its west wall (x = 2.4), so its front faces east (+x)
+const wc = samplePlan().fixtures!.find((f) => f.kind === 'wc' && f.room_id === 'r10')!;
 const wcFront = [-Math.sin(wc.angle), Math.cos(wc.angle)];
-eq('WC faces into the bathroom (front away from its wall)', inside([wc.center[0] + wcFront[0] * 0.8, wc.center[1] + wcFront[1] * 0.8], samplePlan().rooms.find((r) => r.id === 'r11')!.polygon), true);
-eq('WC is in the bathroom', wc.room_id, 'r11');
+eq('WC faces into the bathroom (front away from its wall)', inside([wc.center[0] + wcFront[0] * 0.8, wc.center[1] + wcFront[1] * 0.8], samplePlan().rooms.find((r) => r.id === 'r10')!.polygon), true);
+eq('WC is in the bathroom', wc.room_id, 'r10');
 eq('every sample fixture is inside a room', samplePlan().fixtures!.every((f) => f.room_id), true);
 
 // Mitered walls: L-corner of two 0.2 m walls meets at outer (-0.1,-0.1) and inner (0.1,0.1) corners
@@ -109,24 +111,24 @@ const swingRoom = (id: string) => {
   const mid: [number, number] = [o.a[0] + (u[0] + n[0]) * k, o.a[1] + (u[1] + n[1]) * k]; // 45° into the swing
   return sp.rooms.find((r) => inside(mid, r.polygon))?.name;
 };
-eq('kitchen door opens into the kitchen', swingRoom('d5'), 'Kitchen / dining');
-eq('bedroom 2 door opens into bedroom 2', swingRoom('d13'), 'Bedroom 2');
+eq('kitchen door opens into the kitchen', swingRoom('d6'), 'Kitchen / dining');
+eq('bedroom 2 door opens into bedroom 2', swingRoom('d11'), 'Bedroom 2');
 eq('entrance door opens inward (into the hall)', swingRoom('d1'), 'Entrance hall');
-eq('linen store door opens out of the cupboard', swingRoom('d15') !== 'Linen store', true);
+eq('wardrobe door opens out of the cupboard', swingRoom('d12') !== 'Wardrobe', true);
 eq('no door leaf hits furniture in the sample', sp.openings.filter((o) => o.kind === 'door').flatMap((o) => doorClashes(o, sp.fixtures!)).length, 0);
-// Areas: net = Σ rooms (146.88 m²), gross adds the walls; ceiling from the pilot specification
+// Areas: net = Σ rooms (194.4 m²), gross adds the walls; ceiling from the pilot specification
 const pa = planAreas(sp);
-near('net floor area = Σ rooms', pa.net_floor_area_m2, 146.88, 1e-6);
+near('net floor area = Σ rooms', pa.net_floor_area_m2, 194.4, 1e-6);
 eq('gross > net', pa.gross_floor_area_m2 > pa.net_floor_area_m2, true);
 eq('ceiling from the specification', pa.ceiling_source, 'Pilot house specification');
 const ri = roomInfo(sp, sp.rooms.find((r) => r.name === 'Kitchen / dining')!);
-eq('kitchen 4.8 × 4.8 m, perimeter 19.2 m', [ri.length, ri.width, ri.perimeter_m], [4.8, 4.8, 19.2]);
+eq('kitchen 6.0 × 4.8 m, perimeter 21.6 m', [ri.length, ri.width, ri.perimeter_m], [6, 4.8, 21.6]);
 
 // Feng shui: an empty copy of the sample gets a layout that obeys the rules it checks
 const empty = { ...sp, fixtures: [] };
 const sug = suggestLayout(empty);
 const furnished = { ...empty, fixtures: sug };
-eq('suggests a bed for each bedroom', sug.filter((f) => f.kind === 'bed').length, 3);
+eq('suggests a bed for each bedroom', sug.filter((f) => f.kind === 'bed').length, 2);
 eq('suggested items are marked as suggestions', sug.every((f) => f.source === 'suggested'), true);
 eq('no suggested item blocks a door', furnished.openings.filter((o) => o.kind === 'door').flatMap((o) => doorClashes(o, sug)).length, 0);
 eq('no suggested bed, WC or stove faces a door straight on', fengShui(furnished).filter((n) => !n.ok && /straight at the door|faces the door directly|back straight to the door/.test(n.text)).length, 0);
@@ -153,11 +155,11 @@ void doorSweep; void fixtureContains;
   eq('partition reaches outer centre line', at(4.06, -0.15) && at(4.06, 3.15), true);
   eq('no face pair on lone room', wallsFromFaces([{ id: 'a', name: 'A', type: 'other', polygon: [[0, 0], [4, 0], [4, 3], [0, 3]] }]).paired, false);
 }
-// Sample plan (centre-line rooms): the bathroom/bedroom 2 line at x = 6.6 is an interior partition
+// Sample plan (centre-line rooms): the bedroom-wing line at x = 2.4 is an interior partition
 {
   const p = samplePlan();
-  const onX = p.walls.filter((w) => Math.abs(w.a[0] - 6.6) < 1e-6 && Math.abs(w.b[0] - 6.6) < 1e-6);
-  eq('x = 6.6 partition is 0.12 m', onX.length > 0 && onX.every((w) => w.thickness === 0.12), true);
+  const onX = p.walls.filter((w) => Math.abs(w.a[0] - 2.4) < 1e-6 && Math.abs(w.b[0] - 2.4) < 1e-6);
+  eq('x = 2.4 partition is 0.12 m', onX.length > 0 && onX.every((w) => w.thickness === 0.12), true);
   eq('perimeter walls are 0.30 m', p.walls.filter((w) => (w.a[1] === 0 && w.b[1] === 0)).every((w) => w.thickness === 0.3), true);
 }
 // Window sill never above a lowered wall
@@ -221,17 +223,25 @@ eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
 // Markup regions: the plan clipped to a drawn rectangle keeps only what lies inside it
 {
   const p = samplePlan();
-  const r = { x0: 4.2, y0: 6.0, x1: 6.6, y1: 10.2 }; // exactly the family bathroom
+  const r = { x0: 2.4, y0: 10.2, x1: 6.0, y1: 13.2 }; // exactly the bathroom
   const c = clipPlan(p, r);
-  eq('region: only the bathroom', c.rooms.map((x) => x.id), ['r11']);
-  near('region: bathroom area kept', area(c.rooms[0].polygon), 10.08, 1e-6);
-  eq('region: fittings inside only', c.fixtures!.every((f) => f.room_id === 'r11') && c.fixtures!.length === 4, true);
+  eq('region: only the bathroom', c.rooms.map((x) => x.id), ['r10']);
+  near('region: bathroom area kept', area(c.rooms[0].polygon), 10.8, 1e-6);
+  eq('region: fittings inside only', c.fixtures!.every((f) => f.room_id === 'r10') && c.fixtures!.length === 4, true);
   eq('region: scope stated', c.assumptions.some((a) => /^Scope: only the marked region/.test(a)), true);
-  const half = regionContents(p, { x0: 0, y0: 0, x1: 3, y1: 4.8 });
+  const half = regionContents(p, { x0: 12, y0: 0, x1: 14.4, y1: 7.2 });
   eq('region: half the living room', half.rooms.map((x) => [x.id, x.share_of_room]), [['r1', 0.5]]);
   eq('segment clipped to region', clipSegment([-1, 1], [5, 1], { x0: 0, y0: 0, x1: 2, y1: 2 }), [[0, 1], [2, 1]]);
   eq('tiny region rejected', parseRegion({ x0: 1, y0: 1, x1: 1.1, y1: 3 }, p), null);
   eq('bad region rejected', parseRegion({ x0: 'a' }, p), null);
+}
+
+// Cloudinary: request signing (the documented example) and generated-image transformations
+{
+  const sig = await signParams({ eager: 'w_400,h_300,c_pad|w_260,h_200,c_crop', public_id: 'sample_image', timestamp: '1315060510' }, 'abcd');
+  eq('Cloudinary signature matches the documented example', sig, 'bfd09f95f331f558cbd1320e67aa8d488770583e');
+  eq('prompt commas and slashes are escaped in the transformation', transformationFor('custom', 'garden, trees/sky'), 'e_gen_background_replace:prompt_garden%2C%20trees%2Fsky/c_limit,w_1600/f_jpg,q_auto');
+  eq('custom prompts are cleaned', cleanPrompt('  a <b>garden</b> | with "trees"  '), 'a b garden b with trees');
 }
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');

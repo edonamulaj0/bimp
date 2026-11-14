@@ -324,7 +324,7 @@ figure.card { margin: 0; }
 .titleblock .mono, .ah .mono { font-family: var(--mono); font-size: .92em; }
 
 /* the drawings */
-.drawing path { fill: none; stroke: var(--ink); stroke-linecap: square; vector-effect: non-scaling-stroke; }
+.drawing path { fill: none; stroke: var(--ink); stroke-linecap: square; }
 .drawing .g { stroke: var(--line); stroke-width: .75; }
 .drawing .w { stroke-width: 1.1; fill: var(--paper-2); fill-opacity: 0; }
 .drawing .w.ext { stroke-width: 1.8; }
@@ -337,11 +337,9 @@ figure.card { margin: 0; }
 .wire-drawing .up path { stroke: var(--ink); stroke-width: 1; }
 .wire-drawing .top path { stroke: var(--ink); stroke-width: 1.4; }
 .wire-drawing .roof path { stroke: var(--ink-2); stroke-width: .8; }
-.js .draft .drawing path { stroke-dasharray: 1; stroke-dashoffset: 1; }
 .js .draft .drawing .g { transition: stroke-dashoffset 1.2s cubic-bezier(.6, 0, .2, 1) calc(var(--i) * 45ms); }
 .js .draft .drawing .lines path { transition: stroke-dashoffset 1.1s cubic-bezier(.55, 0, .2, 1) calc(400ms + var(--i) * 14ms), fill-opacity .8s ease 2.2s; }
 .js .draft .drawing text { opacity: 0; transition: opacity .8s ease 2s; }
-.js .draft.in .drawing path { stroke-dashoffset: 0; }
 .js .draft.in .drawing .w { fill-opacity: 1; }
 .js .draft.in .drawing text { opacity: 1; }
 .js .draft .titleblock > div { opacity: 0; transform: translateY(4px); transition: opacity .5s ease, transform .5s ease; }
@@ -365,10 +363,8 @@ figure.card { margin: 0; }
 .register > div + div { padding-left: var(--s5); }
 .register > div:last-child { border-right: 0; }
 .register svg { width: 56px; height: 56px; margin-bottom: var(--s5); }
-.register svg path, .register svg rect, .register svg circle { fill: none; stroke: var(--ink); stroke-width: 1.25; vector-effect: non-scaling-stroke; }
+.register svg path, .register svg rect, .register svg circle { fill: none; stroke: var(--ink); stroke-width: 1.25; }
 .register svg .acc { stroke: var(--accent); stroke-width: 1.5; }
-.js .register svg > * { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 1.1s cubic-bezier(.6, 0, .2, 1) calc(var(--k, 0) * 140ms + 200ms); }
-.js .register.in svg > * { stroke-dashoffset: 0; }
 .register h3 { font-size: 1.15rem; margin-bottom: var(--s2); }
 .register p { color: var(--ink-2); font-size: .95rem; }
 
@@ -376,14 +372,12 @@ figure.card { margin: 0; }
 .ah-ws { padding: clamp(4rem, 8vw, 6.5rem) 0; background: var(--paper-2); border-top: 1px solid var(--border); border-bottom: 1px solid var(--border); }
 .schematic { grid-column: 1 / span 12; margin: 0; }
 .schematic svg { display: block; width: 100%; height: auto; }
-.schematic rect, .schematic path, .schematic line { fill: none; stroke: var(--ink); stroke-width: 1; vector-effect: non-scaling-stroke; }
+.schematic rect, .schematic path, .schematic line { fill: none; stroke: var(--ink); stroke-width: 1; }
 .schematic .soft { stroke: var(--line-strong); }
 .schematic .fill { fill: var(--surface); }
 .schematic .acc { stroke: var(--accent); stroke-width: 1.6; }
 .schematic text { font: 500 13px var(--font); fill: var(--ink); stroke: none; }
 .schematic text.sm { font-size: 11px; fill: var(--muted); font-weight: 400; }
-.js .schematic.draft .ln { stroke-dasharray: 1; stroke-dashoffset: 1; transition: stroke-dashoffset 1.2s cubic-bezier(.6, 0, .2, 1) calc(var(--i, 0) * 60ms); }
-.js .schematic.draft.in .ln { stroke-dashoffset: 0; }
 .js .schematic.draft text { opacity: 0; transition: opacity .6s ease 1.1s; }
 .js .schematic.draft.in text { opacity: 1; }
 .cols3 { grid-column: 1 / span 12; display: grid; grid-template-columns: 3fr 6fr 3fr; column-gap: clamp(1rem, 2.4vw, 2rem); margin-top: var(--s5); }
@@ -403,11 +397,6 @@ figure.card { margin: 0; }
 .ah-build .steps p { font-size: .9rem; margin-top: 4px; }
 .ah-build figure { grid-column: 6 / span 7; margin: 0; }
 .ah-build .wire-drawing { display: block; width: 100%; height: auto; max-height: calc(100vh - 160px); }
-.js .ah-build .wire-drawing path { stroke-dasharray: 1; }
-.js .ah-build .floor path { stroke-dashoffset: calc(1 - clamp(0, var(--p, 0) * 4, 1)); }
-.js .ah-build .up path { stroke-dashoffset: calc(1 - clamp(0, (var(--p, 0) - .22) * 4, 1)); }
-.js .ah-build .top path { stroke-dashoffset: calc(1 - clamp(0, (var(--p, 0) - .44) * 4, 1)); }
-.js .ah-build .roof path { stroke-dashoffset: calc(1 - clamp(0, (var(--p, 0) - .66) * 3.4, 1)); }
 .ah-build .progress { grid-column: 1 / span 4; margin-top: var(--s4); height: 1px; background: var(--line); }
 .ah-build .progress i { display: block; height: 100%; width: calc(var(--p, 0) * 100%); background: var(--ink); }
 
@@ -454,8 +443,6 @@ figure.card { margin: 0; }
   .ah-build .steps, .ah-build figure, .ah-build .progress { grid-column: 1 / -1; }
   .ah-build figure { order: -1; margin-bottom: var(--s5); }
   .ah-build .progress { display: none; }
-  .js .ah-build .wire-drawing path { stroke-dashoffset: 1; transition: stroke-dashoffset 1.4s cubic-bezier(.6, 0, .2, 1) calc(var(--i) * 20ms); }
-  .js .ah-build.in .wire-drawing path { stroke-dashoffset: 0; }
   .ah-build .steps li { color: var(--ink); }
   .cols3 { grid-template-columns: 1fr; row-gap: var(--s2); }
   .legal { grid-template-columns: 1fr; }
@@ -478,9 +465,22 @@ figure.card { margin: 0; }
   .contact-grid > div, .contact-grid > div:nth-child(even) { padding: var(--s4) 0; border-right: 0; }
   .schematic .wide-only { display: none; }
 }
-@media (prefers-reduced-motion: reduce) {
-  .js .draft .drawing path, .js .register svg > *, .js .ah-build .wire-drawing path, .js .schematic.draft .ln { stroke-dashoffset: 0 !important; }
-  .js .draft .drawing text, .js .draft .titleblock > div, .js .rise, .js .schematic.draft text { opacity: 1 !important; transform: none !important; }
-  .js .stroke { transform: none !important; }
-  .js .draft .drawing .w { fill-opacity: 1; }
-}
+
+/* Line drawing, measured: site.js sets each stroke's dash to its own length (no pathLength, which Firefox scales
+   differently), so lines draw in every engine. Until it has, lines are hidden; if it never runs, the failsafe below
+   reveals everything after 2.5 s. */
+.js .anim :is(path, rect, circle, line) { stroke-dasharray: 0 100000; }
+.js .in .anim:not(.scroll) :is(path, rect, circle, line), .js .anim.in:not(.scroll) :is(path, rect, circle, line) { stroke-dashoffset: 0 !important; }
+.js .anim .lines path, .js .anim > :is(path, rect, circle, line), .js .anim .ln { transition: stroke-dashoffset 1.1s cubic-bezier(.55, 0, .2, 1) calc(300ms + var(--i, 0) * 14ms); }
+.js .register .anim :is(path, rect, circle) { transition: stroke-dashoffset 1.1s cubic-bezier(.6, 0, .2, 1) calc(var(--k, 0) * 140ms + 200ms); }
+.js .ah-build .anim path { transition: none; }
+@keyframes failsafe { to { stroke-dasharray: none; stroke-dashoffset: 0; opacity: 1; transform: none; fill-opacity: 1; } }
+.js:not(.ready) .anim :is(path, rect, circle, line), .js:not(.ready) .rise, .js:not(.ready) .draft text, .js:not(.ready) .titleblock > div { animation: failsafe 0s 2.5s forwards; }
+
+/* the hero caption: "Your Building Information Modeling P…" with the P-word redrafted every few seconds */
+.ptag { display: flex; flex-wrap: wrap; align-items: baseline; gap: 0 .3em; margin: var(--s5) 0 0; font-size: clamp(1rem, 1.4vw, 1.15rem); color: var(--ink-2); }
+.ptag .pw { position: relative; display: inline-flex; align-items: baseline; color: var(--ink); font-weight: 500; min-width: 6.5em; }
+.ptag .pw b { font-weight: 500; box-shadow: inset 0 -2px var(--accent); }
+.ptag .caret { display: inline-block; width: 1.5px; height: 1.05em; margin-left: 2px; align-self: center; background: var(--accent); animation: caret 1s steps(1) infinite; }
+@keyframes caret { 50% { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) { .ptag .caret { display: none; } }

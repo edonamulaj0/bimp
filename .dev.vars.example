@@ -4,3 +4,7 @@ GEMINI_API_KEY=
 # AI_GATEWAY_URL=https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>
 # Local ingestion service when Docker isn't available (pip install -r ingest/requirements.txt; npm run ingest:dev)
 INGEST_URL=http://127.0.0.1:8090
+# Optional: Cloudinary image generation from the 3D model (cloud name and API key can also go in wrangler.jsonc vars)
+# CLOUDINARY_CLOUD_NAME=
+# CLOUDINARY_API_KEY=
+# CLOUDINARY_API_SECRET=

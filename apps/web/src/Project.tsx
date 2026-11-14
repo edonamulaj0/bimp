@@ -12,7 +12,7 @@ import type { Projection, ViewPreset } from './canvas/scene';
 import { ROOM_COLORS } from './canvas/colors';
 import { signal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
-import { chatPrompt, hoverRoom, projectsVersion, queueFiles, region, say, selectedRooms, tourStep, tutorialOpen } from './state';
+import { chatPrompt, hoverRoom, projectsVersion, queueFiles, region, say, selectedRooms, tourStep, tutorialOpen, visualsOpen } from './state';
 import { InfoPanel } from './InfoPanel';
 import { PageHeader } from './Shell';
 import { Spinner } from './brand';
@@ -24,6 +24,7 @@ import { FileTree, type FileRow } from './FileTree';
 import { CanvasMenu, type CmSection } from './CanvasMenu';
 import { Menu } from './ui';
 import { Shortcuts, Tour, Tutorial } from './Tour';
+import { VisualsDialog } from './Visuals';
 import type { Comment, ProjectData } from './types';
 
 type Tab = 'comments' | 'revisions' | 'info';
@@ -80,7 +81,7 @@ export function ProjectPage({ id }: { id: string }) {
   const setTab = (t: Tab) => { setTabState(t); store('bimp.tab', t); setRightOpen(true); if (phone) setMPane(t); };
   const load = () => api<ProjectData>(`/projects/${id}`).then((d) => { if (d.plan && d.plan_id) plans.current.set(d.plan_id, d.plan); setData(d); }).catch((e) => setErr(e.message));
   useEffect(() => {
-    hoverRoom.value = null; selectedRooms.value = []; chatPrompt.value = null; region.value = null;
+    hoverRoom.value = null; selectedRooms.value = []; chatPrompt.value = null; region.value = null; visualsOpen.value = false;
     load();
     api<{ comments: Comment[] }>(`/projects/${id}/comments`).then((d) => setComments(d.comments)).catch(() => setComments([]));
     return () => { region.value = null; };
@@ -248,7 +249,7 @@ export function ProjectPage({ id }: { id: string }) {
                   onMessages={(messages) => setData((d) => d && { ...d, messages })}
                   onPlan={(plan) => { setData((d) => d && { ...d, plan }); setViewRev(null); setCompare(null); load(); projectsVersion.value++; }} />
               </aside>
-              <div class="ws-handle" role="separator" aria-orientation="vertical" tabIndex={0} aria-label="Resize files panel" aria-controls="ws-left"
+              <div class="ws-handle h-left" role="separator" aria-orientation="vertical" tabIndex={0} aria-label="Resize files panel" aria-controls="ws-left"
                 aria-valuenow={leftW} aria-valuemin={240} aria-valuemax={480} {...resizer(() => leftW, setLeftW, 'bimp.leftW', 240, () => Math.min(480, innerWidth * 0.3), 1)} />
               <CanvasPane plan={shownPlan} projectId={id} name={data.project.name} onUpload={upload} onRefused={refused} loading={!!(shownId && !shownPlan)}
                 banner={banner} notice={notice} onNotice={() => setNotice([])} diff={diff} pins={compare ? [] : pins} activePin={active} onPin={onPin}
@@ -256,7 +257,7 @@ export function ProjectPage({ id }: { id: string }) {
                 popover={draft && <PinComposer busy={posting} onSubmit={post} onCancel={() => setDraft(null)} />}
                 onAsk={(q) => { chatPrompt.value = q; }}
                 onChecks={() => { setTab('info'); requestAnimationFrame(() => document.getElementById('checks-h')?.focus()); }} />
-              <div class="ws-handle" role="separator" aria-orientation="vertical" tabIndex={0} aria-label="Resize overview panel" aria-controls="ws-panel"
+              <div class="ws-handle h-right" role="separator" aria-orientation="vertical" tabIndex={0} aria-label="Resize overview panel" aria-controls="ws-panel"
                 aria-valuenow={rightW} aria-valuemin={280} aria-valuemax={560} {...resizer(() => rightW, setRightW, 'bimp.panelW', 280, () => Math.min(560, innerWidth * 0.35), -1)} />
               <aside class={`col col-right panel${sheet && (mPane === 'comments' || mPane === 'revisions' || mPane === 'info') ? ' is-sheet' : ''}`} id="ws-panel" aria-label="Project overview" data-tour="right">
                 {phone && <SheetGrip full={sheetFull} onFull={setSheetFull} onClose={() => setMPane('plan')} label={TABS.find((t) => t[0] === rightTab)?.[1] ?? ''} />}
@@ -415,10 +416,12 @@ function CanvasPane({ plan: drawn, projectId, name, loading, onUpload, onRefused
     ...(mode !== '3d' ? [
       { label: 'Dimensioned drawing', checked: p2.current?.mode() === 'dims', onSelect: () => p2.current?.setMode(p2.current.mode() === 'dims' ? 'plan' : 'dims') },
       { label: 'Escape routes', checked: !!p2.current?.escape(), onSelect: () => p2.current?.toggleEscape() },
+      { label: 'Print to scale…', icon: 'file', onSelect: () => p2.current?.print() },
     ] : []),
     ...(show3d ? [
       ...([['iso', 'Isometric'], ['top', 'Top'], ['front', 'Front (south)'], ['side', 'Side (east)'], ['eye', 'Low angle']] as [ViewPreset, string][]).map(([v, l]) => ({ label: `${l} view`, icon: 'orbit', onSelect: () => p3.current?.view(v) })),
       { label: 'Parallel projection', checked: proj === 'ortho', onSelect: () => setProj(proj === 'ortho' ? 'persp' : 'ortho') },
+      { label: 'Generate an image of this view…', icon: 'sparkle', onSelect: () => (visualsOpen.value = true) },
     ] : []),
   ];
   const layerItems: CmSection['items'] = [
@@ -470,6 +473,7 @@ function CanvasPane({ plan: drawn, projectId, name, loading, onUpload, onRefused
             ))}
           </div>
         </>)}
+        <button class="tool" onClick={() => { if (mode === '2d') setMode('3d'); visualsOpen.value = true; }} title="Generate architectural images from the 3D model (Cloudinary)"><Icon name="sparkle" size={16} /><span class="tool-l">Images</span></button>
         <button class="tool" onClick={btnMenu('view')} aria-haspopup="menu" aria-expanded={menu?.kind === 'view'}><Icon name="view" size={16} /><span class="tool-l">View</span></button>
         <button class="tool" onClick={btnMenu('layers')} aria-haspopup="menu" aria-expanded={menu?.kind === 'layers'}><Icon name="layers" size={16} /><span class="tool-l">Layers</span></button>
         <span class="spacer" />
@@ -516,6 +520,8 @@ function CanvasPane({ plan: drawn, projectId, name, loading, onUpload, onRefused
         {types.map((t) => <span key={t} class="lg-type"><i class="sw" style={{ background: ROOM_COLORS[t] }} />{t}</span>)}
         <span class="muted">· {plan.rooms.length} rooms · <span class="mono">{plan.width} × {plan.height} m</span></span>
       </div>
+      {visualsOpen.value && <VisualsDialog projectId={projectId} snapshot={mode !== '2d' ? () => p3.current?.snapshot() ?? null : null}
+        onShow3D={() => setMode('3d')} onClose={() => (visualsOpen.value = false)} />}
       {menu && <CanvasMenu x={menu.x} y={menu.y} title={menu.kind === 'canvas' ? (room ? room.name : 'Plan') : undefined} sections={sections} onClose={() => setMenu(null)} />}
     </section>
   );
