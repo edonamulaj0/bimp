@@ -11,6 +11,19 @@ import { FixtureSymbol } from './symbols';
 import { FLOOR_OF } from './floors-kind';
 import { inside, roomDims } from '../../../shared/rooms';
 import { W, ln, wallClass } from './weights';
+import { type Region, normRegion, regionSize } from '../../../shared/region';
+
+/** Which parts of the drawing are shown (the canvas Layers menu). */
+export type Layers = { fills: boolean; furniture: boolean; dims: boolean; labels: boolean; pins: boolean };
+export const ALL_LAYERS: Layers = { fills: true, furniture: true, dims: true, labels: true, pins: true };
+export type CanvasTool = 'select' | 'comment' | 'region' | 'measure';
+/** A request for the canvas context menu: client position, the plan point under it and the room there. */
+export type MenuAt = { x: number; y: number; p: Pt | null; roomId: string | null };
+/** Imperative controls for the toolbar and the context menu. */
+export type Plan2DApi = {
+  fit(): void; zoom(k: number): void; mode(): PlanMode; setMode(m: PlanMode): void;
+  escape(): boolean; toggleEscape(): void; measures(): number; clearMeasures(): void; print(): void;
+};
 
 /** CSS pixels per metre of screen (96 px per inch). Screens vary, so on-screen 1:x is nominal; print is exact. */
 const SCREEN_PX_PER_M = 96 / 0.0254;
@@ -31,11 +44,14 @@ type Props = {
   diff?: PlanDiff | null;
   /** Pan to this point when key changes (e.g. a comment thread was chosen). */
   focusAt?: { p: Pt; key: number } | null;
+  /** Active tool: region drags a rectangle (markup), measure clicks two points. Comment uses `placing`. */
+  tool?: CanvasTool; region?: Region | null; onRegion?(r: Region | null): void;
+  layers?: Layers; apiRef?: { current: Plan2DApi | null }; onMenu?(m: MenuAt): void;
 };
 /** plan: the drawing with overall sizes; dims: every wall, opening and room dimensioned in millimetres. */
 export type PlanMode = 'plan' | 'dims';
 
-export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activePin, onPin, placing, onPlace, draft, popover, diff, focusAt }: Props) {
+export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activePin, onPin, placing, onPlace, draft, popover, diff, focusAt, tool = 'select', region, onRegion, layers = ALL_LAYERS, apiRef, onMenu }: Props) {
   const [mode, setMode] = useState<PlanMode>(() => { try { return localStorage.getItem('bimp.planMode') === 'dims' ? 'dims' : 'plan'; } catch { return 'plan'; } });
   // Dimension strings sit outside the building: three tiers on every side need about twice the margin.
   const pad = Math.max(plan.width, plan.height) * (mode === 'dims' && !compact ? 0.2 : 0.1), top = compact ? 0 : pad * 0.35; // room for the toolbar
@@ -50,6 +66,13 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
   const [size, setSize] = useState({ w: 0, h: 0 });
   const [typed, setTyped] = useState<string | null>(null);
   const [showEscape, setShowEscape] = useState(false);
+  // markup region being dragged; measurements (pairs of snapped points) and the one being drawn
+  const [rubber, setRubber] = useState<[Pt, Pt] | null>(null);
+  const [measures, setMeasures] = useState<[Pt, Pt][]>([]);
+  const [mFrom, setMFrom] = useState<Pt | null>(null);
+  const [cursor, setCursor] = useState<Pt | null>(null);
+  const press = useRef<{ t: number; x: number; y: number } | null>(null);
+  useEffect(() => { if (tool !== 'measure') { setMFrom(null); setCursor(null); } if (tool !== 'region') setRubber(null); }, [tool]);
   const pickMode = (m: PlanMode) => { setMode(m); try { localStorage.setItem('bimp.planMode', m); } catch { /* private mode */ } };
   const escape = useMemo(() => (showEscape ? escapeRoutes(plan) : null), [plan, showEscape]);
   const footprints = useMemo(() => wallFootprints(plan.walls), [plan]);
@@ -98,6 +121,27 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
     const w = Math.min(Math.max(v.w * k, 1), home.w * 4), f = w / v.w;
     return { x: px - (px - v.x) * f, y: py - (py - v.y) * f, w, h: v.h * f };
   });
+  if (apiRef) apiRef.current = {
+    fit: () => setVb(home), zoom, mode: () => mode, setMode: pickMode, escape: () => showEscape, toggleEscape: () => setShowEscape((v) => !v),
+    measures: () => measures.length, clearMeasures: () => { setMeasures([]); setMFrom(null); },
+    print: () => setPrinting(String(printRatio)),
+  };
+  // Snapping for the measure tool: room corners, wall footprint corners and opening ends within 10 px.
+  const snapPts = useMemo(() => [
+    ...plan.rooms.flatMap((r) => r.polygon), ...footprints.flatMap((f) => f.poly), ...plan.openings.flatMap((o) => [o.a, o.b]),
+  ], [plan, footprints]);
+  const snap = (p: Pt, from?: Pt | null, ortho?: boolean): Pt => {
+    if (ortho && from) p = Math.abs(p[0] - from[0]) > Math.abs(p[1] - from[1]) ? [p[0], from[1]] : [from[0], p[1]];
+    const tol = pxPerM ? 10 / pxPerM : 0.15;
+    let best: Pt | null = null, bd = tol;
+    for (const q of snapPts) { const d = dist(p, q); if (d < bd && (!ortho || !from || Math.abs(q[0] - from[0]) < 1e-6 || Math.abs(q[1] - from[1]) < 1e-6)) { bd = d; best = q; } }
+    return best ? [best[0], best[1]] : [round(p[0], 3), round(p[1], 3)];
+  };
+  const menuAt = (cx: number, cy: number) => {
+    if (!onMenu) return;
+    const p = toPlan(cx, cy);
+    onMenu({ x: cx, y: cy, p, roomId: plan.rooms.find((r) => inside(p, r.polygon))?.id ?? null });
+  };
   const keys = (e: KeyboardEvent) => {
     const d = ({ ArrowLeft: [-1, 0], ArrowRight: [1, 0], ArrowUp: [0, -1], ArrowDown: [0, 1] } as Record<string, number[]>)[e.key];
     if (d) { e.preventDefault(); setVb((v) => ({ ...v, x: v.x + d[0] * v.w * 0.1, y: v.y + d[1] * v.h * 0.1 })); }
@@ -137,8 +181,14 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
   const drawing = (
     <svg
       ref={svg}
-      class={`plan2d${compact ? ' compact' : ''}${placing ? ' placing' : ''}`}
-      onClick={placing && onPlace ? (e) => { if (!drag.current?.moved) onPlace(toPlan(e.clientX, e.clientY)); } : undefined}
+      class={`plan2d${compact ? ' compact' : ''}${placing || tool === 'measure' || tool === 'region' ? ' placing' : ''}`}
+      onClick={placing && onPlace ? (e) => { if (!drag.current?.moved) onPlace(toPlan(e.clientX, e.clientY)); }
+        : tool === 'measure' ? (e) => {
+          if (drag.current?.moved) return;
+          const p = snap(toPlan(e.clientX, e.clientY), mFrom, e.shiftKey);
+          if (!mFrom) setMFrom(p); else { if (dist(mFrom, p) > 0.01) setMeasures((m) => [...m, [mFrom, p]]); setMFrom(null); }
+        } : undefined}
+      onContextMenu={compact || !onMenu ? undefined : (e) => { e.preventDefault(); menuAt(e.clientX, e.clientY); }}
       viewBox={`${vb.x} ${vb.y} ${vb.w} ${vb.h}`}
       onPointerDown={compact ? undefined : (e) => {
         ptrs.current.set(e.pointerId, [e.clientX, e.clientY]);
@@ -146,7 +196,11 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
           const [a, b] = [...ptrs.current.values()];
           pinch.current = { d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, vb, mid: toPlan((a[0] + b[0]) / 2, (a[1] + b[1]) / 2) };
           drag.current = { x: 0, y: 0, vb, moved: true, dead: true };
-        } else if (!pinch.current) drag.current = { x: e.clientX, y: e.clientY, vb, moved: false };
+        } else if (!pinch.current) {
+          drag.current = { x: e.clientX, y: e.clientY, vb, moved: false };
+          if (tool === 'region' && e.button === 0) { const p = toPlan(e.clientX, e.clientY); setRubber([p, p]); drag.current.dead = true; (e.currentTarget as Element).setPointerCapture(e.pointerId); }
+          if (e.pointerType === 'touch' && onMenu) press.current = { t: window.setTimeout(() => { press.current = null; drag.current = { ...drag.current!, moved: true, dead: true }; setRubber(null); menuAt(e.clientX, e.clientY); }, 550), x: e.clientX, y: e.clientY };
+        }
       }}
       onPointerMove={compact ? undefined : (e) => {
         if (ptrs.current.has(e.pointerId)) ptrs.current.set(e.pointerId, [e.clientX, e.clientY]);
@@ -157,6 +211,9 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
           setVb({ x: p.mid[0] - (p.mid[0] - p.vb.x) * f, y: p.mid[1] - (p.mid[1] - p.vb.y) * f, w, h: p.vb.h * f });
           return;
         }
+        if (press.current && Math.hypot(e.clientX - press.current.x, e.clientY - press.current.y) > 8) { clearTimeout(press.current.t); press.current = null; }
+        if (tool === 'measure') setCursor(snap(toPlan(e.clientX, e.clientY), mFrom, e.shiftKey));
+        if (rubber && e.buttons & 1) { setRubber([rubber[0], toPlan(e.clientX, e.clientY)]); return; }
         const d = drag.current;
         if (!d || d.dead || !(e.buttons & 1)) return;
         const dx = e.clientX - d.x, dy = e.clientY - d.y;
@@ -164,14 +221,26 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
         const s = scale();
         setVb({ ...d.vb, x: d.vb.x - dx * s, y: d.vb.y - dy * s });
       }}
-      onPointerUp={(e) => { ptrs.current.delete(e.pointerId); if (!ptrs.current.size) pinch.current = null; setTimeout(() => (drag.current = null)); }}
-      onPointerCancel={(e) => { ptrs.current.delete(e.pointerId); if (!ptrs.current.size) pinch.current = null; drag.current = null; }}
+      onPointerUp={(e) => {
+        ptrs.current.delete(e.pointerId); if (!ptrs.current.size) pinch.current = null;
+        if (press.current) { clearTimeout(press.current.t); press.current = null; }
+        if (rubber) {
+          const r = normRegion(rubber[0], toPlan(e.clientX, e.clientY)), { w, h } = regionSize(r);
+          setRubber(null);
+          if (w >= 0.2 && h >= 0.2) onRegion?.(r);
+          if (drag.current) drag.current.moved = true;
+        }
+        setTimeout(() => (drag.current = null));
+      }}
+      onPointerCancel={(e) => { ptrs.current.delete(e.pointerId); if (!ptrs.current.size) pinch.current = null; drag.current = null; setRubber(null); if (press.current) { clearTimeout(press.current.t); press.current = null; } }}
       onKeyDown={compact ? undefined : keys}
       onPointerLeave={() => (hoverRoom.value = null)}
-      onDblClick={() => setVb(home)}
+      onDblClick={(e) => { if (onMenu) menuAt(e.clientX, e.clientY); else setVb(home); }}
       role={compact ? 'img' : 'group'}
       aria-label={compact ? '2D floor plan' : placing
         ? `2D floor plan. Comment tool: click a spot, or tab to a room and press Enter, to pin a comment there.`
+        : tool === 'region' ? '2D floor plan. Markup tool: drag a rectangle over the area to ask about.'
+        : tool === 'measure' ? '2D floor plan. Measure tool: click two points; hold Shift to keep the line straight.'
         : `2D floor plan, ${plan.rooms.length} rooms${pins?.length ? `, ${pins.length} comment pins` : ''}. Tab to a room; arrow keys pan, plus and minus zoom.`}
     >
       <defs aria-hidden="true">
@@ -204,7 +273,7 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
         const on = hovered === r.id || selected.includes(r.id);
         return (
           <polygon key={r.id} points={r.polygon.map((p) => p.join(',')).join(' ')}
-            fill={ROOM_COLORS[r.type]} fill-opacity={on ? 0.6 : sourceUrl ? 0.2 : mode === 'dims' ? 0.0001 : 0.22}
+            fill={ROOM_COLORS[r.type]} fill-opacity={on ? 0.6 : sourceUrl ? 0.2 : mode === 'dims' || !layers.fills ? 0.0001 : 0.22}
             stroke={on ? 'var(--accent)' : 'none'} stroke-width={fs * 0.15} class="room"
             {...(compact ? {} : {
               tabIndex: 0, role: 'button', 'aria-label': `${r.name}, ${round(area(r.polygon), 1)} m²`, 'aria-pressed': selected.includes(r.id),
@@ -217,20 +286,20 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
               },
             })}
             onPointerEnter={() => (hoverRoom.value = r.id)}
-            onClick={() => { if (!placing && !drag.current?.moved) toggle(r.id); }} />
+            onClick={() => { if (!placing && tool === 'select' && !drag.current?.moved) toggle(r.id); }} />
         );
       })}
-      {!compact && !sourceUrl && mode === 'plan' && (
+      {!compact && !sourceUrl && mode === 'plan' && layers.fills && (
         <g pointer-events="none" class="floor-patterns" aria-hidden="true">
           {plan.rooms.filter((r) => FLOOR_OF[r.type] !== 'plain').map((r) => (
             <polygon key={r.id} points={r.polygon.map((p) => p.join(',')).join(' ')} fill={`url(#fl-${FLOOR_OF[r.type]})`} />
           ))}
         </g>
       )}
-      <g pointer-events="none" class="fixtures" aria-hidden="true">{(plan.fixtures ?? []).map((f) => <FixtureSymbol key={f.id} f={f} />)}</g>
+      {layers.furniture && <g pointer-events="none" class="fixtures" aria-hidden="true">{(plan.fixtures ?? []).map((f) => <FixtureSymbol key={f.id} f={f} />)}</g>}
       <Walls footprints={footprints} />
       <Openings plan={plan} thick={openingT} u={pxPerM ? 1 / pxPerM : 0.03} />
-      {!compact && <Dimensions plan={plan} fs={fs} mode={mode} footprints={footprints} thick={openingT} />}
+      {!compact && layers.dims && <Dimensions plan={plan} fs={fs} mode={mode} footprints={footprints} thick={openingT} />}
       {diff && <DiffOverlay diff={diff} fs={fs} labelAt={labelAt} />}
       {kbd && (() => { const r = plan.rooms.find((x) => x.id === kbd); return r && <polygon class="focus-ring" aria-hidden="true" points={r.polygon.map((p) => p.join(',')).join(' ')} />; })()}
       {route && (
@@ -241,7 +310,7 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
         </g>
       )}
       {exits.map((d) => <g key={d.id} pointer-events="none" aria-hidden="true"><circle cx={d.mid[0]} cy={d.mid[1]} r={fs * 0.6} fill="#15803d" /><text x={d.mid[0]} y={d.mid[1] + fs * 0.35} font-size={fs * 0.8} text-anchor="middle" fill="#fff" font-weight="700">EXIT</text></g>)}
-      {!compact && (
+      {!compact && layers.labels && (
         <g pointer-events="none" aria-hidden="true" text-anchor="middle" class="labels" stroke="var(--paper)" stroke-width={fs * 0.22} paint-order="stroke" stroke-linejoin="round">
           {plan.rooms.map((r) => {
             const [x, y] = labelAt.get(r.id) ?? centroid(r.polygon);
@@ -255,7 +324,15 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
           })}
         </g>
       )}
-      {!compact && pxPerM > 0 && (!!pins?.length || draft) && (
+      {!compact && pxPerM > 0 && (region || rubber) && <RegionMark r={rubber ? normRegion(rubber[0], rubber[1]) : region!} live={!!rubber} u={1 / pxPerM} />}
+      {!compact && pxPerM > 0 && (measures.length > 0 || mFrom) && (
+        <g class="measures" pointer-events="none" aria-hidden="true">
+          {[...measures, ...(mFrom && cursor ? [[mFrom, cursor] as [Pt, Pt]] : [])].map(([a, b], i) => <Measure key={i} a={a} b={b} u={1 / pxPerM} live={i === measures.length} />)}
+          {mFrom && <circle cx={mFrom[0]} cy={mFrom[1]} r={4 / pxPerM} class="m-pt" />}
+        </g>
+      )}
+      {!compact && tool === 'measure' && cursor && !mFrom && pxPerM > 0 && <circle cx={cursor[0]} cy={cursor[1]} r={4 / pxPerM} class="m-pt hover" aria-hidden="true" pointer-events="none" />}
+      {!compact && pxPerM > 0 && layers.pins && (!!pins?.length || draft) && (
         <g class="pins">
           {pins?.map((p) => (
             <g key={p.id} transform={`translate(${p.x} ${p.y}) scale(${1 / pxPerM})`} class={`pin${p.resolved ? ' resolved' : ''}${activePin === p.id ? ' active' : ''}`}
@@ -493,6 +570,38 @@ function Dimensions({ plan, fs, mode, footprints, thick }: { plan: Plan; fs: num
     return <text x={x} y={y + fs * 2.6} font-size={fs * 0.75} text-anchor="middle" stroke="var(--sheet)" stroke-width={fs * 0.2} paint-order="stroke">{t}</text>;
   })() : null;
   return <g pointer-events="none" aria-hidden="true" class="dims" fill="var(--fg)">{strings}{rooms}{doors}{level}</g>;
+}
+
+/** The markup region: a dashed rectangle with corner ticks and its size; u = metres per screen pixel. */
+function RegionMark({ r, live, u }: { r: Region; live: boolean; u: number }) {
+  const { w, h } = regionSize(r), t = 10 * u;
+  const corners: [number, number, number, number][] = [[r.x0, r.y0, 1, 1], [r.x1, r.y0, -1, 1], [r.x1, r.y1, -1, -1], [r.x0, r.y1, 1, -1]];
+  return (
+    <g class={`region${live ? ' live' : ''}`} pointer-events="none" aria-hidden="true">
+      <rect x={r.x0} y={r.y0} width={r.x1 - r.x0} height={r.y1 - r.y0} class="rg-fill" />
+      <rect x={r.x0} y={r.y0} width={r.x1 - r.x0} height={r.y1 - r.y0} class="rg-line" />
+      {corners.map(([x, y, sx, sy], i) => <path key={i} d={`M${x + sx * t},${y}H${x}V${y + sy * t}`} class="rg-tick" />)}
+      <text x={r.x0} y={r.y0 - 6 * u} font-size={12 * u} stroke-width={3 * u} class="rg-label">{w.toFixed(2)} × {h.toFixed(2)} m</text>
+    </g>
+  );
+}
+
+/** A measured distance: the line with end ticks and its length in millimetres, drawn at screen size. */
+function Measure({ a, b, u, live }: { a: Pt; b: Pt; u: number; live: boolean }) {
+  const L = dist(a, b);
+  if (L < 1e-6) return null;
+  const ux = (b[0] - a[0]) / L, uy = (b[1] - a[1]) / L, nx = -uy * 6 * u, ny = ux * 6 * u;
+  let ang = (Math.atan2(uy, ux) * 180) / Math.PI;
+  if (ang > 90) ang -= 180; else if (ang < -90) ang += 180;
+  const mx = (a[0] + b[0]) / 2 + nx * 1.6, my = (a[1] + b[1]) / 2 + ny * 1.6;
+  return (
+    <g class={`measure${live ? ' live' : ''}`}>
+      <line x1={a[0]} y1={a[1]} x2={b[0]} y2={b[1]} class="m-line" />
+      <line x1={a[0] - nx} y1={a[1] - ny} x2={a[0] + nx} y2={a[1] + ny} class="m-line" />
+      <line x1={b[0] - nx} y1={b[1] - ny} x2={b[0] + nx} y2={b[1] + ny} class="m-line" />
+      <text x={mx} y={my} font-size={12 * u} text-anchor="middle" dominant-baseline="middle" stroke-width={3 * u} transform={`rotate(${ang} ${mx} ${my})`} class="m-label">{mm(L)} mm</text>
+    </g>
+  );
 }
 
 /** A map-pin 22 px wide with its tip at (0, 0), in screen pixels. */

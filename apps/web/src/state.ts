@@ -47,3 +47,26 @@ export const chatPrompt = signal<string | null>(null);
 /** Polite announcements for screen readers (pins placed, comments posted…). */
 export const announce = signal('');
 export const say = (t: string) => { announce.value = ''; requestAnimationFrame(() => (announce.value = t)); };
+
+/** The markup region on the canvas (plan metres). While set, questions in the chat are answered from inside it only. */
+export const region = signal<import('../../shared/region').Region | null>(null);
+/** Files dropped on the file tree or the canvas, waiting for the chat to upload and read them (one at a time). */
+export const uploadQueue = signal<File[]>([]);
+export const ACCEPT = ['.pdf', '.dxf', '.png', '.jpg', '.jpeg', '.webp'];
+/** Splits dropped files into ones bimp can read and ones it can't (with the reason), and queues the readable ones. */
+export function queueFiles(files: Iterable<File>): string[] {
+  const ok: File[] = [], refused: string[] = [];
+  for (const f of files) {
+    const ext = f.name.toLowerCase().match(/\.[a-z0-9]+$/)?.[0] ?? '';
+    if (ACCEPT.includes(ext)) { if (f.size > 50 * 1024 * 1024) refused.push(`${f.name}: larger than 50 MB`); else ok.push(f); }
+    else if (ext === '.dwg') refused.push(`${f.name}: DWG isn't read yet. Export it to DXF or PDF from your CAD tool.`);
+    else if (ext === '.ifc' || ext === '.rvt' || ext === '.skp') refused.push(`${f.name}: ${ext.slice(1).toUpperCase()} models aren't read yet. Export plans to PDF or DXF.`);
+    else refused.push(`${f.name}: not a drawing bimp reads (PDF, DXF, PNG, JPG or WebP)`);
+  }
+  if (ok.length) uploadQueue.value = [...uploadQueue.value, ...ok];
+  return refused;
+}
+
+/** Guided help: the welcome tour (step index, or null when closed) and the first-project tutorial. */
+export const tourStep = signal<number | null>(null);
+export const tutorialOpen = signal((() => { try { return localStorage.getItem('bimp.tutorial') === 'open'; } catch { return false; } })());
