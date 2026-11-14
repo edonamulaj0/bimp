@@ -1,4 +1,4 @@
-import { user } from './state';
+import { ai, user } from './state';
 
 type Opts = { method?: string; json?: unknown; body?: BodyInit; headers?: Record<string, string> };
 
@@ -15,3 +15,6 @@ export async function api<T = any>(path: string, o: Opts = {}): Promise<T> {
   if (!res.ok) throw new Error(data.error ?? `Request failed (${res.status})`);
   return data as T;
 }
+
+/** Who is signed in, and whether AI answers are available. */
+export const loadMe = () => api<{ user: typeof user.value; ai?: boolean }>('/me').then((d) => { ai.value = d.ai !== false; user.value = d.user; });

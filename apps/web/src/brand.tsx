@@ -6,6 +6,8 @@ export const Logo = ({ height = 28, title = 'bimp' }: { height?: number; title?:
   <span class="brand-logo" style={{ height: `${height}px` }} role="img" aria-label={title} dangerouslySetInnerHTML={{ __html: logoSvg }} />
 );
 
-export const Spinner = ({ size = 28, label = 'Loading' }: { size?: number; label?: string }) => (
-  <span class="brand-spin" style={{ width: `${size}px`, height: `${size}px` }} role="status" aria-label={label} dangerouslySetInnerHTML={{ __html: spinSvg }} />
+/** label=null: decorative (the text next to it says what is happening). */
+export const Spinner = ({ size = 28, label = 'Loading' }: { size?: number; label?: string | null }) => (
+  <span class="brand-spin" style={{ width: `${size}px`, height: `${size}px` }} {...(label === null ? { 'aria-hidden': 'true' } : { role: 'status', 'aria-label': label })}
+    dangerouslySetInnerHTML={{ __html: spinSvg }} />
 );

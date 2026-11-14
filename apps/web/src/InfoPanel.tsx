@@ -1,8 +1,9 @@
-import { type Plan, FIXTURE_LABEL } from '../../shared/plan';
+import { useEffect, useRef } from 'preact/hooks';
+import { type Plan, FIXTURE_LABEL, area, round } from '../../shared/plan';
 import { planAreas, roomInfo } from '../../shared/rooms';
 import { fengShui, suggestLayout } from '../../shared/fengshui';
 import { ROOM_COLORS } from './canvas/colors';
-import { chatPrompt, hoverRoom, selectedRooms } from './state';
+import { AI_OFF, ai, chatPrompt, hoverRoom, selectedRooms } from './state';
 
 const m = (v: number, d = 2) => v.toFixed(d);
 
@@ -14,16 +15,25 @@ export function InfoPanel({ plan, suggest, onSuggest }: { plan: Plan; suggest: b
   // offer suggestions only where they would add something (furnishable rooms with nothing in them)
   const empty = !suggest && suggestLayout(plan).length > 0;
   const ceilingNote = pa.ceiling_source === 'assumed' ? ' (assumed)' : '';
+  // Keep keyboard focus when the panel swaps between overview and a room (the button that was pressed disappears).
+  const back = useRef<HTMLButtonElement>(null), rooms = useRef<HTMLUListElement>(null), last = useRef<string | null>(null);
+  useEffect(() => {
+    const lost = document.activeElement === document.body;
+    if (room && lost) back.current?.focus();
+    else if (!room && lost && last.current) rooms.current?.querySelector<HTMLElement>(`[data-room="${last.current}"]`)?.focus();
+    last.current = room?.id ?? last.current;
+  }, [room?.id]);
+  const hover = (id: string | null) => ({ onMouseEnter: () => (hoverRoom.value = id), onMouseLeave: () => (hoverRoom.value = null), onFocus: () => (hoverRoom.value = id), onBlur: () => (hoverRoom.value = null) });
 
   return (
-    <aside class="infopanel" aria-label="Information" onPointerDown={(e) => e.stopPropagation()}>
+    <aside class="infopanel" id="info-panel" aria-label="Information" onPointerDown={(e) => e.stopPropagation()}>
       {room ? (() => {
         const ri = roomInfo(plan, room);
         return (
           <>
             <div class="ip-head">
               <span><i class="sw" style={{ background: ROOM_COLORS[room.type] }} /><b>{room.name}</b> <span class="muted small">{room.type}</span></span>
-              <button class="link small" onClick={() => (selectedRooms.value = [])} aria-label="Back to overview">✕</button>
+              <button ref={back} class="link small" onClick={() => (selectedRooms.value = [])} aria-label="Back to overview">✕</button>
             </div>
             <dl class="ip-grid">
               <dt>Floor area (net)</dt><dd>{m(ri.net_area_m2)} m²</dd>
@@ -49,7 +59,17 @@ export function InfoPanel({ plan, suggest, onSuggest }: { plan: Plan; suggest: b
             <dt>Ceiling height</dt><dd>{m(pa.ceiling_height_m)} m{ceilingNote}</dd>
             <dt>Volume (net)</dt><dd>{m(pa.net_volume_m3, 1)} m³</dd>
           </dl>
-          <p class="small muted">Net = rooms measured to the inside of walls; gross adds the walls. Click a room for its details.</p>
+          <p class="small muted">Net = rooms measured to the inside of walls; gross adds the walls. Choose a room for its details.</p>
+          <h4 id="ip-rooms">Rooms</h4>
+          <ul class="ip-rooms" ref={rooms} aria-labelledby="ip-rooms">
+            {plan.rooms.map((r) => (
+              <li key={r.id}>
+                <button data-room={r.id} onClick={() => (selectedRooms.value = [r.id])} {...hover(r.id)}>
+                  <span><i class="sw" style={{ background: ROOM_COLORS[r.type] }} />{r.name}</span><span class="mono">{round(area(r.polygon), 1)} m²</span>
+                </button>
+              </li>
+            ))}
+          </ul>
         </>
       )}
 
@@ -57,8 +77,11 @@ export function InfoPanel({ plan, suggest, onSuggest }: { plan: Plan; suggest: b
       {notes.length ? (
         <ul class="fs">
           {notes.map((n, i) => (
-            <li key={i} class={n.ok ? 'ok' : 'warn'} onMouseEnter={() => n.room_id && (hoverRoom.value = n.room_id)} onMouseLeave={() => (hoverRoom.value = null)}>
-              {n.ok ? '✓' : '△'} {n.text}
+            <li key={i} class={n.ok ? 'ok' : 'warn'}>
+              <span aria-hidden="true" class="fs-mark">{n.ok ? '✓' : '△'}</span>
+              {n.room_id && !room
+                ? <button class="fs-btn" onClick={() => (selectedRooms.value = [n.room_id!])} {...hover(n.room_id)}><span class="sr-only">{n.ok ? 'Good: ' : 'Consider: '}</span>{n.text}</button>
+                : <span><span class="sr-only">{n.ok ? 'Good: ' : 'Consider: '}</span>{n.text}</span>}
             </li>
           ))}
         </ul>
@@ -71,12 +94,13 @@ export function InfoPanel({ plan, suggest, onSuggest }: { plan: Plan; suggest: b
             {suggest ? 'Hide suggested furniture' : 'Apply feng shui furniture'}
           </button>
         )}
-        <button class="btn sm" onClick={() => (chatPrompt.value = room
+        <button class="btn sm" disabled={!ai.value} aria-describedby={ai.value ? undefined : 'ip-ai-off'} onClick={() => (chatPrompt.value = room
           ? `Give me an overview of ${room.name} (${room.id}): size and proportions, light, how it feels and its feng shui, with practical suggestions.`
           : 'Give me an overview of this home: net and gross area, light, how it flows and feels, and its feng shui, with practical suggestions.')}>
           Ask AI for an overview
         </button>
       </div>
+      {!ai.value && <p class="small muted" id="ip-ai-off">{AI_OFF}</p>}
       {suggest && <p class="small muted">Dashed items are suggestions by bimp, not part of the drawing.</p>}
     </aside>
   );

@@ -11,6 +11,8 @@ export function Plan3D({ plan, compact, rotation = 0, walls = 'dollhouse' }: Pro
   const host = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<SceneApi | null>(null);
   const appliedRot = useRef(0);
+  const latestRot = useRef(rotation);
+  latestRot.current = rotation; // the scene loads lazily; apply the rotation current when it is ready, not the one captured here
   const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
   const [err, setErr] = useState('');
   const [ready, setReady] = useState(false);
@@ -33,8 +35,8 @@ export function Plan3D({ plan, compact, rotation = 0, walls = 'dollhouse' }: Pro
       }
       sceneRef.current = api;
       setReady(true);
-      api.rotate(rotation);
-      appliedRot.current = rotation;
+      api.rotate(latestRot.current);
+      appliedRot.current = latestRot.current;
       stop = effect(() => api!.highlight(hoverRoom.value, selectedRooms.value));
     });
     return () => { dead = true; stop(); api?.dispose(); sceneRef.current = null; };

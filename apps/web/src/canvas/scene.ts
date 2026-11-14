@@ -201,7 +201,12 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
     }).catch(() => {
       if (!alive) return;
       const geos = fixtureParts(f, FH);
-      if (geos.length) { const mat = new THREE.MeshLambertMaterial({ vertexColors: true }); const m = new THREE.Mesh(mergeGeometries(geos)!, mat); m.castShadow = true; scene.add(m); placed.push(m); render(); }
+      if (geos.length) {
+        const mat = new THREE.MeshLambertMaterial({ vertexColors: true }), m = new THREE.Mesh(mergeGeometries(geos)!, mat);
+        geos.forEach((g) => g.dispose());
+        m.castShadow = true; m.userData.ownGeometry = true; // not shared with the model cache: dispose with the scene
+        scene.add(m); placed.push(m); render();
+      }
     });
   }
   const fx: THREE.BufferGeometry[] = [];
@@ -291,12 +296,17 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
     rotate(steps) { rot = (rot + steps + 4) % 4; if (mode === 'dollhouse' && steps) buildEnvelope(rot); fit(); },
     dispose() {
       alive = false;
-      placed.forEach((o) => o.traverse((m) => { if ((m as THREE.Mesh).isMesh) ((m as THREE.Mesh).material as THREE.Material).dispose(); }));
+      placed.forEach((o) => o.traverse((m) => {
+        if (!(m as THREE.Mesh).isMesh) return;
+        ((m as THREE.Mesh).material as THREE.Material).dispose();
+        if (m.userData.ownGeometry) (m as THREE.Mesh).geometry.dispose();
+      }));
       ro.disconnect();
       floors.forEach((m) => { m.geometry.dispose(); (m.material as THREE.Material).dispose(); });
       disposables.forEach((d) => d.dispose());
       envBin.forEach((d) => d.dispose());
       renderer.dispose();
+      renderer.forceContextLoss(); // browsers cap live WebGL contexts; free this one now rather than at GC
       el.remove();
     },
   };

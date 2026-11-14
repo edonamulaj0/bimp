@@ -34,5 +34,5 @@ export function toBase64(buf: ArrayBuffer): string {
 export async function failJob(env: Env, jobId: string, projectId: string, error: string) {
   const r = await env.DB.prepare("UPDATE jobs SET status = 'failed', stage = 'Failed', error = ?, updated_at = ? WHERE id = ? AND status IN ('queued', 'running')").bind(error, now(), jobId).run();
   if (r.meta.changes) await env.DB.prepare('INSERT INTO messages (project_id, role, content, created_at) VALUES (?,?,?,?)')
-    .bind(projectId, 'assistant', JSON.stringify({ kind: 'system', text: `Could not read the drawing: ${error}`, claims: [], assumptions: [] }), now()).run().catch(() => {});
+    .bind(projectId, 'assistant', JSON.stringify({ kind: 'system', text: `Could not read the drawing: ${error}` }), now()).run().catch(() => {});
 }

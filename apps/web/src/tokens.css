@@ -64,6 +64,7 @@ body { margin: 0; background: var(--paper); color: var(--ink); font: 400 var(--t
 .btn:disabled { opacity: .45; cursor: not-allowed; }
 .btn.ghost { background: transparent; color: var(--ink); border-color: var(--line-strong); }
 .btn.ghost:hover { border-color: var(--ink); background: var(--paper-3); }
+.btn.ghost[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
 .btn.dark { background: var(--ink); color: var(--paper); }
 .btn.dark:hover { background: var(--ink-2); }
 .btn.sm { min-height: 36px; padding: 0 var(--s4); font-size: var(--t-sm); }
