@@ -1,7 +1,8 @@
 // three.js isometric scene. Loaded lazily so the 3D library only downloads when a 3D view is shown.
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
-import { type Plan, type Fixture, centroid, dist, wallPieces } from '../../../shared/plan';
+import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
+import { type Plan, type Fixture, type FixtureKind, centroid, dist, wallPieces } from '../../../shared/plan';
 import { ROOM_COLORS } from './colors';
 
 export type SceneApi = { highlight(hover: string | null, selected: string[]): void; rotate(steps: number): void; dispose(): void };
@@ -100,9 +101,28 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
   addMerged(leaves, new THREE.MeshLambertMaterial({ vertexColors: true }), 0.35);
   addMerged(glass, new THREE.MeshLambertMaterial({ color: 0x8fb8de, transparent: true, opacity: 0.45 }), 0, false);
 
-  // Fittings and furniture: simple low-poly volumes, heights from typical sizes, cut at the wall height.
+  // Fittings and furniture: CC0 Kenney models scaled to the size read from the drawing (boxes where no model fits),
+  // clipped at the wall height so the cutaway stays clean.
+  renderer.localClippingEnabled = true;
+  const clip = [new THREE.Plane(new THREE.Vector3(0, -1, 0), H + 0.001)];
+  const boxed: Fixture[] = [];
+  let alive = true;
+  const placed: THREE.Object3D[] = [];
+  for (const f of plan.fixtures ?? []) {
+    const name = modelFor(f, plan);
+    if (!name) { boxed.push(f); continue; }
+    loadModel(name).then((src) => {
+      if (!alive) return;
+      const o = placeModel(src, f, clip, !opts.compact);
+      scene.add(o); placed.push(o); render();
+    }).catch(() => {
+      if (!alive) return;
+      const geos = fixtureParts(f, H);
+      if (geos.length) { const mat = new THREE.MeshLambertMaterial({ vertexColors: true }); const m = new THREE.Mesh(mergeGeometries(geos)!, mat); m.castShadow = true; scene.add(m); placed.push(m); render(); }
+    });
+  }
   const fx: THREE.BufferGeometry[] = [];
-  for (const f of plan.fixtures ?? []) for (const g of fixtureParts(f, H)) fx.push(g);
+  for (const f of boxed) for (const g of fixtureParts(f, H)) fx.push(g);
   addMerged(fx, new THREE.MeshLambertMaterial({ vertexColors: true }), 0.35);
 
   // Isometric orthographic camera.
@@ -187,6 +207,8 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
     },
     rotate(steps) { rot = (rot + steps + 4) % 4; fit(); },
     dispose() {
+      alive = false;
+      placed.forEach((o) => o.traverse((m) => { if ((m as THREE.Mesh).isMesh) ((m as THREE.Mesh).material as THREE.Material).dispose(); }));
       ro.disconnect();
       floors.forEach((m) => { m.geometry.dispose(); (m.material as THREE.Material).dispose(); });
       disposables.forEach((d) => d.dispose());
@@ -240,4 +262,45 @@ function colour(g: THREE.BufferGeometry, side: number, top?: number) {
   for (let i = 0; i < n.count; i++) (n.getY(i) > 0.9 ? ct : cs).toArray(c, i * 3);
   g.setAttribute('color', new THREE.BufferAttribute(c, 3));
   return g;
+}
+
+// ---- Kenney Furniture Kit models (CC0, apps/web/public/models/kenney) ----
+const MODELS: Partial<Record<FixtureKind, string>> = {
+  wc: 'toilet', bathtub: 'bathtub', shower: 'shower', stove: 'kitchenStove', fridge: 'kitchenFridge', washer: 'washer',
+  sofa: 'loungeSofa', table: 'table', desk: 'desk',
+};
+
+function modelFor(f: Fixture, plan: Plan): string | null {
+  if (f.kind === 'sink') return plan.rooms.find((r) => r.id === f.room_id)?.type === 'kitchen' ? 'kitchenSink' : 'bathroomSink';
+  if (f.kind === 'bed') return f.size[0] > 1.2 ? 'bedDouble' : 'bedSingle';
+  return MODELS[f.kind] ?? null;
+}
+
+const cache = new Map<string, Promise<THREE.Object3D>>();
+function loadModel(name: string) {
+  if (!cache.has(name)) cache.set(name, new GLTFLoader().loadAsync(`/models/kenney/${name}.glb`).then((g) => g.scene));
+  return cache.get(name)!;
+}
+
+function placeModel(src: THREE.Object3D, f: Fixture, clip: THREE.Plane[], shadows: boolean) {
+  // Kenney models face +Z, which is our local front (away from the wall), so no extra yaw is needed.
+  const obj = src.clone(true);
+  obj.updateMatrixWorld(true);
+  const box = new THREE.Box3().setFromObject(obj), size = box.getSize(new THREE.Vector3()), c = box.getCenter(new THREE.Vector3());
+  obj.position.set(-c.x, -box.min.y, -c.z);
+  const sx = f.size[0] / (size.x || 1), sz = f.size[1] / (size.z || 1);
+  const pivot = new THREE.Group();
+  pivot.add(obj);
+  pivot.scale.set(sx, (sx + sz) / 2, sz);
+  pivot.rotation.y = -f.angle;
+  pivot.position.set(f.center[0], 0, f.center[1]);
+  obj.traverse((m) => {
+    const mesh = m as THREE.Mesh;
+    if (!mesh.isMesh) return;
+    const mat = (mesh.material as THREE.Material).clone();
+    mat.clippingPlanes = clip;
+    mesh.material = mat;
+    mesh.castShadow = shadows; mesh.receiveShadow = shadows;
+  });
+  return pivot;
 }

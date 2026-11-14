@@ -251,7 +251,9 @@ Examples: "How many tiles do I need for the bathroom on level 2?", "How many win
   (`placeFixture`) and assigns its room. Never invented; the sample house has hand-placed items.
 - The agent's `count` tool counts fixture kinds with ids (the dataset's questions are mostly such counts).
 - 2D: plan symbols per kind, overall dimension lines, haloed labels. 3D: architectural cutaway convention (dark cut
-  wall tops), soft shadows, door leaves, window glass, low-poly fixture volumes clipped at the wall height, room labels.
+  wall tops), soft shadows, door leaves, window glass, fixtures as CC0 Kenney Furniture Kit models (`apps/web/public/models/kenney`,
+  scaled to the size read from the drawing, clipped at the wall height; boxes for kinds without a model), room labels.
+- VespeneLabs/floor-view was reviewed: its code is UNLICENSED (private), so only its CC0 Kenney assets were reused.
 
 ## 5.5 Ingestion: Workflows + Containers (built)
 
@@ -503,4 +505,5 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 | 2026-11-13 | Metric Handbook (4th ed.) adopted as the design-knowledge reference; rules encoded with citations in `apps/shared/standards.ts` |
 | 2026-11-13 | Fire escape distances and wall thickness from facing room edges added from Metric Handbook Ch. 31–42 |
 | 2026-11-13 | Fixtures read from drawings and rendered in 2D/3D; 3D uses the architectural cutaway convention |
+| 2026-11-14 | 3D fixtures use the CC0 Kenney Furniture Kit; VespeneLabs floor-view code not reused (UNLICENSED) |
 | 2026-11-13 | Marketing page v1: plain static HTML + one CSS file in `apps/web/`, system fonts, no build step, default styling; focus stays on functionality. Results section is a placeholder until evals run. Demo CTA points to `/app` |
