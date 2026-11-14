@@ -80,7 +80,7 @@ export class IngestWorkflow extends WorkflowEntrypoint<Env, IngestParams> {
             const req = traceRequest(raw, an);
             if (!req.rooms.some((r) => r.length)) return { rooms: [] };
             const m = await trace(this.env, png, req);
-            return { rooms: m.rooms ?? [], how: m.how, boxes: m.boxes, exterior_px: m.exterior_px ?? null };
+            return { rooms: m.rooms ?? [], how: m.how, arcs: m.arcs, boxes: m.boxes, blank: m.blank, exterior_px: m.exterior_px ?? null };
           } catch (e) { console.warn('trace', jobId, (e as Error).message); return { rooms: [] }; }
         });
 

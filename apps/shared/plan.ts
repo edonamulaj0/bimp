@@ -5,8 +5,15 @@ export type RoomType = (typeof ROOM_TYPES)[number];
 
 /** Where on the source drawing an item was read: the page of the file and its box in render pixels [x0, y0, x1, y1]. */
 export type Src = { page: number; box: [number, number, number, number] };
-export interface Room { id: string; name: string; type: RoomType; polygon: Pt[]; src?: Src }
-export interface Wall { id: string; a: Pt; b: Pt; thickness: number }
+/**
+ * A curved wall of a room: the `n` corners of its polygon from corner `from` on lie on a circle (centre, radius in
+ * metres). The polygon itself stays a plain run of short edges along the curve, close enough that areas, lengths and
+ * everything drawn from it are right; this says which of its edges are one curved wall, and of what radius.
+ */
+export interface Arc { from: number; n: number; center: Pt; radius: number }
+export interface Room { id: string; name: string; type: RoomType; polygon: Pt[]; src?: Src; arcs?: Arc[] }
+/** curve: this wall is one piece of a curved wall; all pieces of that wall carry the same curve id. */
+export interface Wall { id: string; a: Pt; b: Pt; thickness: number; curve?: { id: string; center: Pt; radius: number } }
 /** a = hinge for doors; the leaf swings toward swing × leftNormal(a→b) (swing defaults to 1). */
 export interface Opening { id: string; kind: 'door' | 'window'; a: Pt; b: Pt; swing?: 1 | -1; src?: Src }
 
@@ -119,7 +126,7 @@ const insidePoly = (p: Pt, poly: Pt[]) => {
  * so they meet it as a T. `paired` says whether any facing pair was found (if not, the outlines are centre lines).
  */
 export function wallsFromFaces(rooms: Room[], exterior = 0.3, interior = 0.12, minT = 0.075, maxT = 0.6): { walls: Wall[]; paired: boolean } {
-  type E = { a: Pt; u: Pt; n: Pt; L: number; room: string; used: [number, number][]; prev: number; next: number; free: { a: number; b: number; T: number }[] };
+  type E = { a: Pt; u: Pt; n: Pt; L: number; room: string; used: [number, number][]; prev: number; next: number; free: { a: number; b: number; T: number }[]; curve?: Wall['curve'] };
   const edges: E[] = [];
   for (const r of rooms) {
     let sgn = 0;
@@ -127,9 +134,12 @@ export function wallsFromFaces(rooms: Room[], exterior = 0.3, interior = 0.12, m
     const first = edges.length;
     r.polygon.forEach((a, i) => {
       const b = r.polygon[(i + 1) % r.polygon.length], L = dist(a, b);
-      if (L < 0.1) return;
+      // an edge between two corners of one arc is a piece of that curved wall: short, and still a wall
+      const k = (r.arcs ?? []).findIndex((c) => i >= c.from && i + 1 < c.from + c.n);
+      const curve = k >= 0 ? { id: `${r.id}c${k + 1}`, center: r.arcs![k].center, radius: r.arcs![k].radius } : undefined;
+      if (L < (curve ? 0.03 : 0.1)) return;
       const u: Pt = [(b[0] - a[0]) / L, (b[1] - a[1]) / L];
-      edges.push({ a, u, L, room: r.id, n: sgn > 0 ? [u[1], -u[0]] : [-u[1], u[0]], used: [], prev: -1, next: -1, free: [] });
+      edges.push({ a, u, L, room: r.id, n: sgn > 0 ? [u[1], -u[0]] : [-u[1], u[0]], used: [], prev: -1, next: -1, free: [], curve });
     });
     const k = edges.length - first;
     for (let i = 0; i < k; i++) { edges[first + i].prev = first + ((i - 1 + k) % k); edges[first + i].next = first + ((i + 1) % k); }
@@ -163,7 +173,7 @@ export function wallsFromFaces(rooms: Room[], exterior = 0.3, interior = 0.12, m
     for (const [a, b] of e.used) { if (a > cur) spans.push([cur, a]); cur = Math.max(cur, b); }
     if (cur < e.L) spans.push([cur, e.L]);
     for (const [a, b] of spans) {
-      if (b - a < 0.2) continue;
+      if (b - a < (e.curve ? 0.03 : 0.2)) continue;
       const mid = (a + b) / 2;
       const probe: Pt = [e.a[0] + e.u[0] * mid + e.n[0] * 1.0, e.a[1] + e.u[1] * mid + e.n[1] * 1.0];
       e.free.push({ a, b, T: insideAny(probe) ? interior : exterior });
@@ -172,8 +182,15 @@ export function wallsFromFaces(rooms: Room[], exterior = 0.3, interior = 0.12, m
   const freeEnd = (e: E) => e.free.find((f) => f.b >= e.L - 1e-6);
   const freeStart = (e: E) => e.free.find((f) => f.a <= 1e-6);
   const convex = (p: E, q: E) => q.u[0] * -p.n[0] + q.u[1] * -p.n[1] > 0.1; // q turns into the room after p
+  // Along a curved wall the pieces meet at a slight angle: each runs on (or stops short) by just what makes their
+  // centre lines meet, so the pieces join into one wall. undefined where neither edge is curved or the turn is sharp.
+  const bend = (p: E, q: E, T: number): number | undefined => {
+    if (!p.curve && !q.curve) return undefined;
+    const cos = p.u[0] * q.u[0] + p.u[1] * q.u[1], sin = q.u[0] * -p.n[0] + q.u[1] * -p.n[1];
+    return cos > 0.5 ? (T / 2) * Math.tan(Math.atan2(sin, cos) / 2) : undefined;
+  };
   const walls: Wall[] = [];
-  const add = (a: Pt, b: Pt, thickness: number) => walls.push({ id: `w${walls.length + 1}`, a, b, thickness: round(thickness, 3) });
+  const add = (a: Pt, b: Pt, thickness: number, curve?: Wall['curve']) => walls.push({ id: `w${walls.length + 1}`, a, b, thickness: round(thickness, 3), ...(curve ? { curve } : {}) });
   for (const { i, d, s, t } of chosen) {
     const e = edges[i], T = d >= minT ? d : interior;
     // a partition that ends at a room corner against an outer wall reaches that wall's centre line
@@ -186,10 +203,10 @@ export function wallsFromFaces(rooms: Room[], exterior = 0.3, interior = 0.12, m
   for (const e of edges) for (const f of e.free) {
     const pe = edges[e.prev], ne = edges[e.next];
     // outer walls continue past convex room corners by half their thickness, so neighbouring walls meet and miter
-    const x0 = f.a <= 1e-6 && freeEnd(pe) && convex(pe, e) ? f.T / 2 : 0;
-    const x1 = f.b >= e.L - 1e-6 && freeStart(ne) && convex(e, ne) ? f.T / 2 : 0;
+    const x0 = f.a <= 1e-6 && freeEnd(pe) ? bend(pe, e, f.T) ?? (convex(pe, e) ? f.T / 2 : 0) : 0;
+    const x1 = f.b >= e.L - 1e-6 && freeStart(ne) ? bend(e, ne, f.T) ?? (convex(e, ne) ? f.T / 2 : 0) : 0;
     const at = (k: number): Pt => [e.a[0] + e.u[0] * k + e.n[0] * f.T / 2, e.a[1] + e.u[1] * k + e.n[1] * f.T / 2];
-    add(at(f.a - x0), at(f.b + x1), f.T);
+    add(at(f.a - x0), at(f.b + x1), f.T, e.curve);
   }
   return { walls, paired: chosen.some((c) => c.d >= minT) };
 }
@@ -243,6 +260,14 @@ export function wallsFromRooms(rooms: Room[], exterior = 0.3, interior = 0.12): 
       for (const [a, b, T] of cuts) walls.push({ id: `w${walls.length + 1}`, a: at(a), b: at(b), thickness: T });
     }
   }
+  // the pieces of a curved wall stay marked as one wall
+  for (const r of rooms) (r.arcs ?? []).forEach((c, k) => {
+    for (let i = c.from; i + 1 < c.from + c.n; i++) {
+      const a = r.polygon[i], b = r.polygon[i + 1], mid: Pt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+      const w = walls.find((x) => !x.curve && dist([(x.a[0] + x.b[0]) / 2, (x.a[1] + x.b[1]) / 2], mid) < 0.005 && Math.abs(dist(x.a, x.b) - dist(a, b)) < 0.01);
+      if (w) w.curve = { id: `${r.id}c${k + 1}`, center: c.center, radius: c.radius };
+    }
+  });
   return walls;
 }
 
@@ -269,24 +294,49 @@ export function wallPieces(w: Wall, openings: Opening[], H: number) {
   return { dir, pieces: pieces.filter((p) => p.z1 > p.z0 && p.e - p.s > 0.01) };
 }
 
-/** Rotates a fixture so its back faces the nearest wall, and assigns it to the room it stands in. */
-export function placeFixture(kind: FixtureKind, center: Pt, w: number, h: number, walls: Wall[], rooms: Room[], id: string): Fixture {
-  let best: { d: number; u: Pt; n: Pt } | null = null;
-  for (const wl of walls) {
-    const L = dist(wl.a, wl.b) || 1, u: Pt = [(wl.b[0] - wl.a[0]) / L, (wl.b[1] - wl.a[1]) / L];
-    const t = Math.max(0, Math.min(L, (center[0] - wl.a[0]) * u[0] + (center[1] - wl.a[1]) * u[1]));
-    const q: Pt = [wl.a[0] + u[0] * t, wl.a[1] + u[1] * t];
-    const d = dist(center, q);
-    const n: Pt = d > 1e-6 ? [(center[0] - q[0]) / d, (center[1] - q[1]) / d] : [-u[1], u[0]];
-    // gap between the item's edge (not its centre) and the wall: long items back onto the wall at their short end
-    const gap = d - (Math.abs(n[0]) * w + Math.abs(n[1]) * h) / 2;
-    if (!best || gap < best.d) best = { d: gap, u, n };
+/** Which side of its own outline a fitting backs onto a wall with, when the outline is clearly longer one way. */
+const BACK_ON_SHORT_SIDE = new Set<FixtureKind>(['bed', 'wc', 'bidet', 'urinal']);
+const BACK_ON_LONG_SIDE = new Set<FixtureKind>(['sofa', 'counter', 'wardrobe', 'bookshelf', 'tv', 'desk', 'radiator', 'bathtub', 'fireplace', 'sink', 'stove']);
+
+/**
+ * A fitting from the box drawn for it: turned so its back is on the wall it stands against, and assigned to its room.
+ * `w` and `h` are the box's sides along the frame's x and y; `frame` (radians) is the direction of the box's x side on
+ * the plan, 0 for a box square to the sheet. The fitting keeps the box exactly: only which of its four sides is the
+ * back is decided here, so it is never drawn at an angle the drawing does not show.
+ * The back is the side with a wall right behind it; where two walls are as near (a bed in a corner), the kind decides
+ * (a bed's head and a toilet's cistern are on a short side, a sofa's back and a worktop on a long one).
+ */
+export function placeFixture(kind: FixtureKind, center: Pt, w: number, h: number, walls: Wall[], rooms: Room[], id: string, frame = 0): Fixture {
+  const ax: Pt = [Math.cos(frame), Math.sin(frame)], ay: Pt = [-ax[1], ax[0]];
+  // the four sides: outward normal, the side's length, and the fitting's depth behind it
+  const sides: { n: Pt; len: number; depth: number }[] = [
+    { n: [-ay[0], -ay[1]], len: w, depth: h }, { n: ay, len: w, depth: h },
+    { n: [-ax[0], -ax[1]], len: h, depth: w }, { n: ax, len: h, depth: w },
+  ];
+  const long = Math.max(w, h), short = Math.min(w, h), oblong = long >= 1.25 * short;
+  let best: { score: number; s: (typeof sides)[number] } | null = null;
+  for (const s of sides) {
+    // the nearest wall face behind this side: a wall that runs along the side and that the fitting stands in front of
+    let gap = Infinity;
+    for (const wl of walls) {
+      const L = dist(wl.a, wl.b);
+      if (L < 1e-6) continue;
+      const u: Pt = [(wl.b[0] - wl.a[0]) / L, (wl.b[1] - wl.a[1]) / L];
+      if (Math.abs(u[0] * s.n[0] + u[1] * s.n[1]) > 0.5) continue; // the wall runs across this side, not along it
+      const t = (center[0] - wl.a[0]) * u[0] + (center[1] - wl.a[1]) * u[1];
+      if (t < -s.len / 2 || t > L + s.len / 2) continue; // the wall ends before it reaches the fitting
+      const q: Pt = [wl.a[0] + u[0] * t, wl.a[1] + u[1] * t];
+      const out = (q[0] - center[0]) * s.n[0] + (q[1] - center[1]) * s.n[1]; // how far the wall's centre lies behind this side's normal
+      if (out <= 0) continue;
+      gap = Math.min(gap, Math.abs(out - s.depth / 2 - wl.thickness / 2));
+    }
+    const isShort = s.len < s.depth;
+    const wrongSide = oblong && ((BACK_ON_SHORT_SIDE.has(kind) && !isShort) || (BACK_ON_LONG_SIDE.has(kind) && isShort));
+    const score = Math.min(gap, 5) + (wrongSide ? 0.3 : 0);
+    if (!best || score < best.score - 1e-9) best = { score, s };
   }
-  let angle = 0, size: Pt = [w, h];
-  if (best) {
-    angle = Math.atan2(-best.n[0], best.n[1]); // rotate local +y (front) onto the normal pointing away from the wall
-    if (Math.abs(best.u[0]) < Math.abs(best.u[1])) size = [h, w]; // wall runs vertically: along-wall size is the box height
-  }
+  const back = best!.s, front: Pt = [-back.n[0], -back.n[1]];
+  const angle = Math.atan2(-front[0], front[1]); // local +y (front) points away from the wall
   const inside = (p: Pt, poly: Pt[]) => {
     let c = false;
     for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
@@ -295,7 +345,7 @@ export function placeFixture(kind: FixtureKind, center: Pt, w: number, h: number
     }
     return c;
   };
-  return { id, kind, center, size, angle: round(angle, 4), room_id: rooms.find((r) => inside(center, r.polygon))?.id ?? null };
+  return { id, kind, center, size: [back.len, back.depth], angle: round(angle, 4), room_id: rooms.find((r) => inside(center, r.polygon))?.id ?? null };
 }
 
 export const roomStats = (r: Room) => ({ id: r.id, name: r.name, type: r.type, area_m2: round(area(r.polygon)), perimeter_m: round(perimeter(r.polygon)) });

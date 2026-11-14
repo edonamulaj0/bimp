@@ -147,7 +147,9 @@ export function runTool(plan: Plan, name: string, args: any): unknown {
     case 'feng_shui':
       return { notes: fengShui(plan, args.room_id || undefined), note: 'Traditional placement guidance, presented as such.' };
     case 'list_walls': {
-      const all = plan.walls.map((w) => wallInfo(plan, w)).filter((w) => !args.room_id || w.rooms.includes(args.room_id));
+      // a curved wall is stored in short pieces: it is listed once, with its length round the curve
+      const firstPiece = (w: Plan['walls'][number]) => !w.curve || plan.walls.find((x) => x.curve?.id === w.curve!.id) === w;
+      const all = plan.walls.filter(firstPiece).map((w) => wallInfo(plan, w)).filter((w) => !args.room_id || w.rooms.includes(args.room_id));
       return { basis: basisOf(plan), count: all.length, total_length_m: round(all.reduce((s, w) => s + w.length_m, 0), 2), walls: all.slice(0, 80) };
     }
     case 'list_openings': {

@@ -114,6 +114,8 @@ export function Plan2D({ plan, compact, onRelabel, note, onNoteClose, regionCard
   const shown: Hit | null = hit ?? (picked ? { kind: 'fixture', id: picked } : null);
   const info = useMemo(() => (shown ? describe(plan, shown.kind, shown.id) : null), [plan, shown?.kind, shown?.id]);
   const shownFx = shown?.kind === 'fixture' ? plan.fixtures?.find((f) => f.id === shown.id) : undefined;
+  // a curved wall is drawn in short pieces: pointing at one lights up the whole wall
+  const shownCurve = shown?.kind === 'wall' ? plan.walls.find((w) => w.id === shown.id)?.curve?.id : undefined;
   const unknowns = useMemo(() => (plan.fixtures ?? []).filter((f) => f.kind === 'unknown' && !f.label && f.source !== 'suggested'), [plan]);
   // The answer note: its area on the plan, and the measured size of its card.
   const noteAt = useMemo(() => (note ? noteArea(plan, note) : null), [plan, note]);
@@ -358,7 +360,7 @@ export function Plan2D({ plan, compact, onRelabel, note, onNoteClose, regionCard
       <Openings plan={plan} thick={openingT} u={pxPerM ? 1 / pxPerM : 0.03} />
       {!compact && !diff && tool === 'select' && (
         <g class="hits">
-          {footprints.map((f) => <polygon key={`w${f.wall.id}`} points={f.poly.map((p) => p.join(',')).join(' ')} class={shown?.kind === 'wall' && shown.id === f.wall.id.replace(/[ab]+$/, '') ? 'on' : undefined}
+          {footprints.map((f) => <polygon key={`w${f.wall.id}`} points={f.poly.map((p) => p.join(',')).join(' ')} class={shown?.kind === 'wall' && (shown.id === f.wall.id.replace(/[ab]+$/, '') || (!!f.wall.curve && f.wall.curve.id === shownCurve)) ? 'on' : undefined}
             onPointerEnter={() => setHit({ kind: 'wall', id: f.wall.id.replace(/[ab]+$/, '') })} onPointerLeave={() => setHit(null)} />)}
           {plan.openings.map((o) => <line key={`o${o.id}`} x1={o.a[0]} y1={o.a[1]} x2={o.b[0]} y2={o.b[1]} stroke-width={Math.max(openingT.get(o.id) ?? 0.2, 0.25)} class={shown?.kind === 'opening' && shown.id === o.id ? 'on' : undefined}
             onPointerEnter={() => setHit({ kind: 'opening', id: o.id })} onPointerLeave={() => setHit(null)} />)}

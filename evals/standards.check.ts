@@ -1,6 +1,7 @@
 // Run: npm test. Checks the drawing-convention and standards logic (Metric Handbook rules) on known cases.
 import { parseDimension, nearestPreferredScale, checkPlan } from '../apps/shared/standards';
-import { regularize, snapPolygon, parseLevel, parseCeiling, buildPlan, dominantAxis, seatOpenings, alignEdges, traceRequest } from '../apps/api/src/extract';
+import { regularize, snapPolygon, parseLevel, parseCeiling, buildPlan, dominantAxis, seatOpenings, alignEdges, traceRequest, fixtureInRoom, withArcs } from '../apps/api/src/extract';
+import { placeFixture, dist, type Room, type Pt } from '../apps/shared/plan';
 import { quickAnswer } from '../apps/api/src/quick';
 import { costUsd, forModel, joinStream, meter } from '../apps/api/src/gemini';
 import { evidenceFor } from '../apps/shared/plan';
@@ -452,6 +453,51 @@ eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
   eq('scoring: areas within 2 %', [score({ type: 'area', answer: 100 }, 101.9), score({ type: 'area', answer: 100 }, 102.1)], [true, false]);
   eq('scoring: text answers are not scored', score({ type: 'text', answer: 'oak' }, null), null);
   eq('split: a drawing always lands on the same side', splitOf('data/cubicasa5k/colorful-10052.png'), splitOf('data/cubicasa5k/colorful-10052.png'));
+}
+
+// Furniture keeps the box drawn for it; only which side is its back is decided. Curved walls are arcs.
+{
+  const room: Room = { id: 'r1', name: 'Bedroom', type: 'bedroom', polygon: [[0, 0], [5, 0], [5, 4], [0, 4]] };
+  const ws = wallsFromFaces([room]).walls;
+  const quarter = (a: number) => Math.abs(a / (Math.PI / 2) - Math.round(a / (Math.PI / 2))) < 1e-3;
+  const bed = placeFixture('bed', [1, 2], 2, 1.5, ws, [room], 'f1');           // long side along x, its short side on the left wall
+  eq('fixture: a bed backs onto the wall at its head (short side), 1.5 wide and 2 deep', [bed.size, quarter(bed.angle), Math.round(Math.sin(bed.angle))], [[1.5, 2], true, -1]);
+  const corner = placeFixture('sofa', [1.1, 0.45], 2.2, 0.9, ws, [room], 'f2'); // in the corner: both walls are near, a sofa's back is its long side
+  eq('fixture: a sofa in a corner backs onto the wall along its long side', [corner.size, Math.round(Math.cos(corner.angle))], [[2.2, 0.9], 1]);
+  const loose = placeFixture('table', [2.6, 2.1], 1.6, 0.9, ws, [room], 'f3');
+  eq('fixture: something in the middle of the room keeps its box square to the sheet', [quarter(loose.angle), [...loose.size].sort()], [true, [0.9, 1.6]]);
+  const atEnd = placeFixture('bed', [4.4, 3.2], 1.0, 1.4, ws, [room], 'f4');    // near the room's corner: the old rule turned it towards the wall's end point
+  eq('fixture: never at an angle the drawing does not show', quarter(atEnd.angle), true);
+  eq('fixture: a tilted box keeps its tilt', quarter(placeFixture('sofa', [2.5, 2], 2, 0.9, ws, [room], 'f5', Math.PI / 6).angle - Math.PI / 6), true);
+  eq('fixture: a box reaching into the wall ends at the room face', fixtureInRoom([4.2, 1], [5.3, 3], [room]), [[4.2, 1], [5, 3]]);
+  eq('fixture: a box inside its room, or mostly outside any, is left alone', [fixtureInRoom([1, 1], [2, 2], [room]), fixtureInRoom([4.8, 1], [6.5, 3], [room])], [null, null]);
+  eq('openings: one read across the floor of a room is left out; one on a wall stays', seatOpenings([{ kind: 'window', a: [1, 1], b: [4, 3] }, { kind: 'window', a: [1, 0.1], b: [2.5, 0.1] }], ws, 0.6, [room]).length, 1);
+
+  // a room with a half-round end: 4 m wide, radius 2
+  const N = 9, arcPts: Pt[] = Array.from({ length: N }, (_, k) => [6 + 2 * Math.sin((Math.PI * k) / (N - 1)), 2 - 2 * Math.cos((Math.PI * k) / (N - 1))]);
+  const bow = withArcs([[0, 0], ...arcPts, [0, 4]], [{ from: 1, n: N, center: [6, 2], radius: 2 }]);
+  eq('arcs: the curve is laid out in even pieces of about 25 cm between its own ends', [bow.arcs[0].from, bow.arcs[0].n, bow.polygon[1], bow.polygon[bow.arcs[0].n]], [1, 27, [6, 0], arcPts[N - 1]]);
+  near('arcs: the room measures as the true shape (24 + half a disc of radius 2), within 0.2 %', area(bow.polygon) / (24 + 2 * Math.PI), 1, 0.002);
+  const round: Room = { id: 'r2', name: 'Living', type: 'living', polygon: bow.polygon, arcs: bow.arcs };
+  const cw = wallsFromFaces([round]).walls, pieces = cw.filter((w) => w.curve);
+  const curvedPlan = { ...samplePlan(), rooms: [round], walls: cw, openings: [], fixtures: [] } as Plan;
+  eq('arcs: every piece of the curve is a wall of one curved wall', [pieces.length, new Set(pieces.map((w) => w.curve!.id)).size], [26, 1]);
+  near('arcs: a curved wall is measured round the curve, on its centre line (radius 2.15)', wallInfo(curvedPlan, pieces[3]).length_m, Math.PI * 2.15, 0.05);
+  eq('arcs: the read-out says it is curved, with its radius', /^Curved/.test(describe(curvedPlan, 'wall', pieces[3].id)!.title) && /radius 2\.00 m/.test(describe(curvedPlan, 'wall', pieces[3].id)!.detail), true);
+  const fp = wallFootprints(cw).filter((f) => f.wall.curve);
+  eq('arcs: the pieces join into one wall (each meets the next at one point)', fp.every((f, i) => i === 0 || dist(f.wall.a, fp[i - 1].wall.b) < 1e-6), true);
+  const kept = regularize([[0, 0], [6, 0.05], ...arcPts.slice(1), [0, 4]], 4, 0, [false, true, ...arcPts.slice(1).map(() => true), false]);
+  eq('arcs: straightening leaves the pieces of a curve alone', kept[3], arcPts[2]);
+
+  // through the builder: the service reports an arc and a fitting read on empty paper
+  const P1000 = (x: number, y: number) => [y / 2, x / 2];
+  const raw2 = { rooms: [{ name: 'Living', type: 'living', polygon: [P1000(200, 200), P1000(1200, 200), P1000(1600, 600), P1000(1200, 1000), P1000(200, 1000)] }], openings: [],
+    fixtures: [{ kind: 'sofa', box: [300, 300, 400, 420] }, { kind: 'table', box: [150, 150, 250, 250] }] };
+  const an2 = { kind: 'image' as const, width: 2000, height: 2000, segments: [], texts: [], scale: null, detections: null };
+  const arcPx = Array.from({ length: 9 }, (_, k) => [1200 + 400 * Math.sin((Math.PI * k) / 8), 600 - 400 * Math.cos((Math.PI * k) / 8)]);
+  const built = buildPlan(raw2, an2, 'f1', 'b'.repeat(64), { rooms: [[[200, 200], ...arcPx, [200, 1000]]], how: ['fitted'], arcs: [[[1, 9, 1200, 600, 400]]], boxes: [null, null], blank: [true, false] });
+  eq('builder: a curved wall from the drawing is kept as an arc, and said so', [built.rooms[0].arcs?.length, built.walls.some((w) => w.curve), built.assumptions.some((a) => /1 curved wall measured/.test(a))], [1, true, true]);
+  eq('builder: a fitting read where nothing is drawn is left out, and said so', [built.fixtures!.map((f) => f.kind), built.assumptions.some((a) => /1 fitting the language model reported where nothing is drawn/.test(a))], [['table'], true]);
 }
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');

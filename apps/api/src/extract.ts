@@ -1,9 +1,10 @@
 // Drawing -> Plan. The model reads (labels, room outlines, openings); code measures (snapping, scale, areas).
-import { type Plan, type Pt, type Room, type Wall, type Opening, type Fixture, type Src, FIXTURE_KINDS, DETECTED_KINDS, type DetectedKind, placeFixture, ROOM_TYPES, bounds, dist, wallsFromFaces, wallsFromRooms, round } from '../../shared/plan';
+import { type Plan, type Pt, type Room, type Arc, type Wall, type Opening, type Fixture, type Src, FIXTURE_KINDS, DETECTED_KINDS, type DetectedKind, placeFixture, ROOM_TYPES, bounds, dist, wallsFromFaces, wallsFromRooms, round } from '../../shared/plan';
 import { type Meter, costUsd, generate, meter, textOf } from './gemini';
 import type { Analysis } from './ingest';
 import { BOOK, nearestPreferredScale, parseDimension } from '../../shared/standards';
 import { orientDoors } from '../../shared/rooms';
+import { clipHalf } from '../../shared/walls';
 import type { Env } from './util';
 
 const PROMPT_VERSION = 'read-v7';
@@ -279,15 +280,16 @@ export function dominantAxis(polys: Pt[][], tolDeg = 4): { axis: number; share: 
 /**
  * Straightens an outline that could not be snapped to line work: edges within a few degrees of the main axes are made
  * exact, and edges at a real angle (slanted walls) are left at their angle. `axis` is the plan's main direction; without
- * it the room's own is used.
+ * it the room's own is used. `curved[i]` marks corners on a curved wall: the edges between them are left as they are.
  */
-export function regularize(poly: Pt[], tolDeg = 4, axis?: number): Pt[] {
+export function regularize(poly: Pt[], tolDeg = 4, axis?: number, curved?: boolean[]): Pt[] {
   const th = axis ?? dominantAxis([poly], tolDeg).axis;
   const [co, si] = [Math.cos(th), Math.sin(th)];
   const q = poly.map(([x, y]) => [x * co + y * si, -x * si + y * co] as Pt); // rotate into the room's axes
   const tol = Math.tan(tolDeg * DEG);
   q.forEach((a, i) => {
     const j = (i + 1) % q.length, b = q[j];
+    if (curved?.[i] && curved[j]) return; // a piece of a curved wall is not a sloppy straight one
     const dx = b[0] - a[0], dy = b[1] - a[1];
     if (Math.abs(dy) <= Math.abs(dx) * tol) { const y = (a[1] + b[1]) / 2; q[i] = [a[0], y]; q[j] = [b[0], y]; }
     else if (Math.abs(dx) <= Math.abs(dy) * tol) { const x = (a[0] + b[0]) / 2; q[i] = [x, a[1]]; q[j] = [x, b[1]]; }
@@ -322,13 +324,69 @@ export function alignEdges(polys: Pt[][], axis: number, tol: number): Pt[][] {
   return q.map((poly) => poly.map(([x, y]) => [x * co - y * si, x * si + y * co] as Pt));
 }
 
+/**
+ * A fitting's box (corners a, b in metres) cut back to the room it stands in, when part of it reaches past the room's
+ * outline (into a wall, or through it): the bounds of what lies inside the room it mostly stands in. null when the
+ * box is inside a room already, stands in none (a column on a terrace edge), or would lose most of itself.
+ */
+export function fixtureInRoom(a: Pt, b: Pt, rooms: Room[]): [Pt, Pt] | null {
+  const x0 = Math.min(a[0], b[0]), y0 = Math.min(a[1], b[1]), x1 = Math.max(a[0], b[0]), y1 = Math.max(a[1], b[1]);
+  const full = (x1 - x0) * (y1 - y0);
+  if (!(full > 0)) return null;
+  const polyArea = (q: Pt[]) => Math.abs(q.reduce((s, p, i) => { const n = q[(i + 1) % q.length]; return s + p[0] * n[1] - n[0] * p[1]; }, 0)) / 2;
+  let best: { area: number; part: Pt[] } | null = null;
+  for (const r of rooms) {
+    let part = r.polygon;
+    for (const [u, c, keep] of [[[1, 0], x0, 1], [[1, 0], x1, -1], [[0, 1], y0, 1], [[0, 1], y1, -1]] as [Pt, number, 1 | -1][]) {
+      part = part.length >= 3 ? clipHalf(part, [0, 0], u, c, keep) : [];
+    }
+    const area = part.length >= 3 ? polyArea(part) : 0;
+    if (area > (best?.area ?? 0)) best = { area, part };
+  }
+  if (!best || best.area >= 0.97 * full || best.area < 0.45 * full) return null;
+  const bb = bounds(best.part);
+  if (bb.x1 - bb.x0 < 0.5 * (x1 - x0) || bb.y1 - bb.y0 < 0.5 * (y1 - y0)) return null; // a sliver along one side is not the fitting
+  return [[bb.x0, bb.y0], [bb.x1, bb.y1]];
+}
+
+/**
+ * A room's outline in metres with its curved walls drawn as they will be kept: each arc (corners from..from+n-1 of
+ * `poly`, on a circle) is laid out again as even pieces about 25 cm long between its first and last corner, which is
+ * fine enough to look and measure round (under a centimetre off the circle) and coarse enough for each piece to be a
+ * wall. Returns the new polygon and where its arcs now are.
+ */
+export function withArcs(poly: Pt[], arcs: Arc[]): { polygon: Pt[]; arcs: Arc[] } {
+  if (!arcs.length) return { polygon: poly, arcs: [] };
+  const sorted = [...arcs].sort((a, b) => a.from - b.from), polygon: Pt[] = [], out: Arc[] = [];
+  let i = 0;
+  for (const c of sorted) {
+    if (c.from < i || c.from + c.n > poly.length) continue; // overlapping or out of range: left as plain corners
+    while (i < c.from) polygon.push(poly[i++]);
+    const a = poly[c.from], b = poly[c.from + c.n - 1], mid = poly[c.from + (c.n >> 1)];
+    const ang = (p: Pt) => Math.atan2(p[1] - c.center[1], p[0] - c.center[0]);
+    const t0 = ang(a), TAU = 2 * Math.PI, ccw = Math.sin(ang(mid) - t0) > 0;
+    const sweep = ccw ? (((ang(b) - t0) % TAU) + TAU) % TAU : -((((t0 - ang(b)) % TAU) + TAU) % TAU);
+    const ra = dist(a, c.center), rb = dist(b, c.center), len = Math.abs(sweep) * c.radius;
+    const steps = Math.max(len < 0.32 ? 1 : 4, Math.min(64, Math.ceil(len / 0.25), Math.floor(len / 0.08)));
+    out.push({ from: polygon.length, n: steps + 1, center: [round(c.center[0], 3), round(c.center[1], 3)], radius: round(c.radius, 3) });
+    for (let k = 0; k <= steps; k++) {
+      const t = t0 + (sweep * k) / steps, r = ra + ((rb - ra) * k) / steps; // the ends stay exactly where they are
+      polygon.push(k === 0 ? a : k === steps ? b : [round(c.center[0] + r * Math.cos(t), 3), round(c.center[1] + r * Math.sin(t), 3)]);
+    }
+    i = c.from + c.n;
+  }
+  while (i < poly.length) polygon.push(poly[i++]);
+  return { polygon, arcs: out };
+}
+
 type Op = { kind: 'door' | 'window'; a: Pt; b: Pt };
 /**
  * Seats openings in the walls and drops repeats. Each opening is projected onto the centre line of the nearest wall
  * (any angle), so it cuts that wall instead of floating beside it; one that is already there, from an
- * earlier source in the list, is not added again. Openings with no wall within reach are kept where they were read.
+ * earlier source in the list, is not added again. Openings with no wall within reach are kept where they were read,
+ * unless they lie across the floor of one of `rooms`: those are misreadings and are left out.
  */
-export function seatOpenings(ops: Op[], walls: Wall[], reach = 0.6): Op[] {
+export function seatOpenings(ops: Op[], walls: Wall[], reach = 0.6, rooms: Room[] = []): Op[] {
   const out: Op[] = [];
   for (const o of ops) {
     const L = dist(o.a, o.b);
@@ -347,6 +405,8 @@ export function seatOpenings(ops: Op[], walls: Wall[], reach = 0.6): Op[] {
       if (!best || cost < best.cost) best = { cost, w, u, along };
     }
     let s: Op = o;
+    // no wall near it, and it lies across the floor of a room: a door or window is in a wall, so this was misread
+    if (!best && rooms.some((r) => inside(m, r.polygon))) continue;
     if (best) {
       const { w, u } = best, on = (p: Pt) => (p[0] - w.a[0]) * u[0] + (p[1] - w.a[1]) * u[1], at = (t: number): Pt => [round(w.a[0] + u[0] * t, 3), round(w.a[1] + u[1] * t, 3)];
       // read across the wall (the model gave the door leaf): keep its width, centred where it was read
@@ -400,7 +460,7 @@ export function traceRequest(raw: Raw, an: Pick<Analysis, 'width' | 'height' | '
  * boxes[i] the box of raw.fixtures[i] tightened onto its lines, exterior_px the thickness of the outside walls.
  * null wherever the drawing gave no clear answer: then what the model read stands.
  */
-export type Measured = { rooms: (number[][] | null)[]; how?: (string | null)[]; boxes?: (number[] | null)[]; exterior_px?: number | null };
+export type Measured = { rooms: (number[][] | null)[]; how?: (string | null)[]; /** arcs[i]: the curved walls of rooms[i], each [first corner, corners, centre x, centre y, radius] */ arcs?: (number[][] | null)[]; boxes?: (number[] | null)[]; /** blank[i]: nothing is drawn where raw.fixtures[i] was read */ blank?: boolean[]; exterior_px?: number | null };
 
 export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: string, renderSha: string, measuredOn?: Measured | (number[][] | null)[]): Plan {
   const seen: Measured | undefined = Array.isArray(measuredOn) ? { rooms: measuredOn } : measuredOn;
@@ -419,9 +479,12 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     const exact = t && t.length >= 3 && t.every((p) => p?.length === 2 && p.every(Number.isFinite)) ? (t as Pt[]) : null;
     if (exact) { tracedN++; if (seen?.how?.[i] === 'fitted') fittedN++; }
     const start = exact ?? r.polygon.map(px);
+    // curved walls of the measured outline: their corners stay where the circle put them
+    const arcs = (exact ? seen?.arcs?.[i] ?? [] : []).filter((c) => c?.length === 5 && c.every(Number.isFinite) && c[0] >= 0 && c[1] >= 3 && c[0] + c[1] <= start.length && c[4] > 0);
+    const curved = start.map((_, k) => arcs.some((c) => k >= c[0] && k < c[0] + c[1]));
     const res = snapPolygon(start, an.segments, tol);
     corners += start.length; snapped += res.snapped;
-    return { ...r, poly: res.poly, loose: raster || res.snapped < start.length };
+    return { ...r, poly: res.poly.map((p, k) => (curved[k] ? start[k] : p)), loose: raster || res.snapped < start.length, arcs, curved };
   });
   // One set of axes for the whole plan, so neighbouring rooms stay parallel; a room that mostly runs another way
   // (a wing at an angle) is straightened along its own.
@@ -431,7 +494,7 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     const own = dominantAxis([r.poly]);
     const followsPlan = r.poly.reduce((s, a, i) => { const b = r.poly[(i + 1) % r.poly.length]; return s + (axisGap(Math.atan2(b[1] - a[1], b[0] - a[0]), planAxis) <= 4 * DEG ? dist(a, b) : 0); }, 0);
     const perim = r.poly.reduce((s, a, i) => s + dist(a, r.poly[(i + 1) % r.poly.length]), 0) || 1;
-    return { ...r, poly: regularize(r.poly, 4, followsPlan / perim >= 0.5 || own.share < 0.5 ? planAxis : own.axis) };
+    return { ...r, poly: regularize(r.poly, 4, followsPlan / perim >= 0.5 || own.share < 0.5 ? planAxis : own.axis, r.curved) };
   });
   // the same wall face in neighbouring rooms becomes one line; the reach is a few pixels, far less than a wall, so both faces of a wall survive
   const aligned = alignEdges(straight.map((r) => r.poly), planAxis, Math.max(2, Math.max(W, H) * 0.001));
@@ -527,12 +590,19 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
   const m = mpp!;
   const ox = ext.x0, oy = ext.y0;
   const toM = (p: Pt): Pt => [round((p[0] - ox) * m, 3), round((p[1] - oy) * m, 3)];
-  const rooms: Room[] = rooms0.map((r, i) => ({
-    id: `r${i + 1}`,
-    name: r.name.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 60) || `Room ${i + 1}`, // a label, not a paragraph
-    type: (ROOM_TYPES as readonly string[]).includes(r.type) ? (r.type as Room['type']) : 'other',
-    polygon: r.poly.map(toM),
-  }));
+  let curvedWalls = 0;
+  const rooms: Room[] = rooms0.map((r, i) => {
+    const drawn = withArcs(r.poly.map(toM), r.arcs.map((c) => ({ from: c[0], n: c[1], center: [(c[2] - ox) * m, (c[3] - oy) * m] as Pt, radius: c[4] * m })));
+    curvedWalls += drawn.arcs.length;
+    return {
+      id: `r${i + 1}`,
+      name: r.name.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 60) || `Room ${i + 1}`, // a label, not a paragraph
+      type: (ROOM_TYPES as readonly string[]).includes(r.type) ? (r.type as Room['type']) : 'other',
+      polygon: drawn.polygon,
+      ...(drawn.arcs.length ? { arcs: drawn.arcs } : {}),
+    };
+  });
+  if (curvedWalls) assumptions.push(`${curvedWalls} curved wall${curvedWalls === 1 ? '' : 's'} measured on the drawing as ${curvedWalls === 1 ? 'an arc' : 'arcs'} of a circle (radius shown when you point at ${curvedWalls === 1 ? 'it' : 'them'})`);
   // Vector outlines snap to wall faces (inside-face rooms); fall back to centreline merging if no wall gaps are found.
   // Outside walls at the thickness they are drawn with, where the drawing shows them filled; else the usual assumption.
   const drawnT = seen?.exterior_px ? seen.exterior_px * m : 0, exteriorT = drawnT >= 0.1 && drawnT <= 0.7 ? round(drawnT, 2) : 0.3;
@@ -562,8 +632,8 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
   }
   // The detector's boxes sit on the opening itself, so where it and a reading report the same door or window the
   // detector's position is the one drawn; the readings add what the detector missed.
-  const seated = seatOpenings([...fromDetector, ...read0], walls);
-  const readCount = seatOpenings(read0, walls).length, added = seated.length - readCount;
+  const seated = seatOpenings([...fromDetector, ...read0], walls, 0.6, rooms);
+  const readCount = seatOpenings(read0, walls, 0.6, rooms).length, added = seated.length - readCount;
   if (added > 0) assumptions.push(`${added} door${added === 1 ? '' : 's'} or window${added === 1 ? '' : 's'} the language model did not report ${added === 1 ? 'was' : 'were'} added from the symbol detector`);
   // Every item keeps where it was read from: the page and its box on the render, for citations and crops.
   const page = an.page ?? 1;
@@ -579,8 +649,10 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
   // the symbol detector for what it was trained on (toilets, sinks, showers and bathtubs), else the lines the service
   // found drawn there, else the box as the model read it.
   type Fx = { kind: Fixture['kind']; box: [number, number, number, number]; by: 'detector' | 'lines' | 'read' };
+  let notDrawn = 0;
   const fx: Fx[] = (raw.fixtures ?? []).map((f, i): Fx | null => {
     if (!(FIXTURE_KINDS as readonly string[]).includes(f.kind) || f.box?.length !== 4) return null;
+    if (seen?.blank?.[i]) { notDrawn++; return null; } // read where the sheet is empty: not shown, and said so below
     const t = seen?.boxes?.[i], a = px([f.box[0], f.box[1]]), b = px([f.box[2], f.box[3]]);
     const tight = t && t.length === 4 && t.every(Number.isFinite) && t[2] > t[0] && t[3] > t[1];
     return { kind: f.kind as Fixture['kind'], by: tight ? 'lines' : 'read',
@@ -597,6 +669,8 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
       const hit = fx.find((f) => f.by !== 'detector' && kinds.includes(f.kind) && (f.box[0] + f.box[2]) / 2 > x0 - pw && (f.box[0] + f.box[2]) / 2 < x1 + pw && (f.box[1] + f.box[3]) / 2 > y0 - ph && (f.box[1] + f.box[3]) / 2 < y1 + ph);
       if (hit) { hit.box = [x0, y0, x1, y1]; hit.by = 'detector'; fxMoved++; }
       else { // only the detector saw it: a long box is a bathtub, a squarish one a shower
+        // ...unless it is too small to be one (a speck the detector took for a symbol on a kind of drawing it never saw)
+        if (Math.min(x1 - x0, y1 - y0) * m < (d.kind === 'shower_bath' ? 0.45 : 0.2)) continue;
         const long = Math.max(x1 - x0, y1 - y0) / Math.max(1, Math.min(x1 - x0, y1 - y0));
         fx.push({ kind: d.kind === 'shower_bath' ? (long >= 1.6 ? 'bathtub' : 'shower') : kinds[0], box: [x0, y0, x1, y1], by: 'detector' });
         fxFromDetector++;
@@ -607,11 +681,27 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
   if (fxMoved + fxFromDetector + tightened > 0) assumptions.push(`Fittings and furniture placed from the drawing itself: ${[
     fxMoved && `${fxMoved} where the symbol detector found them`, fxFromDetector && `${fxFromDetector} only the symbol detector found`, tightened && `${tightened} on the lines drawn there`,
   ].filter(Boolean).join(', ')}; the rest where the language model read them`);
-  const fixtures: Fixture[] = fx.map((f, i) => {
-    const a = toM([f.box[0], f.box[1]]), b = toM([f.box[2], f.box[3]]);
+  // The same thing reported twice (two boxes of one kind over each other) is one thing: the better-placed box stays.
+  const rank = { detector: 0, lines: 1, read: 2 };
+  const overlap = (p: Fx['box'], q: Fx['box']) => {
+    const ix = Math.min(p[2], q[2]) - Math.max(p[0], q[0]), iy = Math.min(p[3], q[3]) - Math.max(p[1], q[1]);
+    return ix > 0 && iy > 0 ? (ix * iy) / Math.min((p[2] - p[0]) * (p[3] - p[1]), (q[2] - q[0]) * (q[3] - q[1])) : 0;
+  };
+  const sameSize = (p: Fx['box'], q: Fx['box']) => { const r = ((p[2] - p[0]) * (p[3] - p[1])) / ((q[2] - q[0]) * (q[3] - q[1])); return r > 0.6 && r < 1.6; };
+  // ...also when the two readings disagree on what it is (one box, a toilet and a sink): the better-placed one is believed
+  const same = (f: Fx, g: Fx) => (g.kind === f.kind && overlap(f.box, g.box) > 0.6) || (overlap(f.box, g.box) > 0.8 && sameSize(f.box, g.box));
+  const once = fx.filter((f, i) => !fx.some((g, j) => j !== i && same(f, g) && (rank[g.by] < rank[f.by] || (rank[g.by] === rank[f.by] && j < i))));
+  if (notDrawn) assumptions.push(`${notDrawn} fitting${notDrawn === 1 ? '' : 's'} the language model reported where nothing is drawn ${notDrawn === 1 ? 'is' : 'are'} left out`);
+  let clipped = 0;
+  const fixtures: Fixture[] = once.map((f, i) => {
+    let a = toM([f.box[0], f.box[1]]), b = toM([f.box[2], f.box[3]]);
+    // Nothing stands inside a wall: a box that reaches past the faces of the room it stands in ends at them.
+    const inRoom = fixtureInRoom(a, b, rooms);
+    if (inRoom) { [a, b] = inRoom; clipped++; }
     const w = Math.abs(b[0] - a[0]), h = Math.abs(b[1] - a[1]);
     return { ...placeFixture(f.kind, [round((a[0] + b[0]) / 2, 3), round((a[1] + b[1]) / 2, 3)], round(w, 3), round(h, 3), walls, rooms, `f${i + 1}`), src: src([a, b], 0.1) };
   }).filter((f) => f.size[0] > 0.1 && f.size[1] > 0.1 && f.size[0] < 4 && f.size[1] < 4);
+  if (clipped) assumptions.push(`${clipped} fitting${clipped === 1 ? '' : 's'} read as reaching into a wall end${clipped === 1 ? 's' : ''} at the face of the room ${clipped === 1 ? 'it stands' : 'they stand'} in`);
 
   // Scans and images: the detector's symbols, in metres. Counting these is its job, not the language model's.
   let detected: Plan['detected'];
