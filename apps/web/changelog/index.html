@@ -1,0 +1,156 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/brand/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+  <meta name="theme-color" content="#f4f1ea">
+  <title>Changelog · bimp</title>
+  <meta name="description" content="What's new in bimp: teams, revisions and pinned comments, drafting-convention plans, room info, the isometric dollhouse and more.">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body data-page="changelog">
+  <!-- @include header.html -->
+  <main id="main">
+    <section class="page-head">
+      <div class="wrap">
+        <h1>Changelog</h1>
+        <p class="lead">New features and fixes in bimp, newest first.</p>
+      </div>
+    </section>
+
+    <section class="section tight" aria-label="Releases">
+      <div class="wrap log">
+        <article class="entry" id="teams-revisions-comments" aria-labelledby="e1">
+          <time datetime="2026-11-14">14 November 2026</time>
+          <div class="body">
+            <div class="tags"><span class="pill">New</span><span class="pill">Collaboration</span></div>
+            <h2 id="e1"><a href="#teams-revisions-comments">Teams, revisions and comments pinned to the plan</a></h2>
+            <p>bimp is now a shared workspace. Put projects in a team, keep every issue of a drawing as a revision, and discuss the plan where it matters.</p>
+            <ul>
+              <li><b>Teams.</b> Create a team and add colleagues by email. Everyone in it can upload, ask, comment and label revisions; owners manage members and move projects between teams.</li>
+              <li><b>Revisions.</b> Each reading of a drawing is a numbered revision with an optional label. Compare any two: rooms added, removed or resized, walls added or removed, doors, windows, net and gross area.</li>
+              <li><b>Pinned comments.</b> Drop a pin on the plan to start a thread; the room under the pin is recorded. Ask bimp in the thread and it answers from the source sheet with your pin marked, the elements around it and the plan tools.</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="entry" id="drafting-plans" aria-labelledby="e2">
+          <time datetime="2026-11-14">14 November 2026</time>
+          <div class="body">
+            <div class="tags"><span class="pill">Improved</span><span class="pill">Plans</span></div>
+            <h2 id="e2"><a href="#drafting-plans">Plans drawn to drafting convention, and a Dimensioned mode</a></h2>
+            <p>The 2D plan now reads like a drawing: cut at 1.2 m, walls hatched by type (45° hatch for masonry from 250 mm, cross-hatch for load-bearing walls of 150–250 mm, open partitions), line weights after ISO 128-2 from 0.70 mm down to 0.16 mm, and anything above the cut dashed.</p>
+            <p>A new <b>Dimensioned</b> mode adds facade, structure and overall dimension strings on every side, room clear sizes and door widths, in millimetres. The drawing sheet is white and bimp now uses a single light theme.</p>
+            <figure class="frame flat"><img src="/shots/plan-dimensioned.webp" width="2000" height="1624" loading="lazy" alt="The sample house in Dimensioned mode: hatched walls by type, ISO line weights and dimension strings in millimetres."></figure>
+          </div>
+        </article>
+
+        <article class="entry" id="room-info" aria-labelledby="e3">
+          <time datetime="2026-11-14">14 November 2026</time>
+          <div class="body">
+            <div class="tags"><span class="pill">New</span><span class="pill">Plans</span></div>
+            <h2 id="e3"><a href="#room-info">Room and plan info, door swings, layout suggestions</a></h2>
+            <ul>
+              <li>Click a room for net area, length × width, perimeter, ceiling height, volume, doors, windows and glazing. With nothing selected, the plan shows net, wall and gross area and floor level.</li>
+              <li>Doors swing by the usual rules: into rooms rather than corridors, out of cupboards, entrance inward. A door whose leaf hits furniture is flagged.</li>
+              <li>Feng shui checks as traditional guidance, and suggested furniture for empty rooms, drawn dashed and never treated as drawing data.</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="entry" id="dollhouse" aria-labelledby="e4">
+          <time datetime="2026-11-14">14 November 2026</time>
+          <div class="body">
+            <div class="tags"><span class="pill">Improved</span><span class="pill">3D</span></div>
+            <h2 id="e4"><a href="#dollhouse">Dollhouse 3D, cleaner walls and real furniture</a></h2>
+            <ul>
+              <li>Dollhouse is the default 3D view: walls between you and the rooms drop away and come back as you rotate. Cut 1.2 m and Full are one click away.</li>
+              <li>Floors in wood, tile, concrete or decking by room type, a visual convention rather than drawing data.</li>
+              <li>Walls meet with mitered corners and soft contact shadows, after the techniques in neonplan3d (MIT).</li>
+              <li>Fittings use the Kenney Furniture Kit (CC0), scaled to the size read from the drawing.</li>
+            </ul>
+            <figure class="frame flat"><img src="/shots/iso-dollhouse.webp" width="1837" height="1297" loading="lazy" alt="Isometric dollhouse view of the sample house with furniture and floor materials."></figure>
+          </div>
+        </article>
+
+        <article class="entry" id="hardening" aria-labelledby="e5">
+          <time datetime="2026-11-14">14 November 2026</time>
+          <div class="body">
+            <div class="tags"><span class="pill">Fixed</span><span class="pill">Security</span></div>
+            <h2 id="e5"><a href="#hardening">Reliability, security and accessibility fixes</a></h2>
+            <ul>
+              <li>Walls close their corners and pair faces of any thickness; detail scales no longer override the plan scale.</li>
+              <li>A conflict between the stated scale and a dimension now makes the plan a preview.</li>
+              <li>Escape distances are sampled along walls and inside rooms; the answer verifier is stricter.</li>
+              <li>Per-person limits: one drawing read at a time, 200 questions a day. Parsing limits on uploaded files.</li>
+              <li>Rooms reachable by keyboard, chat updates announced to screen readers, the info panel docks beside the plan.</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="entry" id="new-look" aria-labelledby="e6">
+          <time datetime="2026-11-14">14 November 2026</time>
+          <div class="body">
+            <div class="tags"><span class="pill">Improved</span></div>
+            <h2 id="e6"><a href="#new-look">New look and a new site</a></h2>
+            <p>A new identity: the bimp mark, paper and charcoal with an orange marker, set in Jost. The dashboard was redesigned and the website now covers the product, pricing, this changelog and the docs.</p>
+          </div>
+        </article>
+
+        <article class="entry" id="standards" aria-labelledby="e7">
+          <time datetime="2026-11-13">13 November 2026</time>
+          <div class="body">
+            <div class="tags"><span class="pill">New</span><span class="pill">Checks</span></div>
+            <h2 id="e7"><a href="#standards">Checks against design standards, escape routes and wall thickness</a></h2>
+            <p>bimp now checks plans against the Metric Handbook (4th ed.): preferred scales, room minimums, bed sizes, door, corridor and stair widths, garages and daylight. Each flag cites the chapter and table it comes from.</p>
+            <ul>
+              <li>Escape: travel distance from the worst point of each room to an exit, drawn on the plan as an overlay.</li>
+              <li>Wall thickness is measured from facing room edges, so net areas stay to the inside of walls.</li>
+            </ul>
+            <figure class="frame flat"><img src="/shots/escape.webp" width="2068" height="1484" loading="lazy" alt="Escape route overlay from the living room to the exit, labelled 13.42 m."></figure>
+          </div>
+        </article>
+
+        <article class="entry" id="fixtures" aria-labelledby="e8">
+          <time datetime="2026-11-13">13 November 2026</time>
+          <div class="body">
+            <div class="tags"><span class="pill">New</span><span class="pill">Plans</span></div>
+            <h2 id="e8"><a href="#fixtures">Fittings and furniture read from the drawing</a></h2>
+            <p>WCs, sinks, baths, showers, cookers, beds, sofas, tables, desks and wardrobes are read from the drawing, placed against their walls and assigned to rooms, then drawn in 2D and 3D. Ask "how many WCs?" and bimp counts them.</p>
+          </div>
+        </article>
+
+        <article class="entry" id="measured" aria-labelledby="e9">
+          <time datetime="2026-11-13">13 November 2026</time>
+          <div class="body">
+            <div class="tags"><span class="pill">New</span><span class="pill">Reading</span></div>
+            <h2 id="e9"><a href="#measured">Drawings read in the background, measured when exact</a></h2>
+            <p>Uploads are now read by a background pipeline: analyse the file (PDF, scan, image or DXF), read it with an AI model, then measure in code, each step retried on its own.</p>
+            <ul>
+              <li>A plan is <b>measured</b> only when its scale is stated exactly and at least 90 % of room corners snap to the drawing's line work. Everything else is labelled a preview.</li>
+              <li>Scale shown as 1:x on screen with a scale bar that is always correct; Print produces an exact 1:x on A4 to A0.</li>
+            </ul>
+          </div>
+        </article>
+
+        <article class="entry" id="first-release" aria-labelledby="e10">
+          <time datetime="2026-11-13">13 November 2026</time>
+          <div class="body">
+            <div class="tags"><span class="pill">New</span></div>
+            <h2 id="e10"><a href="#first-release">First release: projects, chat and the plan in 2D and 3D</a></h2>
+            <ul>
+              <li>Sign in with email and password; your projects and chat history are saved.</li>
+              <li>Upload a floor plan and get a 2D plan and an isometric 3D model, labelled as a preview, with cutaway walls.</li>
+              <li>Ask questions in a chat beside the plan; answers cite the rooms they used.</li>
+            </ul>
+          </div>
+        </article>
+      </div>
+    </section>
+  </main>
+  <!-- @include footer.html -->
+</body>
+</html>
