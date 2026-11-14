@@ -257,7 +257,29 @@ Examples: "How many tiles do I need for the bathroom on level 2?", "How many win
   fill-only in 2D and extruded in 3D after cutting at opening edges; outline from shared-edge cancellation; baked
   occlusion (wall-base gradient, floor contact strips skipping doorways); door/window frames and sills; room labels
   at the pole of inaccessibility. Techniques after neonplan3d (MIT, © 2026 Mastershort), reimplemented.
+- 3D wall modes: **Dollhouse** (default; exterior walls whose indoor side faces away from the camera drop to 0.3 m,
+  back walls stay full height with windows, partitions cut at 1.2 m; recomputed on rotation), **Cut 1.2 m**, **Full**.
+- Floor materials: procedural canvas textures (wood planks, 300 mm tiles, concrete, decking; 1 texture = 1 m²) chosen by
+  room type and tinted by the room colour; matching light patterns in 2D. A visual convention, not drawing data.
 - VespeneLabs/floor-view was reviewed: its code is UNLICENSED (private), so only its CC0 Kenney assets were reused.
+
+## 5.4.3 Rooms, areas, heights, doors and feng shui (built)
+
+- `apps/shared/rooms.ts`: per room net area, perimeter, length × width (minimum bounding rectangle), ceiling height,
+  volume, doors/windows, glazed area (sill 0.9 m to head 2.1 m where not drawn) and glazing ratio. Plan: **net** floor
+  area (rooms to the inside of walls), wall area, **gross** = net + walls (DIN 277 NRF/BGF style), net/gross, volume.
+- Heights: `Plan.levels` {floor (FFL), ceiling}. The model copies level marks and ceiling notes as written
+  (FFL/OKFF/NGF, RH/lichte Höhe/HSP/CH); code parses them. Unstated values are shown as "not stated" / "assumed".
+- Doors: `Opening.swing` + hinge at `a`. `orientDoors` applies the usual rules (into rooms rather than corridors, out of
+  cupboards, entrance inward, otherwise into the more private room; hinge at the end nearer a corner; avoid furniture).
+  Check: a door whose leaf sweep hits furniture.
+- Feng shui (`apps/shared/fengshui.ts`), presented as traditional guidance: command position (door not straight in
+  front of the foot of the bed / WC / behind the cook), headboard not under a window or against a bathroom, desk user
+  not with their back to the door, sofa backed by a wall facing the room entrance, stove not beside the sink, light,
+  doors not blocked, entrance not lined up with an opening across the home. "Apply feng shui furniture" places
+  suggested items in empty rooms by the same rules (`source: 'suggested'`, dashed in 2D, never treated as drawing
+  data). "Ask AI for an overview" sends the room/plan to the agent (tools `room_info`, `plan_areas`, `feng_shui`).
+- `placeFixture` backs an item onto the wall nearest its **edge**, so long items (beds) back onto their short end.
 
 ## 5.5 Ingestion: Workflows + Containers (built)
 
@@ -436,7 +458,25 @@ Avoid: "100% accurate" claims, renders better than the real product, generic AI 
 - Name: **BIMP** — *BIM Pilot*. Tagline candidates: "Every answer, on the drawing.", "Answers you can point to.",
   "Your pilot through the drawing set."
 - Tone: precise, calm, practical, plain words. Professional, not corporate; technical, not cold.
-- Visual identity: **TBD** — to be generated from a brand board. Constraints: no AI clichés (sparkles, glowing orbs,
+- Visual identity (2026-11-14, supplied by the team as CorelDRAW SVGs):
+  - Full logo `apps/web/src/brand/logo.svg` (lowercase "bimp": the b drawn as a door swing, the i's dot as a target
+    mark). Used in the app top bar, login, marketing header and footer. Accent orange **#FF6B2B** in the marks only.
+  - Icon `apps/web/public/brand/favicon.svg` (the b on a #17191c rounded tile) + PNG 32/180/512 fallbacks.
+  - Spinner `apps/web/src/brand/loading.svg` (target mark, rotates) for loading states.
+  - Palette (2026-11-14): orange **#FF682B** (markers, rules, button fills; never text on paper: 2.56:1), off-white
+    paper **#F4F1EA** (panels #EBE6DC, raised #FBFAF7), charcoal **#1E1D1B** (text 14.9:1), muted #6B665D (5.05:1),
+    control borders #8F897D (3.08:1). Buttons: charcoal on orange (5.83:1). Dark mode swaps paper and ink.
+  - Type: **Jost** (geometric, monoline like the logo; light weights for headings) and **IBM Plex Mono** for
+    annotations, labels and figures. Self-hosted (@fontsource, OFL). Tokens in `apps/web/src/tokens.css`.
+  - Visual language "the drawing sheet": hairline rules, sheet frames with crop marks and title blocks, survey-target
+    annotations with leader lines, numbered sections. No gradients, glow, sparkles, robots or stock photography.
+  - Marketing site: Home, Product, Method, About (`apps/web/{index,product,method,about}`), shared header/footer
+    partials injected at build (`apps/web/partials`, Vite plugin in `vite.config.ts`). Product imagery is rendered
+    from the real app (`apps/web/public/shots`).
+  - Web versions: cropped to the artwork, print crop marks removed, white → currentColor so the marks follow the
+    text colour (dark on light, light in dark mode), class names prefixed per file. UI accent stays #c2410c for text
+    and buttons (better contrast on white than #FF6B2B).
+- Previously: visual identity TBD — to be generated from a brand board. Constraints: no AI clichés (sparkles, glowing orbs,
   brains, robots, purple-blue gradients, neon, glassmorphism), no construction clichés (hard hats, cranes, stock
   photos), no all-blue blueprint look, no generic rounded startup aesthetic. Fonts must be real and available (e.g.
   Google Fonts). Once chosen, record palette (hex), fonts and logo rules here.
@@ -509,6 +549,9 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 | 2026-11-13 | Metric Handbook (4th ed.) adopted as the design-knowledge reference; rules encoded with citations in `apps/shared/standards.ts` |
 | 2026-11-13 | Fire escape distances and wall thickness from facing room edges added from Metric Handbook Ch. 31–42 |
 | 2026-11-13 | Fixtures read from drawings and rendered in 2D/3D; 3D uses the architectural cutaway convention |
+| 2026-11-14 | Design system: #FF682B / #F4F1EA / #1E1D1B, Jost + IBM Plex Mono; multi-page marketing site; redesigned dashboard |
+| 2026-11-14 | Room/plan info panel (net/gross, heights), door swing rules, feng shui checks and suggested layout |
+| 2026-11-14 | Dollhouse cutaway is the default 3D mode; procedural floor materials by room type |
 | 2026-11-14 | Mitered wall footprints + baked occlusion (after neonplan3d, MIT); minimised inset views removed |
 | 2026-11-14 | 3D fixtures use the CC0 Kenney Furniture Kit; VespeneLabs floor-view code not reused (UNLICENSED) |
 | 2026-11-13 | Marketing page v1: plain static HTML + one CSS file in `apps/web/`, system fonts, no build step, default styling; focus stays on functionality. Results section is a placeholder until evals run. Demo CTA points to `/app` |

@@ -3,9 +3,10 @@ import { type Plan, type Pt, type Room, type Opening, type Fixture, FIXTURE_KIND
 import { generate, textOf } from './gemini';
 import type { Analysis } from './ingest';
 import { BOOK, nearestPreferredScale, parseDimension } from '../../shared/standards';
+import { orientDoors } from '../../shared/rooms';
 import type { Env } from './util';
 
-const PROMPT_VERSION = 'read-v4';
+const PROMPT_VERSION = 'read-v5';
 const P = { type: 'ARRAY', items: { type: 'NUMBER' } }; // [y, x] normalised 0-1000
 const SCHEMA = {
   type: 'OBJECT',
@@ -14,6 +15,10 @@ const SCHEMA = {
       type: 'OBJECT', nullable: true,
       properties: { text: { type: 'STRING' }, value_m: { type: 'NUMBER' }, a: P, b: P },
       required: ['text', 'value_m', 'a', 'b'],
+    },
+    levels: {
+      type: 'OBJECT', nullable: true,
+      properties: { floor_level_text: { type: 'STRING', nullable: true }, ceiling_height_text: { type: 'STRING', nullable: true } },
     },
     stated_scale: {
       type: 'OBJECT', nullable: true,
@@ -60,6 +65,8 @@ scale_evidence: one dimension string with its dimension line (prefer the longest
 fixtures: every fitting and furniture item drawn: toilet bowls (wc), wash basins and kitchen sinks (sink; a double-bowl sink
   is one), bathtubs, showers, sauna stoves (kiuas), cookers/hobs (stove), fridges, washing machines (washer), beds, sofas, tables,
   desks, wardrobes. box = [ymin, xmin, ymax, xmax] normalised 0-1000. One entry per item; skip anything you cannot see.
+levels: the finished floor level of this plan as written (e.g. "FFL ±0.00", "OKFF +3.05", "NGF 102.40") and the clear ceiling
+  height if stated (e.g. "RH 2.50", "lichte Höhe 2,60", "HSP 2.50", "CH 2400"), as written; null where not stated.
 stated_scale: the drawing scale written on the sheet (title block or under the plan, e.g. "1:100", "M 1:50", "Scale 1/100"),
   text as written and ratio as a number (100). null if none is written. If several, the one for the main plan.
 If the sheet has several plans, use only the main floor plan. Never invent rooms that are not drawn.`;
@@ -67,6 +74,7 @@ If the sheet has several plans, use only the main floor plan. Never invent rooms
 export type Raw = {
   scale_evidence?: { text: string; value_m: number; a: number[]; b: number[] } | null;
   stated_scale?: { text: string; ratio: number } | null;
+  levels?: { floor_level_text?: string | null; ceiling_height_text?: string | null } | null;
   rooms: { name: string; type: string; polygon: number[][] }[];
   openings: { kind: 'door' | 'window'; a: number[]; b: number[] }[];
   fixtures?: { kind: string; box: number[] }[];
@@ -84,7 +92,7 @@ export async function readDrawing(env: Env, png: string, renderSha: string, an: 
     generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0 },
   }, `${PROMPT_VERSION}:${renderSha}`);
   const raw = JSON.parse(textOf(content)) as Raw;
-  return { scale_evidence: raw.scale_evidence ?? null, stated_scale: raw.stated_scale ?? null, rooms: raw.rooms ?? [], openings: raw.openings ?? [], fixtures: raw.fixtures ?? [] };
+  return { scale_evidence: raw.scale_evidence ?? null, stated_scale: raw.stated_scale ?? null, rooms: raw.rooms ?? [], openings: raw.openings ?? [], fixtures: raw.fixtures ?? [], levels: raw.levels ?? null };
 }
 
 type Seg = [number, number, number, number];
@@ -313,20 +321,33 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     })
     .filter((f) => f.size[0] > 0.1 && f.size[1] > 0.1 && f.size[0] < 4 && f.size[1] < 4);
 
-  return {
+  // Levels: code parses the strings the model copied. Ceiling heights in mm or m (Metric Handbook Ch. 1 §2).
+  const ceilText = raw.levels?.ceiling_height_text ?? null, floorText = raw.levels?.floor_level_text ?? null;
+  const ceilNum = ceilText?.match(/\d+(?:[.,]\d+)?/)?.[0];
+  const ceiling = ceilNum ? parseDimension(ceilNum) : null;
+  const ceilingOk = ceiling !== null && ceiling >= 2 && ceiling <= 8 ? ceiling : null;
+  const fl = floorText?.match(/([+\-−±]?)\s*(\d+(?:[.,]\d+)?)/);
+  const floor = fl ? (fl[1] === '-' || fl[1] === '−' ? -1 : 1) * Number(fl[2].replace(',', '.')) : null;
+  if (ceilingOk) assumptions[1] = `Ceiling height ${ceilingOk} m from "${ceilText}" on the drawing`;
+  const plan: Plan = {
     version: 1,
     method: 'hybrid',
     measured,
     width: round(bb.x1, 2),
     height: round(bb.y1, 2),
-    wallHeight: 2.7,
+    wallHeight: ceilingOk ?? 2.7,
     rooms,
     walls,
     openings,
     fixtures,
+    levels: { floor: floor !== null && Number.isFinite(floor) ? floor : null, ceiling: ceilingOk,
+      source: [floorText && `floor "${floorText}"`, ceilingOk && `ceiling "${ceilText}"`].filter(Boolean).join(', ') || 'not stated on the drawing' },
     scale: { metersPerPx: m, source: scaleSource, ...(ratio ? { ratio } : {}) },
     source: { fileId, renderSha, mime: 'image/png', imageWidth: W, imageHeight: H, offset: [round(-ox * m, 3), round(-oy * m, 3)] },
     provenance: { kind: an.kind, scaleExact: !!exact, snapped: round(snapRatio, 3), segments: an.segments.length },
     assumptions,
   };
+  // Drawings rarely make the swing side machine-readable: apply the usual rules (into rooms, not corridors; hinge by a corner).
+  plan.openings = orientDoors(plan);
+  return plan;
 }

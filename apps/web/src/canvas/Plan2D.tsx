@@ -6,6 +6,8 @@ import { hoverRoom, selectedRooms } from '../state';
 import { ROOM_COLORS } from './colors';
 import { printPlan } from './print';
 import { FixtureSymbol } from './symbols';
+import { FLOOR_OF } from './floors-kind';
+import { roomDims } from '../../../shared/rooms';
 
 /** CSS pixels per metre of screen (96 px per inch). Screens vary, so on-screen 1:x is nominal; print is exact. */
 const SCREEN_PX_PER_M = 96 / 0.0254;
@@ -107,6 +109,20 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
       role="img"
       aria-label="2D floor plan"
     >
+      <defs>
+        <pattern id="fl-wood" patternUnits="userSpaceOnUse" width="1.2" height="0.15">
+          <path d="M0,0H1.2M0.45,0V0.15" stroke="var(--wall)" stroke-width="0.008" opacity="0.18" />
+        </pattern>
+        <pattern id="fl-tiles" patternUnits="userSpaceOnUse" width="0.3" height="0.3">
+          <path d="M0,0H0.3M0,0V0.3" stroke="var(--wall)" stroke-width="0.008" opacity="0.22" />
+        </pattern>
+        <pattern id="fl-concrete" patternUnits="userSpaceOnUse" width="0.5" height="0.5">
+          <circle cx="0.12" cy="0.18" r="0.012" fill="var(--wall)" opacity="0.15" /><circle cx="0.37" cy="0.41" r="0.009" fill="var(--wall)" opacity="0.15" />
+        </pattern>
+        <pattern id="fl-deck" patternUnits="userSpaceOnUse" width="1" height="0.12">
+          <path d="M0,0H1" stroke="var(--wall)" stroke-width="0.012" opacity="0.25" />
+        </pattern>
+      </defs>
       {sourceUrl && plan.source && (
         <image href={sourceUrl} x={plan.source.offset[0]} y={plan.source.offset[1]}
           width={plan.source.imageWidth * (plan.scale.metersPerPx ?? 1)} height={plan.source.imageHeight * (plan.scale.metersPerPx ?? 1)}
@@ -122,6 +138,13 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
             onClick={() => { if (!drag.current?.moved) selectedRooms.value = selected.includes(r.id) ? [] : [r.id]; }} />
         );
       })}
+      {!compact && !sourceUrl && (
+        <g pointer-events="none" class="floor-patterns">
+          {plan.rooms.filter((r) => FLOOR_OF[r.type] !== 'plain').map((r) => (
+            <polygon key={r.id} points={r.polygon.map((p) => p.join(',')).join(' ')} fill={`url(#fl-${FLOOR_OF[r.type]})`} />
+          ))}
+        </g>
+      )}
       <g pointer-events="none" class="fixtures">{(plan.fixtures ?? []).map((f) => <FixtureSymbol key={f.id} f={f} />)}</g>
       <g fill="var(--wall)" pointer-events="none">
         {footprints.map((f) => <polygon key={f.wall.id} points={f.poly.map((p) => p.join(',')).join(' ')} />)}
@@ -129,14 +152,14 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
       <g pointer-events="none" fill="none">
         {plan.openings.map((o) => {
           const len = dist(o.a, o.b);
-          const n: Pt = [-(o.b[1] - o.a[1]) / len, (o.b[0] - o.a[0]) / len];
+          const sw = o.swing ?? 1, n: Pt = [(-(o.b[1] - o.a[1]) / len) * sw, ((o.b[0] - o.a[0]) / len) * sw];
           const tip: Pt = [o.a[0] + n[0] * len, o.a[1] + n[1] * len];
           return (
             <g key={o.id}>
               <line x1={o.a[0]} y1={o.a[1]} x2={o.b[0]} y2={o.b[1]} stroke="var(--paper)" stroke-width={(openingT.get(o.id) ?? 0.3) + 0.03} />
               {o.kind === 'door' && [o.a, o.b].map((p, i) => { const h = (openingT.get(o.id) ?? 0.3) / 2; return <line key={i} x1={p[0] + n[0] * h} y1={p[1] + n[1] * h} x2={p[0] - n[0] * h} y2={p[1] - n[1] * h} stroke="var(--wall)" stroke-width={0.025} />; })}
               {o.kind === 'door'
-                ? <path d={`M${o.b[0]},${o.b[1]} A${len},${len} 0 0 1 ${tip[0]},${tip[1]} L${o.a[0]},${o.a[1]}`} stroke="var(--wall)" stroke-width={0.03} />
+                ? <path d={`M${o.b[0]},${o.b[1]} A${len},${len} 0 0 ${sw === 1 ? 1 : 0} ${tip[0]},${tip[1]} L${o.a[0]},${o.a[1]}`} stroke="var(--wall)" stroke-width={0.03} />
                 : [-0.07, 0, 0.07].map((k) => <line key={k} x1={o.a[0] + n[0] * k} y1={o.a[1] + n[1] * k} x2={o.b[0] + n[0] * k} y2={o.b[1] + n[1] * k} stroke="var(--wall)" stroke-width={0.025} />)}
             </g>
           );
@@ -159,6 +182,7 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
               <text key={r.id} x={x} y={y} font-size={fs}>
                 <tspan x={x} font-weight="600">{r.name}</tspan>
                 <tspan x={x} dy={fs * 1.2} font-size={fs * 0.85}>{round(area(r.polygon), 1)} m²</tspan>
+                <tspan x={x} dy={fs * 1.05} font-size={fs * 0.72} opacity={0.75}>{(() => { const d = roomDims(r.polygon); return `${d.length.toFixed(2)} × ${d.width.toFixed(2)}`; })()}</tspan>
               </text>
             );
           })}

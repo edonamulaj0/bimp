@@ -2,102 +2,176 @@
 import * as THREE from 'three';
 import { mergeGeometries } from 'three/examples/jsm/utils/BufferGeometryUtils.js';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader.js';
-import { type Plan, type Pt, type Fixture, type FixtureKind, dist, wallPieces } from '../../../shared/plan';
+import { type Plan, type Pt, type Fixture, type FixtureKind, type Room, dist, wallPieces } from '../../../shared/plan';
 import { clipHalf, labelPoint, wallFootprints } from '../../../shared/walls';
 import { ROOM_COLORS } from './colors';
+import { floorTexture } from './floors';
 
+export type WallMode = 'dollhouse' | 'cut' | 'full';
 export type SceneApi = { highlight(hover: string | null, selected: string[]): void; rotate(steps: number): void; dispose(): void };
-type Opts = { compact?: boolean; wallHeight?: number; onHover(id: string | null, x: number, y: number): void; onClick(id: string | null): void;
+type Opts = { compact?: boolean; walls?: WallMode; onHover(id: string | null, x: number, y: number): void; onClick(id: string | null): void;
   onLabels?(labels: { id: string; name: string; x: number; y: number }[]): void };
 
 const ISO_ELEVATION = Math.atan(1 / Math.SQRT2); // true isometric: 35.264°
+const CUT = 1.2, LOW = 0.3; // section cut height; dollhouse: front exterior walls drop to a low base
+
+const insidePoly = (p: Pt, poly: Pt[]) => {
+  let c = false;
+  for (let i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+    const [xi, yi] = poly[i], [xj, yj] = poly[j];
+    if (yi > p[1] !== yj > p[1] && p[0] < ((xj - xi) * (p[1] - yi)) / (yj - yi) + xi) c = !c;
+  }
+  return c;
+};
 
 export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi {
+  const mode: WallMode = opts.walls ?? 'dollhouse';
+  const HF = plan.wallHeight;
   const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
   renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
   renderer.shadowMap.enabled = !opts.compact;
   renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.localClippingEnabled = true;
   host.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xb8c0cc, 2.8));
-  const sun = new THREE.DirectionalLight(0xffffff, 1.4);
-  sun.position.set(-6, 14, -4);
-  scene.add(sun);
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xb8c0cc, 2.1));
+  const sun = new THREE.DirectionalLight(0xffffff, 1.5);
+  const ext = Math.max(plan.width, plan.height);
+  sun.position.set(plan.width / 2 - ext * 0.6, ext * 1.4, plan.height / 2 - ext * 0.35);
+  sun.target.position.set(plan.width / 2, 0, plan.height / 2);
+  sun.castShadow = true;
+  Object.assign(sun.shadow.camera, { left: -ext, right: ext, top: ext, bottom: -ext, near: 0.1, far: ext * 4 });
+  sun.shadow.mapSize.set(2048, 2048);
+  sun.shadow.bias = -0.0005;
+  sun.shadow.radius = 4;
+  scene.add(sun, sun.target);
+  const ground = new THREE.Mesh(new THREE.PlaneGeometry(ext * 3, ext * 3), new THREE.ShadowMaterial({ opacity: 0.12 }));
+  ground.rotation.x = -Math.PI / 2;
+  ground.position.set(plan.width / 2, -0.09, plan.height / 2);
+  ground.receiveShadow = true;
+  scene.add(ground);
+  const disposables: { dispose(): void }[] = [ground.geometry, ground.material as THREE.Material];
 
-  // Floors: one slab per room, coloured by type.
+  // Floors: a slab per room with a procedural material by room type (wood, tiles, concrete, decking), tinted by type.
   const floors = plan.rooms.map((r) => {
     const shape = new THREE.Shape(r.polygon.map(([x, y]) => new THREE.Vector2(x, y)));
-    const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.08, bevelEnabled: false });
+    const geo = new THREE.ExtrudeGeometry(shape, { depth: 0.08, bevelEnabled: false }); // cap UVs are plan metres
     geo.rotateX(Math.PI / 2); // plan (x, y) -> world (x, -, z); slab hangs below y = 0
-    const base = new THREE.Color(ROOM_COLORS[r.type]).lerp(new THREE.Color(0xffffff), 0.25);
-    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: base }));
+    const base = new THREE.Color(ROOM_COLORS[r.type]).lerp(new THREE.Color(0xffffff), 0.55);
+    const mesh = new THREE.Mesh(geo, new THREE.MeshLambertMaterial({ color: base, map: floorTexture(r.type) }));
     mesh.receiveShadow = true;
     mesh.userData = { id: r.id, base };
     scene.add(mesh);
     return mesh;
   });
 
-  // Walls: mitered footprints, cut along each wall at door/window edges, each vertical range extruded.
-  const H = opts.wallHeight ?? plan.wallHeight;
-  const pieces: { poly: Pt[]; z0: number; z1: number }[] = [];
-  for (const f of wallFootprints(plan.walls)) {
-    const w = f.wall, len = dist(w.a, w.b), { dir, pieces: ranges } = wallPieces(w, plan.openings, H);
-    for (const r of ranges) {
-      let poly = f.poly;
-      if (r.s > 1e-6) poly = clipHalf(poly, w.a, dir, r.s, 1);
-      if (r.e < len - 1e-6) poly = clipHalf(poly, w.a, dir, r.e, -1);
-      if (poly.length >= 3) pieces.push({ poly, z0: r.z0, z1: r.z1 });
-    }
-  }
-  const parts = pieces.map(({ poly, z0, z1 }) => {
-    const g = new THREE.ExtrudeGeometry(new THREE.Shape(poly.map(([x, y]) => new THREE.Vector2(x, y))), { depth: z1 - z0, bevelEnabled: false });
-    g.rotateX(Math.PI / 2); // plan (x, y) -> world (x, z); extrudes downward from y = 0
-    g.translate(0, z1, 0);
-    return g;
-  });
-  const disposables: { dispose(): void }[] = [];
-  const addMerged = (geos: THREE.BufferGeometry[], mat: THREE.Material, edgesOpacity = 0.5, shadows = true) => {
-    if (!geos.length) return;
+  const addMerged = (to: THREE.Object3D, bin: { dispose(): void }[], geos: THREE.BufferGeometry[], mat: THREE.Material, edgesOpacity = 0.5, shadows = true) => {
+    if (!geos.length) { mat.dispose(); return; }
     const geo = mergeGeometries(geos.map((g) => (g.index ? g.toNonIndexed() : g)))!;
     geos.forEach((g) => g.dispose());
     const mesh = new THREE.Mesh(geo, mat);
     mesh.castShadow = shadows; mesh.receiveShadow = shadows;
-    scene.add(mesh);
-    disposables.push(geo, mat);
+    to.add(mesh);
+    bin.push(geo, mat);
     if (edgesOpacity > 0) {
       const eg = new THREE.EdgesGeometry(geo, 30);
       const lm = new THREE.LineBasicMaterial({ color: 0x2b2f36, transparent: true, opacity: edgesOpacity });
-      scene.add(new THREE.LineSegments(eg, lm));
-      disposables.push(eg, lm);
+      to.add(new THREE.LineSegments(eg, lm));
+      bin.push(eg, lm);
     }
   };
-  // Architectural model convention: wall tops where the walls are cut are dark (poché), sides white.
-  const tint = (g: THREE.BufferGeometry, side: number, top?: number) => {
-    const n = g.getAttribute('normal'), c = new Float32Array(n.count * 3);
-    const cs = new THREE.Color(side), ct = new THREE.Color(top ?? side);
-    for (let i = 0; i < n.count; i++) (n.getY(i) > 0.9 ? ct : cs).toArray(c, i * 3);
-    g.setAttribute('color', new THREE.BufferAttribute(c, 3));
-    return g;
-  };
-  // Baked occlusion: wall sides darken toward the floor (after neonplan3d's vertex-colour shading, MIT).
-  const wallGeos = parts.map((g) => {
-    const n = g.toNonIndexed(), nm = n.getAttribute('normal'), pos = n.getAttribute('position'), c = new Float32Array(nm.count * 3);
-    const side = new THREE.Color(0xfbfaf7), top = new THREE.Color(0x30343b), tmp = new THREE.Color();
-    for (let i = 0; i < nm.count; i++) {
-      if (nm.getY(i) > 0.9) top.toArray(c, i * 3);
-      else tmp.copy(side).multiplyScalar(0.66 + 0.34 * Math.min(1, pos.getY(i) / 1.4)).toArray(c, i * 3);
+
+  // Which side of each wall is indoors: exterior walls have a room on one side only.
+  const footprints = wallFootprints(plan.walls);
+  const roomAt = (p: Pt): Room | undefined => plan.rooms.find((r) => insidePoly(p, r.polygon));
+  const indoor = new Map(footprints.map((f) => {
+    const w = f.wall, L = dist(w.a, w.b) || 1, n: Pt = [-(w.b[1] - w.a[1]) / L, (w.b[0] - w.a[0]) / L];
+    const m: Pt = [(w.a[0] + w.b[0]) / 2, (w.a[1] + w.b[1]) / 2], k = w.thickness / 2 + 0.25;
+    const l = roomAt([m[0] + n[0] * k, m[1] + n[1] * k]), r = roomAt([m[0] - n[0] * k, m[1] - n[1] * k]);
+    return [w.id, l && !r ? n : r && !l ? ([-n[0], -n[1]] as Pt) : null] as const; // null: interior wall
+  }));
+
+  // Walls, openings and frames: rebuilt when the dollhouse view rotates (front walls change).
+  let envelope = new THREE.Group(), envBin: { dispose(): void }[] = [];
+  const buildEnvelope = (rot: number) => {
+    scene.remove(envelope); envBin.forEach((d) => d.dispose());
+    envelope = new THREE.Group(); envBin = [];
+    const a = Math.PI / 4 + (rot * Math.PI) / 2, toCam: Pt = [Math.cos(a), Math.sin(a)];
+    const heightOf = (id: string) => {
+      if (mode === 'full') return HF;
+      if (mode === 'cut') return Math.min(CUT, HF);
+      const nIn = indoor.get(id);
+      if (!nIn) return Math.min(CUT, HF);                                   // interior partition: cut
+      return nIn[0] * toCam[0] + nIn[1] * toCam[1] < 0 ? LOW : HF;          // camera outside it: front wall drops
+    };
+    const pieces: { poly: Pt[]; z0: number; z1: number }[] = [];
+    const wallH = new Map<string, number>();
+    for (const f of footprints) {
+      const w = f.wall, len = dist(w.a, w.b), H = heightOf(w.id), { dir, pieces: ranges } = wallPieces(w, plan.openings, H);
+      wallH.set(w.id, H);
+      for (const r of ranges) {
+        let poly = f.poly;
+        if (r.s > 1e-6) poly = clipHalf(poly, w.a, dir, r.s, 1);
+        if (r.e < len - 1e-6) poly = clipHalf(poly, w.a, dir, r.e, -1);
+        if (poly.length >= 3) pieces.push({ poly, z0: r.z0, z1: r.z1 });
+      }
     }
-    n.setAttribute('color', new THREE.BufferAttribute(c, 3));
-    return n;
-  });
-  parts.forEach((g) => g.dispose());
-  addMerged(wallGeos, new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }), 0);
-  const outline = wallOutline(pieces);
-  const olGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(outline, 3));
-  const olMat = new THREE.LineBasicMaterial({ color: 0x23262b, transparent: true, opacity: 0.6 });
-  scene.add(new THREE.LineSegments(olGeo, olMat));
-  disposables.push(olGeo, olMat);
+    // Baked occlusion: wall sides darken toward the floor; cut tops are dark (poché). After neonplan3d (MIT).
+    const wallGeos = pieces.map(({ poly, z0, z1 }) => {
+      const g = new THREE.ExtrudeGeometry(new THREE.Shape(poly.map(([x, y]) => new THREE.Vector2(x, y))), { depth: z1 - z0, bevelEnabled: false });
+      g.rotateX(Math.PI / 2);
+      g.translate(0, z1, 0);
+      const n = g.toNonIndexed(); g.dispose();
+      const nm = n.getAttribute('normal'), pos = n.getAttribute('position'), c = new Float32Array(nm.count * 3);
+      const side = new THREE.Color(0xfbfaf7), topC = new THREE.Color(z1 >= HF - 1e-6 ? 0x6b7078 : 0x30343b), tmp = new THREE.Color();
+      for (let i = 0; i < nm.count; i++) {
+        if (nm.getY(i) > 0.9) topC.toArray(c, i * 3);
+        else tmp.copy(side).multiplyScalar(0.66 + 0.34 * Math.min(1, pos.getY(i) / 1.4)).toArray(c, i * 3);
+      }
+      n.setAttribute('color', new THREE.BufferAttribute(c, 3));
+      return n;
+    });
+    addMerged(envelope, envBin, wallGeos, new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }), 0);
+    const olGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(wallOutline(pieces), 3));
+    const olMat = new THREE.LineBasicMaterial({ color: 0x23262b, transparent: true, opacity: 0.6 });
+    envelope.add(new THREE.LineSegments(olGeo, olMat));
+    envBin.push(olGeo, olMat);
+
+    // Height of the wall an opening sits in.
+    const heightAt = (m: Pt) => {
+      let best = HF, bd = Infinity;
+      for (const f of footprints) {
+        const w = f.wall, L = dist(w.a, w.b) || 1, u = [(w.b[0] - w.a[0]) / L, (w.b[1] - w.a[1]) / L];
+        const t = Math.max(0, Math.min(L, (m[0] - w.a[0]) * u[0] + (m[1] - w.a[1]) * u[1]));
+        const d = Math.hypot(m[0] - w.a[0] - u[0] * t, m[1] - w.a[1] - u[1] * t);
+        if (d < bd) { bd = d; best = wallH.get(w.id) ?? HF; }
+      }
+      return best;
+    };
+    const leaves: THREE.BufferGeometry[] = [], glass: THREE.BufferGeometry[] = [];
+    for (const o of plan.openings) {
+      const L = dist(o.a, o.b);
+      if (L < 0.2) continue;
+      const H = heightAt([(o.a[0] + o.b[0]) / 2, (o.a[1] + o.b[1]) / 2]);
+      const u = [(o.b[0] - o.a[0]) / L, (o.b[1] - o.a[1]) / L], sw = o.swing ?? 1, n = [-u[1] * sw, u[0] * sw];
+      if (o.kind === 'door' && H > 0.5) {
+        const h = Math.min(2.05, H), g = new THREE.BoxGeometry(L, h, 0.04);
+        g.rotateY(-Math.atan2(n[1], n[0]));
+        g.translate(o.a[0] + n[0] * L / 2, h / 2, o.a[1] + n[1] * L / 2);
+        leaves.push(colour(g.toNonIndexed(), 0xd8c3a3, 0x8a7458));
+      } else if (o.kind === 'window' && H > 0.9) {
+        const top = Math.min(2.1, H), g = new THREE.BoxGeometry(L, top - 0.9, 0.02);
+        g.rotateY(-Math.atan2(u[1], u[0]));
+        g.translate((o.a[0] + o.b[0]) / 2, (0.9 + top) / 2, (o.a[1] + o.b[1]) / 2);
+        glass.push(g);
+      }
+    }
+    addMerged(envelope, envBin, leaves, new THREE.MeshLambertMaterial({ vertexColors: true }), 0.35);
+    addMerged(envelope, envBin, openingFrames(plan, heightAt), new THREE.MeshLambertMaterial({ vertexColors: true }), 0.3);
+    addMerged(envelope, envBin, glass, new THREE.MeshLambertMaterial({ color: 0x9cc4e4, transparent: true, opacity: 0.32, depthWrite: false }), 0, false);
+    scene.add(envelope);
+  };
 
   // Soft contact shadows on the floor along every wall a room touches, left out across doorways.
   const strips = contactStrips(plan);
@@ -110,32 +184,10 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
     disposables.push(g, m);
   }
 
-  // Door leaves (open at 90°, as drawn on the plan) and window glass.
-  const leaves: THREE.BufferGeometry[] = [], glass: THREE.BufferGeometry[] = [];
-  for (const o of plan.openings) {
-    const L = dist(o.a, o.b);
-    if (L < 0.2) continue;
-    const u = [(o.b[0] - o.a[0]) / L, (o.b[1] - o.a[1]) / L], n = [-u[1], u[0]];
-    if (o.kind === 'door') {
-      const h = Math.min(2.05, H), g = new THREE.BoxGeometry(L, h, 0.04);
-      g.rotateY(-Math.atan2(n[1], n[0]));
-      g.translate(o.a[0] + n[0] * L / 2, h / 2, o.a[1] + n[1] * L / 2);
-      leaves.push(tint(g.toNonIndexed(), 0xd8c3a3, 0x8a7458));
-    } else if (H > 0.9) {
-      const top = Math.min(2.1, H), g = new THREE.BoxGeometry(L, top - 0.9, 0.02);
-      g.rotateY(-Math.atan2(u[1], u[0]));
-      g.translate((o.a[0] + o.b[0]) / 2, (0.9 + top) / 2, (o.a[1] + o.b[1]) / 2);
-      glass.push(g);
-    }
-  }
-  addMerged(leaves, new THREE.MeshLambertMaterial({ vertexColors: true }), 0.35);
-  addMerged(openingFrames(plan, H), new THREE.MeshLambertMaterial({ vertexColors: true }), 0.3);
-  addMerged(glass, new THREE.MeshLambertMaterial({ color: 0x9cc4e4, transparent: true, opacity: 0.32, depthWrite: false }), 0, false);
-
   // Fittings and furniture: CC0 Kenney models scaled to the size read from the drawing (boxes where no model fits),
-  // clipped at the wall height so the cutaway stays clean.
-  renderer.localClippingEnabled = true;
-  const clip = [new THREE.Plane(new THREE.Vector3(0, -1, 0), H + 0.001)];
+  // clipped at the cut height in section mode.
+  const FH = mode === 'cut' ? Math.min(CUT, HF) : HF;
+  const clip = [new THREE.Plane(new THREE.Vector3(0, -1, 0), FH + 0.001)];
   const boxed: Fixture[] = [];
   let alive = true;
   const placed: THREE.Object3D[] = [];
@@ -148,25 +200,26 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
       scene.add(o); placed.push(o); render();
     }).catch(() => {
       if (!alive) return;
-      const geos = fixtureParts(f, H);
+      const geos = fixtureParts(f, FH);
       if (geos.length) { const mat = new THREE.MeshLambertMaterial({ vertexColors: true }); const m = new THREE.Mesh(mergeGeometries(geos)!, mat); m.castShadow = true; scene.add(m); placed.push(m); render(); }
     });
   }
   const fx: THREE.BufferGeometry[] = [];
-  for (const f of boxed) for (const g of fixtureParts(f, H)) fx.push(g);
-  addMerged(fx, new THREE.MeshLambertMaterial({ vertexColors: true }), 0.35);
+  for (const f of boxed) for (const g of fixtureParts(f, FH)) fx.push(g);
+  addMerged(scene, disposables, fx, new THREE.MeshLambertMaterial({ vertexColors: true }), 0.35);
 
   // Isometric orthographic camera.
   const camera = new THREE.OrthographicCamera();
   const target = new THREE.Vector3(plan.width / 2, 0, plan.height / 2);
   let rot = 0, zoom = 1;
+  buildEnvelope(rot);
   const fit = () => {
     const { clientWidth: w, clientHeight: h } = host;
     if (!w || !h) return;
     renderer.setSize(w, h);
     const aspect = w / h;
     const span = (plan.width + plan.height) * 0.72 * (opts.compact ? 1.0 : 1.12);
-    const half = Math.max(span / 2 / aspect, (span * 0.62 + H) / 2) / zoom;
+    const half = Math.max(span / 2 / aspect, (span * 0.62 + HF) / 2) / zoom;
     Object.assign(camera, { left: -half * aspect, right: half * aspect, top: half, bottom: -half, near: -1000, far: 1000 });
     const a = Math.PI / 4 + (rot * Math.PI) / 2, d = 100;
     camera.position.set(target.x + Math.cos(a) * Math.cos(ISO_ELEVATION) * d, target.y + Math.sin(ISO_ELEVATION) * d, target.z + Math.sin(a) * Math.cos(ISO_ELEVATION) * d);
@@ -183,7 +236,6 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
     }
   };
   const render = () => renderer.render(scene, camera);
-
   // Picking: rooms under the pointer.
   const ray = new THREE.Raycaster();
   const ndc = new THREE.Vector2();
@@ -236,13 +288,14 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
       }
       render();
     },
-    rotate(steps) { rot = (rot + steps + 4) % 4; fit(); },
+    rotate(steps) { rot = (rot + steps + 4) % 4; if (mode === 'dollhouse' && steps) buildEnvelope(rot); fit(); },
     dispose() {
       alive = false;
       placed.forEach((o) => o.traverse((m) => { if ((m as THREE.Mesh).isMesh) ((m as THREE.Mesh).material as THREE.Material).dispose(); }));
       ro.disconnect();
       floors.forEach((m) => { m.geometry.dispose(); (m.material as THREE.Material).dispose(); });
       disposables.forEach((d) => d.dispose());
+      envBin.forEach((d) => d.dispose());
       renderer.dispose();
       el.remove();
     },
@@ -420,7 +473,7 @@ function contactStrips(plan: Plan) {
 }
 
 // ---- door and window frames: jambs/head standing 1 cm proud of both wall faces, window sills ----
-function openingFrames(plan: Plan, H: number): THREE.BufferGeometry[] {
+function openingFrames(plan: Plan, heightAt: (m: Pt) => number): THREE.BufferGeometry[] {
   const out: THREE.BufferGeometry[] = [];
   const thick = (m: Pt) => {
     let best = 0.2, bd = Infinity;
@@ -433,7 +486,7 @@ function openingFrames(plan: Plan, H: number): THREE.BufferGeometry[] {
     return best;
   };
   const piece = (o: { a: Pt; b: Pt }, along0: number, along1: number, y0: number, y1: number, depth: number, color: number) => {
-    const top = Math.min(y1, H);
+    const top = Math.min(y1, heightAt([(o.a[0] + o.b[0]) / 2, (o.a[1] + o.b[1]) / 2]));
     if (top <= y0) return;
     const L = dist(o.a, o.b), u = [(o.b[0] - o.a[0]) / L, (o.b[1] - o.a[1]) / L];
     const g = new THREE.BoxGeometry(along1 - along0, top - y0, depth).toNonIndexed();

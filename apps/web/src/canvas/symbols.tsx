@@ -53,7 +53,7 @@ function Shape({ k, w, d }: { k: Fixture['kind']; w: number; d: number }) {
 
 export function FixtureSymbol({ f }: { f: Fixture }) {
   return (
-    <g transform={`translate(${f.center[0]} ${f.center[1]}) rotate(${(f.angle * 180) / Math.PI})`}>
+    <g transform={`translate(${f.center[0]} ${f.center[1]}) rotate(${(f.angle * 180) / Math.PI})`} class={f.source === 'suggested' ? 'suggested' : undefined}>
       <title>{f.kind}</title>
       <Shape k={f.kind} w={f.size[0]} d={f.size[1]} />
     </g>

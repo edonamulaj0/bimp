@@ -2,6 +2,8 @@
 // Source: Metric Handbook: Planning and Design Data, 4th ed. (D. Littlefield, ed., Architectural Press 2012).
 import { type Plan, type Pt, type Room, type Opening, area, dist, round } from './plan';
 import { escapeRoutes } from './escape';
+import { doorClashes } from './rooms';
+import { FIXTURE_LABEL } from './plan';
 
 export const BOOK = 'Metric Handbook, 4th ed.';
 
@@ -151,6 +153,9 @@ export function checkPlan(plan: Plan): Check[] {
       const r = plan.rooms.find((x) => x.id === id)!;
       out.push({ level: 'info', room_id: id, ref: `${BOOK} Ch. 41`, text: `${r.name}: no door found leading out of it. Check the drawing for a missing door.` });
     }
+  }
+  for (const o of plan.openings.filter((x) => x.kind === 'door')) for (const f of doorClashes(o, plan.fixtures ?? [])) {
+    out.push({ level: 'warn', room_id: f.room_id ?? undefined, ref: 'Door swing (geometry)', text: `Door ${o.id} hits the ${FIXTURE_LABEL[f.kind]} when it opens. Move the item or rehang the door.` });
   }
   const doors = plan.openings.filter((o) => o.kind === 'door').map((o) => dist(o.a, o.b)).sort((x, y) => x - y);
   if (doors.length >= 3) {

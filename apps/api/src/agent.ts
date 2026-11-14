@@ -2,6 +2,8 @@ import { type Plan, area, roomStats, round } from '../../shared/plan';
 import { calculate } from './calc';
 import { ACCESS, BED, CORRIDOR, DOOR, FLAT_TRAVEL, GARAGE, OCCUPANCY, OCCUPANCY_REF, PLAN_SCALES, ROOM_STANDARDS, STAIR, TRAVEL, TRAVEL_REF, TURNING, WALL, checkPlan, escapeWidth } from '../../shared/standards';
 import { escapeRoutes } from '../../shared/escape';
+import { planAreas, roomInfo } from '../../shared/rooms';
+import { fengShui } from '../../shared/fengshui';
 import { type Content, generate } from './gemini';
 import type { Env } from './util';
 
@@ -25,6 +27,9 @@ const TOOLS = [
   { name: 'space_standard', description: 'Design standard figures with their source: room minimum areas by type, door, corridor, stair, bed, wheelchair turning, preferred plan scales.', parameters: S('OBJECT', undefined, { properties: { topic: S('STRING', 'room type (bedroom, living, kitchen...), or door | corridor | stair | bed | turning | scale') }, required: ['topic'] }) },
   { name: 'escape_route', description: 'Estimated travel distance from the furthest point of each room (or one room) to an exit door, through doors, with the path and the limits that apply (Metric Handbook Ch. 41).', parameters: S('OBJECT', undefined, { properties: { room_id: S('STRING', 'optional room id') } }) },
   { name: 'occupancy', description: 'Occupant capacity of a room or the whole plan from floor space factors, and the minimum escape width for that many people (Ch. 41 Tables XI, XIV).', parameters: S('OBJECT', undefined, { properties: { use: S('STRING', `one of: ${Object.keys(OCCUPANCY).join(' | ')}`), room_id: S('STRING', 'optional; whole plan if omitted') }, required: ['use'] }) },
+  { name: 'room_info', description: 'One room: net area, perimeter, length × width, ceiling height, volume, doors, windows, glazed area and ratio, fittings.', parameters: S('OBJECT', undefined, { properties: { id: S('STRING') }, required: ['id'] }) },
+  { name: 'plan_areas', description: 'Whole plan: net floor area (rooms), wall area, gross floor area (net + walls), net/gross ratio, ceiling height and its source, floor level, volume, counts.', parameters: S('OBJECT', undefined, { properties: {} }) },
+  { name: 'feng_shui', description: 'Feng shui guidance as geometric checks (command position of bed/desk, headboard wall, stove vs sink and door, WC vs door, light, entrance alignment). Traditional guidance, not a standard.', parameters: S('OBJECT', undefined, { properties: { room_id: S('STRING', 'optional') } }) },
   { name: 'calculate', description: 'Evaluate arithmetic exactly. Supports + - * / ^ ( ) ceil floor round sqrt min max abs.', parameters: S('OBJECT', undefined, { properties: { expression: S('STRING') }, required: ['expression'] }) },
   {
     name: 'final_answer',
@@ -47,7 +52,8 @@ Rules: every fact must come from a tool result. Never estimate numbers yourself;
 If the plan does not contain the answer, set not_found and say what you looked at. When the plan is not measured,
 say that dimensions are approximate. Cite the rooms each claim comes from by id. For questions about sizes being
 adequate, compliance or "is this right", use check_plan and space_standard and name the standard's source in the answer;
-standards are guidance, not a legal verdict. For fire escape and capacity questions use escape_route and occupancy.
+standards are guidance, not a legal verdict. For fire escape and capacity questions use escape_route and occupancy. For an overview of a room or
+the home (size, light, feel), use room_info or plan_areas plus feng_shui, and write a short, warm, practical overview.
 Finish by calling final_answer.
 Answer in the language of the question.`;
 
@@ -113,6 +119,14 @@ function runTool(plan: Plan, name: string, args: any): unknown {
       const people = Math.floor(a / f);
       return { use: args.use, area_m2: a, m2_per_person: f, people, escape: escapeWidth(people), ref: OCCUPANCY_REF };
     }
+    case 'room_info': {
+      const r = plan.rooms.find((x) => x.id === args.id);
+      return r ? roomInfo(plan, r) : { error: `No room with id ${args.id}` };
+    }
+    case 'plan_areas':
+      return planAreas(plan);
+    case 'feng_shui':
+      return { notes: fengShui(plan, args.room_id || undefined), note: 'Traditional placement guidance, presented as such.' };
     case 'calculate':
       try { return { expression: args.expression, result: round(calculate(String(args.expression)), 4) }; }
       catch (e) { return { error: (e as Error).message }; }

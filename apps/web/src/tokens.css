@@ -1,0 +1,78 @@
+/* bimp design tokens: shared by the marketing site and the app.
+   Paper and ink like a drawing sheet; orange #FF682B is a marker (rules, targets, buttons), never body text on paper
+   (2.56:1). Charcoal on orange 5.83:1, muted on paper 5.05:1, control borders 3.08:1. */
+@import '@fontsource-variable/jost';
+@import '@fontsource/ibm-plex-mono/400.css';
+@import '@fontsource/ibm-plex-mono/500.css';
+
+:root {
+  --paper: #f4f1ea;      /* off-white */
+  --paper-2: #ebe6dc;    /* panels, bands */
+  --paper-3: #fbfaf7;    /* raised surfaces */
+  --ink: #1e1d1b;        /* charcoal */
+  --ink-2: #4a4843;
+  --muted: #6b665d;
+  --line: #d6cfc2;       /* hairlines (decorative) */
+  --line-strong: #8f897d;/* control borders (≥ 3:1) */
+  --accent: #ff682b;
+  --on-accent: #1e1d1b;
+  --focus: #1e1d1b;
+  --danger: #b42318;
+  --ok: #2f6b3f;
+  --warn: #8a4b08;
+
+  --font: 'Jost Variable', 'Jost', 'Futura', 'Century Gothic', system-ui, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
+
+  /* type scale (1.25) */
+  --t-xs: .75rem; --t-sm: .875rem; --t-base: 1rem; --t-md: 1.125rem; --t-lg: 1.375rem; --t-xl: 1.75rem; --t-2xl: 2.25rem;
+  --t-3xl: clamp(2.25rem, 4.2vw, 3.25rem); --t-4xl: clamp(2.6rem, 4.6vw, 4.5rem);
+  /* spacing (4 px base) */
+  --s1: .25rem; --s2: .5rem; --s3: .75rem; --s4: 1rem; --s5: 1.5rem; --s6: 2rem; --s7: 3rem; --s8: 4.5rem; --s9: 7rem;
+  --radius: 4px; --radius-lg: 8px;
+  --shadow: 0 1px 0 rgb(30 29 27 / .04), 0 8px 24px -12px rgb(30 29 27 / .18);
+  color-scheme: light;
+}
+@media (prefers-color-scheme: dark) {
+  :root {
+    --paper: #1e1d1b; --paper-2: #262522; --paper-3: #2c2a27; --ink: #f4f1ea; --ink-2: #d9d4c9; --muted: #a39e93;
+    --line: #3a3833; --line-strong: #7d786e; --focus: #f4f1ea; --ok: #7fbf8f; --warn: #f0a868; --danger: #ff8a7a;
+    --shadow: 0 1px 0 rgb(0 0 0 / .2), 0 8px 24px -12px rgb(0 0 0 / .6);
+    color-scheme: dark;
+  }
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+html { -webkit-text-size-adjust: 100%; }
+body { margin: 0; background: var(--paper); color: var(--ink); font: 400 var(--t-base)/1.6 var(--font); font-feature-settings: 'ss01'; -webkit-font-smoothing: antialiased; }
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
+::selection { background: var(--accent); color: var(--on-accent); }
+@media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
+.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+.skip { position: absolute; left: var(--s4); top: -3rem; z-index: 100; background: var(--ink); color: var(--paper); padding: var(--s2) var(--s4); border-radius: var(--radius); }
+.skip:focus { top: var(--s4); }
+
+/* annotation label: like text on a drawing */
+.mono, .label { font-family: var(--mono); font-size: var(--t-xs); letter-spacing: .04em; }
+.label { text-transform: uppercase; color: var(--muted); }
+
+/* buttons: 44 px targets, charcoal on orange */
+.btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 44px; padding: 0 var(--s5); border: 1px solid transparent; border-radius: var(--radius);
+  background: var(--accent); color: var(--on-accent); font: 500 var(--t-base)/1 var(--font); text-decoration: none; cursor: pointer; transition: background .15s, border-color .15s, transform .15s; }
+.btn:hover { background: #ff7a44; }
+.btn:active { transform: translateY(1px); }
+.btn:disabled { opacity: .45; cursor: not-allowed; }
+.btn.ghost { background: transparent; color: var(--ink); border-color: var(--line-strong); }
+.btn.ghost:hover { border-color: var(--ink); background: var(--paper-3); }
+.btn.dark { background: var(--ink); color: var(--paper); }
+.btn.dark:hover { background: var(--ink-2); }
+.btn.sm { min-height: 36px; padding: 0 var(--s4); font-size: var(--t-sm); }
+.link { color: inherit; text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 2px; text-underline-offset: 3px; }
+.link:hover { text-decoration-color: currentColor; }
+
+/* crop-mark frame: a "sheet" around images and figures (the logo's own crop marks) */
+.sheet { position: relative; padding: var(--s4); }
+.sheet::before, .sheet::after { content: ''; position: absolute; width: 18px; height: 18px; border: 1.5px solid var(--ink); pointer-events: none; }
+.sheet::before { top: 0; left: 0; border-right: 0; border-bottom: 0; }
+.sheet::after { bottom: 0; right: 0; border-left: 0; border-top: 0; }
+.sheet > .tb { display: flex; justify-content: space-between; gap: var(--s4); margin-top: var(--s3); padding-top: var(--s2); border-top: 1px solid var(--ink); font-family: var(--mono); font-size: var(--t-xs); color: var(--muted); }

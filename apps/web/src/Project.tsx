@@ -1,12 +1,15 @@
-import { useEffect, useRef, useState } from 'preact/hooks';
+import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { type Plan, ROOM_TYPES, area, round } from '../../shared/plan';
 import { api } from './api';
 import { Plan2D } from './canvas/Plan2D';
 import { Plan3D } from './canvas/Plan3D';
 import { ROOM_COLORS } from './canvas/colors';
 import { checkPlan } from '../../shared/standards';
-import { hoverRoom, selectedRooms } from './state';
+import { chatPrompt, hoverRoom, selectedRooms } from './state';
+import { InfoPanel } from './InfoPanel';
+import { suggestLayout } from '../../shared/fengshui';
 import { Topbar } from './Topbar';
+import { Spinner } from './brand';
 
 type Content = {
   text: string; kind?: 'system'; claims?: { text: string; room_ids: string[] }[]; calculation?: string | null;
@@ -36,9 +39,10 @@ export function ProjectPage({ id }: { id: string }) {
   return (
     <div class="page ws-page">
       <Topbar>
-        <a href="#/" class="muted small">Projects</a> <span class="muted">/</span> <b>{data?.project.name ?? '…'}</b>
+        <a href="#/" class="crumb">Projects</a> <span class="crumb-sep" aria-hidden="true">/</span> <b>{data?.project.name ?? '…'}</b>
       </Topbar>
       {err && <p class="err pad">{err}</p>}
+      {!data && !err && <div class="loading-block grow"><Spinner size={48} label="Loading project" /></div>}
       {data && (
         <>
           <div class="tabs" role="tablist">
@@ -84,9 +88,19 @@ function Chat({ projectId, messages, hasPlan, resumeJob, onMessages, onPlan }: {
     throw new Error('Still working on the drawing. Reload the page later to see the result.');
   }
 
+  useEffect(() => {
+    const q = chatPrompt.value;
+    if (!q || busy) return;
+    chatPrompt.value = null;
+    ask(q);
+  }, [chatPrompt.value]);
+
   async function send(e: Event) {
     e.preventDefault();
-    const q = text.trim();
+    ask(text.trim());
+  }
+
+  async function ask(q: string) {
     if (!q || busy) return;
     setText('');
     push({ role: 'user', content: { text: q } });
@@ -118,12 +132,13 @@ function Chat({ projectId, messages, hasPlan, resumeJob, onMessages, onPlan }: {
       <div class="msgs" ref={list}>
         {!messages.length && (
           <div class="empty">
+            <p class="label">Ask</p>
             <p><b>Ask about this plan.</b></p>
             <p class="muted small">{hasPlan ? 'Try: "What is the area of the kitchen?", "How many windows are there?", "How many 30×30 cm tiles for the bathroom?"' : 'Upload a floor plan (PDF, DXF, PNG, JPG) with the + button. bimp builds a 2D and isometric 3D plan from it.'}</p>
           </div>
         )}
         {messages.map((m, i) => <Message key={i} m={m} />)}
-        {status && <p class="status muted small">{status}</p>}
+        {status && <p class="status muted small"><Spinner size={16} label={status} /> {status}</p>}
       </div>
       <form class="composer" onSubmit={send}>
         <input ref={file} type="file" accept=".pdf,.dxf,.png,.jpg,.jpeg,.webp" hidden
@@ -169,12 +184,16 @@ function Message({ m }: { m: Msg }) {
 // ---------------------------------------------------------------- canvas
 type Mode = '2d' | '3d' | 'split';
 
-function CanvasPane({ plan, projectId, name }: { plan: Plan | null; projectId: string; name: string }) {
+function CanvasPane({ plan: drawn, projectId, name }: { plan: Plan | null; projectId: string; name: string }) {
   const [mode, setMode] = useState<Mode>('2d');
   const [rot, setRot] = useState(0);
   const [source, setSource] = useState(false);
-  const [cut, setCut] = useState(true);
+  const [walls, setWalls] = useState<'dollhouse' | 'cut' | 'full'>('dollhouse');
   const [showChecks, setShowChecks] = useState(false);
+  const [suggest, setSuggest] = useState(false);
+  const [info, setInfo] = useState(true);
+  // Suggested furniture is shown alongside the drawing's own items and marked as a suggestion; never saved as drawing data.
+  const plan = useMemo(() => (drawn && suggest ? { ...drawn, fixtures: [...(drawn.fixtures ?? []), ...suggestLayout(drawn)] } : drawn), [drawn, suggest]);
   if (!plan) return <section class="canvas empty-canvas"><p class="muted">No plan yet. Upload a floor plan in the chat to see it here in 2D and 3D.</p></section>;
 
   const sourceUrl = !source || !plan.source ? null
@@ -194,17 +213,22 @@ function CanvasPane({ plan, projectId, name }: { plan: Plan | null; projectId: s
             <button key={m} aria-pressed={mode === m} onClick={() => setMode(m)}>{m === 'split' ? 'Split' : m.toUpperCase()}</button>
           ))}
         </div>
-        {show3d && (
+        {show3d && (<>
           <div class="seg" role="group" aria-label="Rotate 3D">
             <button onClick={() => setRot((r) => r - 1)} title="Rotate left">⟲</button>
             <button onClick={() => setRot((r) => r + 1)} title="Rotate right">⟳</button>
-            <button aria-pressed={cut} onClick={() => setCut(!cut)} title="Cut walls at 1.2 m to see the rooms">Cutaway</button>
           </div>
-        )}
+          <div class="seg" role="group" aria-label="Walls">
+            {([['dollhouse', 'Dollhouse', 'Front walls lowered, back walls full height'], ['cut', 'Cut 1.2 m', 'All walls cut at 1.2 m, like a plan section'], ['full', 'Full', 'All walls full height']] as const).map(([m, label, title]) => (
+              <button key={m} aria-pressed={walls === m} title={title} onClick={() => setWalls(m)}>{label}</button>
+            ))}
+          </div>
+        </>)}
         {(plan.source?.renderSha || plan.source?.mime.startsWith('image/')) && mode !== '3d' && (
           <label class="small toggle"><input type="checkbox" checked={source} onChange={(e) => setSource(e.currentTarget.checked)} /> Show source drawing</label>
         )}
         <span class="spacer" />
+        <button class="btn ghost sm" aria-pressed={info} onClick={() => setInfo(!info)}>Info</button>
         <span class={`badge${plan.measured ? ' ok' : ''}`} title={plan.assumptions.join('\n')}>
           {plan.measured ? `Measured · ${plan.scale.source}` : 'Preview, not measured'}
         </span>
@@ -212,7 +236,7 @@ function CanvasPane({ plan, projectId, name }: { plan: Plan | null; projectId: s
 
       <div class={`views mode-${mode}`}>
         {mode !== '3d' && <div class="view"><Plan2D plan={plan} sourceUrl={sourceUrl} title={name} /></div>}
-        {mode !== '2d' && <div class="view"><Plan3D plan={plan} rotation={rot} cutaway={cut} /></div>}
+        {mode !== '2d' && <div class="view"><Plan3D plan={plan} rotation={rot} walls={walls} /></div>}
         {showChecks && (
           <div class="checks" role="dialog" aria-label="Plan checks">
             <div class="checks-head"><b>Checks against design standards</b><button class="link" onClick={() => setShowChecks(false)} aria-label="Close">✕</button></div>
@@ -224,6 +248,7 @@ function CanvasPane({ plan, projectId, name }: { plan: Plan | null; projectId: s
             ))}
           </div>
         )}
+        {info && <InfoPanel plan={plan} suggest={suggest} onSuggest={setSuggest} />}
         <div class="info">
           {focus
             ? <><i class="sw" style={{ background: ROOM_COLORS[focus.type] }} /><b>{focus.name}</b> · {focus.type} · {round(area(focus.polygon), 1)} m²</>
