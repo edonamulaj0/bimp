@@ -1,6 +1,6 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
-import { samplePlan } from '../../shared/sample-plan';
+import { housePlan } from '../../shared/house-plan';
 import { visuals, visualsOn } from './visuals';
 import { site } from './site-images';
 import { clipPlan, parseRegion, regionContents, regionSize, type Region } from '../../shared/region';
@@ -31,7 +31,7 @@ app.post('/auth/signup', async (c) => {
   const { email, password } = validate(await c.req.json().catch(() => null));
   await signupThrottle(c.env, c.req.header('cf-connecting-ip') ?? 'local');
   const user = await createUser(c.env, email, password);
-  await createProject(c.env, user.id, 'Pilot house', samplePlan());
+  await createProject(c.env, user.id, 'Pilot house', housePlan());
   await startSession(c, user.id);
   return c.json({ user });
 });

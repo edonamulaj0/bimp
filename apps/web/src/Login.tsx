@@ -95,7 +95,7 @@ export function Login() {
       </main>
       <aside class={`login-right${photo ? ' photo' : ''}`} aria-hidden="true" style={photo ? { backgroundImage: `url(${photo})` } : undefined}>
         {!photo && <div class="bp-grid" />}
-        <p class="bp-caption"><span>Pilot house · courtyard house</span><span>{photo ? 'Generated with Cloudinary from the model' : 'Drawn by bimp from the plan'}</span></p>
+        <p class="bp-caption"><span>Courtyard house study</span><span>{photo ? 'Generated with Cloudinary from the model' : 'Drawn by bimp from the plan'}</span></p>
       </aside>
     </div>
   );

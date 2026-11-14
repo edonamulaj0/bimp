@@ -12,7 +12,16 @@ export const visualsOn = signal(false);
 export const visualsOpen = signal(false);
 export const AI_OFF = 'Answers are switched off on this server right now. The plan, measurements and checks still work.';
 export const route = signal(location.hash);
-addEventListener('hashchange', () => (route.value = location.hash));
+// Route changes crossfade (View Transitions) where the browser supports it and the reader hasn't asked for less motion.
+const calm = () => matchMedia('(prefers-reduced-motion: reduce)').matches;
+addEventListener('hashchange', () => {
+  const next = () => { route.value = location.hash; };
+  const vt = (document as Document & { startViewTransition?: (cb: () => Promise<void>) => unknown }).startViewTransition;
+  if (!vt || calm()) return next();
+  vt.call(document, () => new Promise<void>((done) => { next(); setTimeout(done, 30); })); // one tick for the re-render
+});
+/** Switches light / dark (see public/js.js). */
+export const toggleTheme = () => { (window as Window & { bimpTheme?: () => string }).bimpTheme?.(); };
 export const go = (hash: string) => { location.hash = hash; };
 
 /** Hash routes of the signed-in app. */

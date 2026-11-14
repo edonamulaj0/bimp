@@ -1,126 +1,106 @@
-// Marketing site motion. Lines draft themselves as they enter the view (each stroke's dash set to its measured length,
-// which works the same in Chromium, Firefox and Safari), the wireframe follows the scroll, and the hero's P-word is
-// redrafted every few seconds. Without motion (.js missing) everything is shown as is.
+// Marketing site motion. Scrolling is eased (Lenis) on pointer devices; headlines rise word by word from behind a
+// mask; rules, guides and drawings draft themselves as they enter; photographs and plates drift slightly against the scroll. Without JS (no .js class) or with reduced motion, everything is
+// simply shown and the page scrolls natively.
+import Lenis from 'lenis';
+
 const root = document.documentElement;
-const motion = root.classList.contains('js');
+const still = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const fine = matchMedia('(hover: hover) and (pointer: fine)').matches;
+const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
-// 1. measure strokes
-const shapes = 'path, rect, circle, line';
-const lens = new Map();
-for (const svg of document.querySelectorAll('svg.anim')) {
-  for (const el of svg.querySelectorAll(shapes)) {
-    let L = 0;
-    try { L = el.getTotalLength(); } catch { /* not rendered (display: none) */ }
-    if (!(L > 0)) { el.style.strokeDasharray = 'none'; continue; }
-    L = Math.ceil(L + 1);
-    lens.set(el, L);
-    el.style.transition = 'none'; // the hidden state is set instantly; only the drawing in animates
-    el.style.strokeDasharray = `${L}px ${L}px`;
-    el.style.strokeDashoffset = `${L}px`;
-  }
+if (!still && fine) new Lenis({ autoRaf: true, anchors: { offset: -88 }, lerp: 0.085, wheelMultiplier: 0.9 });
+
+// headlines: wrap each word in a mask so it can rise into place (line breaks and <em> are kept)
+const heads = $$('main h1, .sec-head h2, .ah-head h2, .bleed-text h2, .band h2').filter((h) => !h.closest('.doc, .plan, .entry'));
+if (!still) for (const h of heads) {
+  let n = 0;
+  const walk = (node) => {
+    for (const c of [...node.childNodes]) {
+      if (c.nodeType === 1) { walk(c); continue; }
+      if (c.nodeType !== 3 || !c.textContent.trim()) continue;
+      const frag = document.createDocumentFragment();
+      for (const part of c.textContent.split(/(\s+)/)) {
+        if (!part) continue;
+        if (/^\s+$/.test(part)) { frag.append(' '); continue; }
+        const w = document.createElement('span'), wi = document.createElement('span');
+        w.className = 'w'; wi.className = 'wi'; wi.style.setProperty('--w', n++); wi.textContent = part;
+        w.append(wi); frag.append(w);
+      }
+      c.replaceWith(frag);
+    }
+  };
+  walk(h);
+  h.classList.add('split');
 }
 
-// 2. reveal on scroll. The hidden state must be computed (and painted) before .in is added, or browsers skip the
-// transition and lines just appear: flush styles now, then start observing two frames later.
-const els = document.querySelectorAll('.draft, .register, .rise, .stroke, .ah-build, [data-in]');
-if (!motion || !('IntersectionObserver' in window)) { for (const el of lens.keys()) el.style.transition = ''; els.forEach((e) => e.classList.add('in')); }
+// reveal on entry; siblings that arrive together are staggered
+const sel = '.draft, .register, .rise, .stroke, .guides, .ah-rule, .sec-rule, .split, .pl, .ws-plate, .ph, .sheet-plate, .ask, .ah-list, .formats, .facts, .contact-grid, [data-in], .sec-head > p, .tile, .plan, .feature-row > *, .page-head .lead, .page-head .cta-row, .section .table-wrap, .formats > div, .section > .wrap > .frame, .faq details, .entry, .contact-grid > div, .ah-list li, .register > div, .cols3 > div';
+const els = $$(sel);
+$$('.guides').forEach((g) => [...g.children].forEach((i, n) => i.style.setProperty('--gi', n)));
+$$('.grid3, .grid2, .plans, .formats, .contact-grid, .cols3, .asks, .draft .titleblock').forEach((g) => [...g.children].forEach((c, n) => { if (!c.style.getPropertyValue('--k')) c.style.setProperty('--k', n % 4); }));
+if (still || !('IntersectionObserver' in window)) els.forEach((e) => e.classList.add('in'));
 else {
-  for (const el of lens.keys()) getComputedStyle(el).strokeDashoffset;
-  void document.body.offsetHeight;
-  for (const el of lens.keys()) el.style.transition = '';
-  const start = () => {
-    const io = new IntersectionObserver((entries) => entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { rootMargin: '0px 0px -24px 0px', threshold: 0 });
-    els.forEach((e) => io.observe(e));
-  };
-  requestAnimationFrame(() => requestAnimationFrame(start));
+  const io = new IntersectionObserver((entries) => entries.forEach((e) => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), { rootMargin: '0px 0px -8% 0px', threshold: 0 });
+  els.forEach((e) => io.observe(e));
 }
 
-// 3. construction sequence: layers draw in turn while the pinned box crosses the viewport
-const build = document.querySelector('.ah-build');
-if (build) {
-  const steps = [...build.querySelectorAll('.steps li')];
-  const layers = [['floor', 0, 4], ['up', 0.22, 4], ['top', 0.44, 4], ['roof', 0.66, 3.4]].map(([k, at, rate]) => ({ at, rate, paths: [...build.querySelectorAll(`.${k} path`)] }));
-  const pinned = () => getComputedStyle(build.querySelector('.pin-box')).position === 'sticky';
-  let raf = 0, last = -1;
-  const update = () => {
-    raf = 0;
-    const r = build.getBoundingClientRect(), span = r.height - innerHeight;
-    // not pinned (narrow screens): draw the whole model once it is on screen
-    const p = !motion ? 1 : pinned() && span > 0 ? Math.min(1, Math.max(0, -r.top / span)) : r.top < innerHeight * 0.8 ? Math.min(1, last < 0 ? 0.02 : last + 0.03) : 0;
-    if (Math.abs(p - last) < 0.0005) return;
-    last = p;
-    build.style.setProperty('--p', p.toFixed(4));
-    for (const { at, rate, paths } of layers) {
-      const t = Math.min(1, Math.max(0, (p - at) * rate));
-      for (const el of paths) { const L = lens.get(el); if (L) el.style.strokeDashoffset = `${(L * (1 - t)).toFixed(1)}px`; }
-    }
-    const k = Math.min(steps.length - 1, Math.floor(p * steps.length * 0.999));
-    steps.forEach((s, i) => s.classList.toggle('on', i === k));
-    if (!pinned() && p < 1 && p > 0) raf = requestAnimationFrame(update); // narrow screens: keep drawing to the end
-  };
-  const on = () => { if (!raf) raf = requestAnimationFrame(update); };
-  addEventListener('scroll', on, { passive: true });
-  addEventListener('resize', on);
-  update();
-}
-
-// 4. "Your Building Information Modeling P…": the P stays, the rest of the word is erased and redrafted
-const pw = document.querySelector('.ptag .pw b');
-if (pw) {
-  const words = (pw.dataset.words || 'Pilot').split(',').map((w) => w.trim()).filter(Boolean);
-  let i = 0;
-  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-  const type = async (to) => {
-    let cur = pw.textContent;
-    while (cur.length > 1) { cur = cur.slice(0, -1); pw.textContent = cur; await sleep(45); }
-    await sleep(160);
-    for (let k = 2; k <= to.length; k++) { pw.textContent = to.slice(0, k); await sleep(70); }
-  };
-  (async () => {
-    for (;;) {
-      await sleep(2600);
-      if (document.hidden) continue;
-      i = (i + 1) % words.length;
-      if (motion) await type(words[i]);
-      else pw.textContent = words[i];
-    }
-  })();
-}
-
-// 5. images generated with Cloudinary (see apps/shared/site-images.ts): swap each in once it has loaded; until then
-// (or when it isn't set up) the committed render stays.
-const cldImgs = document.querySelectorAll('img[data-cld]');
-if (cldImgs.length) {
-  fetch('/api/site/images', { credentials: 'omit' }).then((r) => (r.ok ? r.json() : { images: {} })).then(({ images }) => {
-    for (const img of cldImgs) {
-      const url = images?.[img.dataset.cld];
-      if (!url) continue;
-      const pre = new Image();
-      pre.decoding = 'async';
-      pre.onload = () => { img.classList.add('swap'); setTimeout(() => { img.src = url; img.classList.add('is-cld'); img.classList.remove('swap'); }, 250); };
-      pre.src = url;
-    }
-  }).catch(() => {});
-}
-
-// 6. the Menu: a full-screen index; Escape or a link closes it, focus returns to the button
-const toggle = document.querySelector('.menu-toggle'), menu = document.getElementById('site-menu');
-if (toggle && menu) {
-  const set = (open) => {
-    toggle.setAttribute('aria-expanded', String(open)); menu.hidden = !open; document.body.classList.toggle('menu-open', open);
-    if (open) menu.querySelector('a')?.focus(); else toggle.focus();
-  };
-  toggle.addEventListener('click', () => set(menu.hidden));
-  menu.addEventListener('click', (e) => { if (e.target.closest('a')) set(false); });
-  addEventListener('keydown', (e) => { if (e.key === 'Escape' && !menu.hidden) set(false); });
-}
-// home: the header sits over the hero until the page scrolls
+// one scroll loop: header and parallax
 const head = document.querySelector('.site-head');
-if (head && document.body.classList.contains('kat')) {
-  const solid = () => head.classList.toggle('solid', scrollY > innerHeight * 0.6);
-  addEventListener('scroll', solid, { passive: true }); solid();
+const drift = !still && fine ? $$('[data-parallax]').map((el) => ({ el, k: parseFloat(el.dataset.parallax) || 0, sc: el.dataset.scale ? ` scale(${el.dataset.scale})` : '', y: 0 })) : [];
+let last = scrollY, raf = 0;
+const update = () => {
+  raf = 0;
+  const y = scrollY, vh = innerHeight;
+  if (head) { if (y < 120 || y < last - 4) head.classList.remove('away'); else if (y > last + 4) head.classList.add('away'); }
+  last = y;
+  for (const d of drift) {
+    const box = d.sc ? d.el.parentElement : d.el; // a scaled image drifts inside its own frame
+    const r = box.getBoundingClientRect(), top = r.top - (d.sc ? 0 : d.y);
+    if (top > vh * 1.3 || top + r.height < -vh * 0.3) continue;
+    d.y = ((top + r.height / 2 - vh / 2) / vh) * d.k * vh;
+    d.el.style.transform = `translate3d(0, ${d.y.toFixed(1)}px, 0)${d.sc}`;
+  }
+};
+const on = () => { if (!raf) raf = requestAnimationFrame(update); };
+addEventListener('scroll', on, { passive: true });
+addEventListener('resize', on);
+update();
+
+// the hero plan answers for the room under the pointer, in its own title block: net area and the tiles to cover it
+for (const plate of $$('[data-readout]')) {
+  const q = (k) => document.querySelector(`[data-r="${k}"]`);
+  const name = q('name'), area = q('area'), tiles = q('tiles'), label = q('tile-label');
+  if (!name || !area) continue;
+  const whole = { name: name.textContent, m2: parseFloat(plate.dataset.total), size: '' };
+  let cur = whole, tile = [0.6, 0.6], t = 0;
+  const count = (m2) => Math.ceil(Math.ceil(m2 / (tile[0] * tile[1]) - 1e-9) * 1.1 - 1e-9); // tiles to cover, plus 10 % waste
+  const paint = () => {
+    name.textContent = cur.name; area.textContent = `${cur.m2.toFixed(1)} m²${cur.size ? ` · ${cur.size}` : ''}`;
+    if (tiles) tiles.textContent = count(cur.m2).toLocaleString('en');
+    if (label) label.textContent = `${tile[0] * 1000} × ${tile[1] * 1000} tiles, +10 %`;
+  };
+  const show = (next) => {
+    cur = next; clearTimeout(t);
+    const bs = [name, area, tiles].filter(Boolean);
+    bs.forEach((b) => b.classList.add('swap'));
+    t = setTimeout(() => { paint(); bs.forEach((b) => b.classList.remove('swap')); }, 140);
+  };
+  for (const room of $$('.room', plate)) {
+    const enter = () => show({ name: room.dataset.name, m2: parseFloat(room.dataset.m2), size: room.dataset.size });
+    const leave = () => show(whole);
+    room.addEventListener('pointerenter', enter); room.addEventListener('pointerleave', leave);
+    room.addEventListener('focus', enter); room.addEventListener('blur', leave);
+  }
+  const segs = $$('[data-tile]');
+  segs.forEach((b) => b.addEventListener('click', () => {
+    tile = b.dataset.tile.split(',').map(Number);
+    segs.forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    show(cur);
+  }));
+  paint();
 }
 
 // header: mark the current page
-document.querySelectorAll(`[data-nav="${document.body.dataset.page}"]`).forEach((a) => a.setAttribute('aria-current', 'page'));
+const page = document.body.dataset.page;
+$$(`[data-nav="${page}"]`).forEach((a) => a.setAttribute('aria-current', 'page'));
 root.classList.add('ready');

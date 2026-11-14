@@ -304,12 +304,12 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
       {kbd && (() => { const r = plan.rooms.find((x) => x.id === kbd); return r && <polygon class="focus-ring" aria-hidden="true" points={r.polygon.map((p) => p.join(',')).join(' ')} />; })()}
       {route && (
         <g pointer-events="none" class="escape" aria-hidden="true">
-          <polyline points={route.path.map((p) => p.join(',')).join(' ')} fill="none" stroke="#dc2626" stroke-width={fs * 0.18} stroke-dasharray={`${fs * 0.6} ${fs * 0.35}`} stroke-linejoin="round" />
-          <circle cx={route.from[0]} cy={route.from[1]} r={fs * 0.35} fill="#dc2626" />
-          <text x={escLabel![0]} y={escLabel![1]} font-size={fs * 1.1} text-anchor="middle" fill="#dc2626" font-weight="700" stroke="var(--paper)" stroke-width={fs * 0.25} paint-order="stroke">{route.distance_m} m to exit</text>
+          <polyline points={route.path.map((p) => p.join(',')).join(' ')} fill="none" stroke="var(--accent)" stroke-width={fs * 0.18} stroke-dasharray={`${fs * 0.6} ${fs * 0.35}`} stroke-linejoin="round" />
+          <circle cx={route.from[0]} cy={route.from[1]} r={fs * 0.35} fill="var(--accent)" />
+          <text x={escLabel![0]} y={escLabel![1]} font-size={fs * 1.1} text-anchor="middle" fill="var(--accent)" font-weight="700" stroke="var(--paper)" stroke-width={fs * 0.25} paint-order="stroke">{route.distance_m} m to exit</text>
         </g>
       )}
-      {exits.map((d) => <g key={d.id} pointer-events="none" aria-hidden="true"><circle cx={d.mid[0]} cy={d.mid[1]} r={fs * 0.6} fill="#15803d" /><text x={d.mid[0]} y={d.mid[1] + fs * 0.35} font-size={fs * 0.8} text-anchor="middle" fill="#fff" font-weight="700">EXIT</text></g>)}
+      {exits.map((d) => <g key={d.id} pointer-events="none" aria-hidden="true"><circle cx={d.mid[0]} cy={d.mid[1]} r={fs * 0.6} fill="var(--ink)" /><text x={d.mid[0]} y={d.mid[1] + fs * 0.35} font-size={fs * 0.8} text-anchor="middle" fill="#fff" font-weight="700">EXIT</text></g>)}
       {!compact && layers.labels && (
         <g pointer-events="none" aria-hidden="true" text-anchor="middle" class="labels" stroke="var(--paper)" stroke-width={fs * 0.22} paint-order="stroke" stroke-linejoin="round">
           {plan.rooms.map((r) => {

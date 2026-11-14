@@ -7,159 +7,213 @@
   <link rel="icon" href="/brand/favicon-32.png" sizes="32x32" type="image/png">
   <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
   <meta name="theme-color" content="#f4f1ea">
-  <title>bimp · Ask your drawings. See the answer on the sheet.</title>
-  <meta name="description" content="bimp, the Building Information Modeling Pilot: a workspace where architecture and construction teams read drawings into plans and models, ask questions answered from the sheet, mark up regions, compare revisions and check against design standards.">
+  <title>bimp · Your BIM partner</title>
+  <meta name="description" content="bimp, the Building Information Modeling Pilot: your BIM partner on site. It reads the drawings you are handed and does the take-off arithmetic, from tile counts to screed volumes, with every answer traced to the sheet.">
   <script src="/js.js"></script>
   <link rel="stylesheet" href="/site.css">
   <script type="module" src="/site.js"></script>
 </head>
-<body data-page="home" class="kat">
+<body data-page="home">
   <!-- @include header.html -->
   <main id="main">
-    <section class="k-hero" aria-labelledby="hero-h">
-      <div class="k-hero-media"><img class="cld " data-cld="hero" src="/renders/garden.png" alt="The pilot courtyard house in a landscaped garden, late afternoon" width="1600" height="1000" loading="eager" decoding="async"></div>
-      <div class="k-hero-shade" aria-hidden="true"></div>
-      <div class="wrap k-hero-copy">
-        <p class="ptag rise"><span>Your Building Information Modeling</span>
-          <span class="pw" aria-hidden="true"><b data-words="Pilot, Partner, Platform, Planner, Proofreader, Pathfinder, Peer reviewer, Plan reader">Pilot</b><i class="caret"></i></span>
-          <span class="sr-only">Pilot: your partner and platform for reading plans</span></p>
-        <h1 id="hero-h" class="rise" style="--k:1">Ask your drawings.<br>See the answer on the sheet.</h1>
-        <div class="k-hero-foot rise" style="--k:2">
-          <div class="cta-row"><a class="btn" href="/app/#signup">Start a project</a><a class="btn ghost on-dark" href="/product/">See the product</a></div>
-          <p class="k-meta"><span>Pilot house</span><span>Courtyard house · 194.4 m² · image from the model</span><a href="#intro" class="k-scroll">Scroll <span aria-hidden="true">↓</span></a></p>
-        </div>
-      </div>
-    </section>
-
-    <section class="k-sec" id="intro" aria-labelledby="intro-h">
-      <div class="wrap k-split">
-        <p class="k-label rise">About bimp</p>
-        <div>
-          <h2 id="intro-h" class="k-statement rise">Drawings are the record.<br><em>bimp makes them answer.</em></h2>
-          <p class="lead rise" style="--k:1">Drop in a plan and bimp reads it into rooms, walls and openings, draws it in 2D and as a model you can walk around, and answers questions about it. Every number traced to the sheet, or "not found" instead of a guess.</p>
-          <p class="rise" style="--k:2"><a class="more" href="/company/">Why we build it</a></p>
-        </div>
-      </div>
+    <section class="hx" aria-labelledby="hero-h">
+      <div class="guides" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
       <div class="wrap">
-        <dl class="k-stats">
-          <div class="rise"><dt>Net area of the pilot house, read room by room</dt><dd>194.4<small>m²</small></dd></div>
-          <div class="rise" style="--k:1"><dt>Rooms, doors and windows counted, each one cited</dt><dd>43</dd></div>
-          <div class="rise" style="--k:2"><dt>Escape routes traced to the three exits</dt><dd>13</dd></div>
-          <div class="rise" style="--k:3"><dt>Ways to read a sheet: ask, mark up, compare, check</dt><dd>4</dd></div>
-        </dl>
+        <div class="ah-rule"><b>bimp</b><span>Building Information Modeling Pilot</span><span>For the people who build it</span></div>
+        <h1 id="hero-h" class="display">Your BIM <span class="l2">partner.</span></h1>
+        <div class="sheet-grid">
+          <div class="hx-copy">
+            <p class="hx-sub rise">Ask the drawing. Skip the math.</p>
+            <p class="lead rise" style="--k:1">bimp reads the plans you're handed and does the take-off arithmetic for you. Ask how many 600 × 600 tiles the kitchen needs, how many metres of skirting, how much screed. Every answer shows its working and the rooms it came from.</p>
+            <div class="cta-row rise" style="--k:2">
+              <a class="btn" href="/app/#signup">Start a project</a>
+              <a class="btn ghost" href="/product/">See how it works</a>
+            </div>
+            <p class="hero-note rise" style="--k:3">Free during the pilot. Every account opens with this three-bedroom pilot house, ready to question.</p>
+          </div>
+          <figure class="plate draft hx-plate" data-readout data-total="161.28">
+            <!-- @include plan-drawing.html -->
+
+            <figcaption class="titleblock" aria-live="polite">
+              <div><span>Project</span><b>Pilot house · <span class="mono" style="display:inline;color:inherit;font-size:.92em">1:100</span></b></div>
+              <div><span>Room</span><b data-r="name">Whole house</b></div>
+              <div><span>Net floor area</span><b class="mono" data-r="area">161.3 m²</b></div>
+              <div><span data-r="tile-label">600 × 600 tiles, +10 %</span><b class="mono acc" data-r="tiles">493</b></div>
+            </figcaption>
+          </figure>
+          <div class="plate-hint rise">
+            <span>Point at a room to tile it.</span>
+            <div class="seg" role="group" aria-label="Tile size">
+              <button type="button" data-tile="0.3,0.3">300 × 300</button>
+              <button type="button" data-tile="0.6,0.6" aria-pressed="true">600 × 600</button>
+              <button type="button" data-tile="0.6,1.2">600 × 1200</button>
+            </div>
+          </div>
+        </div>
       </div>
     </section>
 
-    <section class="k-sec k-sheet" aria-labelledby="sheet-h">
-      <div class="wrap k-split">
-        <div>
-          <p class="k-label rise">The sheet</p>
-          <h2 id="sheet-h" class="rise">One drawing, drafted again line by line.</h2>
-          <p class="rise" style="--k:1">bimp redraws every sheet as a clean plan: walls by type, door swings, fittings, names and areas. Dimensioned on all four sides when you need it, printed to an exact scale when you don't.</p>
+    <section class="bleed" aria-labelledby="site-h">
+      <figure class="ph ph-wide"><img src="/photos/trusses.webp" width="2000" height="1333" alt="Timber roof trusses on a house under construction, seen from below against the sky." data-parallax="-.06" data-scale="1.16"></figure>
+      <div class="wrap sheet-grid bleed-text">
+        <div class="sec-rule"><b>01</b><span>From the sheet to the site</span><span>Photograph: Troy Mortier</span></div>
+        <h2 id="site-h">Someone has to turn the drawing into a building.</h2>
+        <div class="bleed-copy">
+          <p class="rise">That someone spends hours with a scale rule and a calculator: areas, lengths, counts, quantities, then again when the revision lands. bimp does that part, and shows you the sum so you can trust it on site.</p>
+          <a class="more rise" style="--k:1" href="/product/">How answers are checked</a>
         </div>
-        <figure class="plate draft">
-          <!-- @include plan-drawing.html -->
+      </div>
+    </section>
+
+    <section class="ah ah-index" aria-labelledby="ask-h">
+      <div class="guides" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="wrap sheet-grid">
+        <div class="sec-rule"><b>02</b><span>Ask it like you'd ask the engineer</span><span>Worked on the pilot house</span></div>
+        <div class="ah-head">
+          <h2 id="ask-h">The sums you do with a scale rule, answered.</h2>
+          <p class="rise" style="--k:1">Plain questions, in your language. The model reads the drawing; code does every measurement and every multiplication.</p>
+        </div>
+        <div class="asks">
+          <article class="ask">
+            <p class="ask-q">How many 600 × 600 tiles for the kitchen, dining and living floor?</p>
+            <dl class="ask-w">
+              <div><dt>Floor area</dt><dd>61.56 m²</dd></div>
+              <div><dt>One tile</dt><dd>0.36 m²</dd></div>
+              <div><dt>To cover</dt><dd>171</dd></div>
+              <div><dt>Waste</dt><dd>+10 %</dd></div>
+            </dl>
+            <p class="ask-a"><b>189</b><span>tiles: 171 to cover, 18 spare</span></p>
+          </article>
+          <article class="ask">
+            <p class="ask-q">How much skirting for the main bedroom, in 2.4 m lengths?</p>
+            <dl class="ask-w">
+              <div><dt>Perimeter</dt><dd>18.00 m</dd></div>
+              <div><dt>Less 2 doors</dt><dd>− 1.65 m</dd></div>
+              <div><dt>To fix</dt><dd>16.35 m</dd></div>
+              <div><dt>Length</dt><dd>2.4 m</dd></div>
+            </dl>
+            <p class="ask-a"><b>7</b><span>lengths, 0.45 m left over</span></p>
+          </article>
+          <article class="ask">
+            <p class="ask-q">How much screed for the bathroom at 50 mm?</p>
+            <dl class="ask-w">
+              <div><dt>Floor area</dt><dd>9.00 m²</dd></div>
+              <div><dt>Depth</dt><dd>0.05 m</dd></div>
+              <div><dt>Volume</dt><dd>9.00 × 0.05</dd></div>
+              <div><dt>Source</dt><dd>Bathroom</dd></div>
+            </dl>
+            <p class="ask-a"><b>0.45</b><span>m³ of screed</span></p>
+          </article>
+        </div>
+        <p class="asks-note rise">Worked from the pilot house, measured to wall centre lines. When a number can't be traced to the drawing, bimp says so instead of guessing.</p>
+      </div>
+    </section>
+
+    <section class="ah ah-plates" aria-labelledby="pl-h">
+      <div class="guides" aria-hidden="true"><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+      <div class="wrap sheet-grid">
+        <div class="sec-rule"><b>03</b><span>Plans and buildings</span><span>What you're handed, what gets built</span></div>
+        <div class="ah-head">
+          <h2 id="pl-h">It starts as lines on a sheet.</h2>
+          <p class="rise" style="--k:1">Vector PDF, DXF, a scan from the site office. bimp reads the sheet into rooms, walls, doors, windows and fittings you can measure and question.</p>
+        </div>
+        <div class="pairs">
+          <figure class="ph ph-tall pr-a" data-parallax=".04"><img src="/photos/concrete.webp" width="1400" height="1867" loading="lazy" alt="A board-marked concrete house with a deep open porch, seen from the garden path.">
+            <figcaption><span>Concrete house, garden side</span><span>Photograph: Declan Sun</span></figcaption></figure>
+          <figure class="sheet-plate pr-b" data-parallax="-.03"><div class="sheet-img"><img src="/photos/plan-swiss-3575.webp" width="1140" height="690" loading="lazy" alt="Ground floor plan of an apartment at 1:100: two bedrooms, living room, kitchen, bathroom, corridors and a balcony, with hatched walls and door swings."></div>
+            <figcaption><span>Ground floor, 1:100</span><span>Swiss Dwellings, site 3575 · CC BY 4.0</span></figcaption></figure>
+          <figure class="sheet-plate pr-c" data-parallax=".03"><div class="sheet-img"><img src="/photos/plan-swiss-694.webp" width="669" height="894" loading="lazy" alt="First floor plan of an apartment at 1:100: three rooms, kitchen, two bathrooms, corridor, stairwell and a balcony."></div>
+            <figcaption><span>First floor, 1:100</span><span>Swiss Dwellings, site 694 · CC BY 4.0</span></figcaption></figure>
+          <figure class="ph ph-land pr-d" data-parallax="-.04"><img src="/photos/frame.webp" width="1800" height="1200" loading="lazy" alt="A two-storey timber-framed house under construction with scaffolding, on a cleared site.">
+            <figcaption><span>Timber frame, first fix</span><span>Photograph: Troy Mortier</span></figcaption></figure>
+          <figure class="ph ph-sq pr-e" data-parallax=".05"><img src="/photos/house-white.webp" width="1400" height="1400" loading="lazy" alt="A white rendered house of stepped cubic volumes behind a low garden wall.">
+            <figcaption><span>Rendered house, street side</span><span>Photograph: Pixasquare</span></figcaption></figure>
+        </div>
+        <p class="asks-note rise">The photographs and the plans are of different buildings: plans from the test set bimp is measured against, photographs from Unsplash. <a class="link" href="/docs/#credits">Credits</a></p>
+      </div>
+    </section>
+
+    <section class="ah ah-ws" aria-labelledby="ws-h">
+      <div class="wrap sheet-grid">
+        <div class="sec-rule"><b>04</b><span>The workspace</span><span>Plate 01</span></div>
+        <div class="ah-head">
+          <h2 id="ws-h">The drawing on one side, the answer on the other.</h2>
+          <p class="rise" style="--k:1">Ask on the left, see the rooms it used light up on the plan. Works on a phone in the site cabin as well as on the office screen, in light or dark.</p>
+        </div>
+        <figure class="ws-plate" data-parallax=".04">
+          <div class="shot"><img src="/shots/workspace.webp" width="1440" height="900" loading="lazy" alt="The bimp workspace with the pilot house plan in the centre, the project's files on the left and the room information panel on the right."></div>
           <figcaption class="titleblock">
+            <div><span>Plate</span><b>01 Workspace</b></div>
             <div><span>Project</span><b>Pilot house</b></div>
-            <div><span>Sheet</span><b>A-101 Ground floor</b></div>
-            <div><span>Scale</span><b class="mono">1:100</b></div>
-            <div><span>Net area</span><b class="mono">194.4 m²</b></div>
+            <div><span>View</span><b>Plan, 2D</b></div>
+            <div><span>Net floor area</span><b class="mono">161.3 m²</b></div>
           </figcaption>
         </figure>
       </div>
     </section>
 
-    <section class="k-sec" aria-labelledby="idx-h">
-      <div class="wrap">
-        <div class="k-head"><h2 id="idx-h" class="rise">What a sheet can do<br><em>once bimp has read it.</em></h2><p class="rise" style="--k:1">Five things you do with drawings every day, in one workspace your whole team shares.</p></div>
-        <ol class="k-index">
-          <li class="k-item">
-            <div class="k-item-head rise"><span class="k-n mono">(01)</span><h3>Ask</h3><span class="k-tag">Answers with sources</span></div>
-            <div class="k-pair">
-              <a class="k-big rise" href="/docs/#asking"><img class="cld " data-cld="street" src="/renders/street.png" alt="The entrance side of the pilot house from a quiet street" width="1600" height="1000" loading="lazy" decoding="async"></a>
-              <a class="k-small rise" style="--k:1" href="/docs/#asking"><img class="cld " data-cld="corner" src="/renders/corner.png" alt="Low-angle view of the pilot house against the sky" width="1600" height="1000" loading="lazy" decoding="async"></a>
-            </div>
-            <div class="k-cap rise"><p><b>Ask</b> — in plain words, in your language.</p><ul><li>Areas, sizes, volumes, net and gross</li><li>Counts of doors, windows and fittings, each cited</li><li>"Not found" instead of a guess</li></ul></div>
-          </li>
-          <li class="k-item flip">
-            <div class="k-item-head rise"><span class="k-n mono">(02)</span><h3>Mark up</h3><span class="k-tag">New</span></div>
-            <div class="k-pair">
-              <a class="k-big rise" href="/docs/#workspace"><img class="cld " data-cld="aerial" src="/renders/aerial.png" alt="Aerial view of the L-shaped pilot house in countryside" width="1600" height="1000" loading="lazy" decoding="async"></a>
-              <a class="k-small rise" style="--k:1" href="/docs/#workspace"><img class="cld " data-cld="autumn" src="/renders/courtyard.png" alt="The courtyard of the pilot house in autumn" width="1600" height="1000" loading="lazy" decoding="async"></a>
-            </div>
-            <div class="k-cap rise"><p><b>Mark up</b> — drag a region over the plan or the model.</p><ul><li>bimp lists the rooms, openings and fittings inside</li><li>Answers come from inside the region only</li><li>Measure between snapped corners</li></ul></div>
-          </li>
-          <li class="k-item">
-            <div class="k-item-head rise"><span class="k-n mono">(03)</span><h3>Walk the model</h3><span class="k-tag">2D and 3D</span></div>
-            <div class="k-pair">
-              <a class="k-big rise" href="/docs/#plans"><img class="cld " data-cld="dusk" src="/renders/courtyard.png" alt="The courtyard of the pilot house at dusk, windows lit" width="1600" height="1000" loading="lazy" decoding="async"></a>
-              <a class="k-small rise" style="--k:1" href="/docs/#plans"><img class="cld " data-cld="meadow" src="/renders/corner.png" alt="The pilot house in a wildflower meadow" width="1600" height="1000" loading="lazy" decoding="async"></a>
-            </div>
-            <div class="k-cap rise"><p><b>Walk the model</b> — orbit, pan and zoom freely.</p><ul><li>Isometric, top, front, side; perspective or parallel</li><li>Cut at 1.2 m like a plan section</li><li>Architectural images from any view</li></ul></div>
-          </li>
-        </ol>
-        <ul class="k-rows">
-          <li class="rise"><span class="k-n mono">(04)</span><h3>Compare revisions</h3><p>Each new issue is the next revision. Rooms added, removed or resized, and the change in area.</p><a class="more" href="/docs/#revisions">Revisions</a></li>
-          <li class="rise"><span class="k-n mono">(05)</span><h3>Check the standards</h3><p>Room sizes, widths, daylight and escape distances, each flag citing its Metric Handbook table.</p><a class="more" href="/docs/#standards">Checks</a></li>
-        </ul>
-      </div>
-    </section>
-
-    <section class="k-sec k-feature" aria-labelledby="feat-h">
-      <div class="wrap">
-        <div class="k-head"><h2 id="feat-h" class="rise">One model,<br><em>many images.</em></h2><p class="rise" style="--k:1">From the 3D view, bimp has Cloudinary set the model in a scene: a garden, a street at dusk, a studio table. Every image on this page was made from the pilot house's model.</p></div>
-        <ul class="k-cards">
-          <li class="rise"><figure><img class="cld " data-cld="morning" src="/renders/garden.png" alt="The pilot house in a misty meadow at sunrise" width="1200" height="1500" loading="lazy" decoding="async"><figcaption><b>Morning</b><span>Generated scene, 4:5</span></figcaption></figure></li>
-          <li class="rise" style="--k:1"><figure><img class="cld " data-cld="winter" src="/renders/street.png" alt="The pilot house in snow at dusk" width="1200" height="1500" loading="lazy" decoding="async"><figcaption><b>Winter dusk</b><span>Generated scene, 4:5</span></figcaption></figure></li>
-          <li class="rise" style="--k:2"><figure><img class="cld " data-cld="night" src="/renders/aerial.png" alt="Aerial view of the pilot house at night with lit windows" width="1200" height="1500" loading="lazy" decoding="async"><figcaption><b>Night</b><span>Generated scene, aerial</span></figcaption></figure></li>
-        </ul>
-      </div>
-    </section>
-
-    <section class="ah ah-build" aria-labelledby="build-h">
-      <div class="pin-box">
-        <div class="wrap sheet-grid">
-          <div style="grid-column: 1 / span 4">
-            <h2 id="build-h" style="font-size: clamp(1.75rem, 3vw, 2.5rem); letter-spacing: -.03em; margin-bottom: var(--s5)">From sheet to model.</h2>
-            <ol class="steps">
-              <li class="on"><b>The sheet is read</b><p>Line work, text and the stated scale become room outlines with exact areas.</p></li>
-              <li><b>Walls rise</b><p>Wall thicknesses from the drawing; openings cut where the doors and windows are.</p></li>
-              <li><b>Heads and levels</b><p>Ceiling height and floor level when the drawing states them, assumed and labelled when it doesn't.</p></li>
-              <li><b>A model to question</b><p>Orbit it, cut it at 1.2 m, mark a region and ask.</p></li>
-            </ol>
-            <div class="progress" aria-hidden="true"><i></i></div>
-          </div>
-          <figure>
-            <!-- @include wire-drawing.html -->
-          </figure>
+    <section class="ah ah-index" aria-labelledby="how-h">
+      <div class="wrap sheet-grid">
+        <div class="sec-rule"><b>05</b><span>On the job</span><span>Four steps</span></div>
+        <div class="ah-head">
+          <h2 id="how-h">From the drawing to the order sheet.</h2>
+        </div>
+        <div class="register">
+          <div style="--k:0"><span class="numeral">01</span><h3>Drop in the drawing</h3><p>PDF, DXF or a photo of the sheet. bimp reads it into rooms, walls, openings and fittings, to scale when the drawing states one.</p></div>
+          <div style="--k:1"><span class="numeral">02</span><h3>Ask, or mark an area</h3><p>Ask about the whole building, or drag a box over the part you're pricing. Answers come only from what's inside it.</p></div>
+          <div style="--k:2"><span class="numeral">03</span><h3>Check the working</h3><p>Areas, lengths, counts and the sum itself are shown, with the rooms they came from. Unverified numbers are marked.</p></div>
+          <div style="--k:3"><span class="numeral">04</span><h3>When it changes</h3><p>The next issue becomes the next revision. Compare the two and see which rooms, walls and areas moved before you reorder.</p></div>
         </div>
       </div>
     </section>
 
+    <section class="bleed" aria-label="On site">
+      <figure class="ph ph-wide"><img src="/photos/concrete-build.webp" width="1800" height="1386" loading="lazy" alt="A two-storey concrete house under construction with a pile of sand in front." data-parallax="-.06" data-scale="1.16"></figure>
+    </section>
 
-    <section class="section" aria-labelledby="fmt-h">
-      <div class="wrap">
-        <div class="sec-head">
-          <h2 id="fmt-h">Works with the drawings you already have</h2>
-          <p class="lead">Re-uploading the same file reuses its earlier reading.</p>
+    <section class="ah section" aria-labelledby="cap-h">
+      <div class="wrap sheet-grid">
+        <div class="sec-rule"><b>06</b><span>What it does</span><span>Today, in the pilot · Photograph above: Divaris Shirichena</span></div>
+        <div class="ah-head">
+          <h2 id="cap-h">Less arithmetic. More building.</h2>
         </div>
-        <div class="formats">
+        <ul class="ah-list">
+          <li><h3>Quantities with the sum shown</h3><p>Tiles, flooring, skirting, paint, screed and volumes from the measured plan, with waste you set and the calculation written out.</p><a class="more" href="/docs/#asking">How answers are checked</a></li>
+          <li><h3>Drawings in, plans out</h3><p>Vector PDF and DXF read to scale; scans and photos as labelled previews. Up to 50 MB a file.</p><a class="more" href="/docs/#plans">Plans and dimensions</a></li>
+          <li><h3>Counts you can point at</h3><p>Doors, windows, WCs, sinks and fittings, each one marked on the plan so you can see what was counted.</p><a class="more" href="/docs/#asking">Asking</a></li>
+          <li><h3>Notes pinned to the spot</h3><p>Pin a comment where the problem is; the whole crew sees it on the plan, and bimp can answer in the thread.</p><a class="more" href="/docs/#comments">Comments and pins</a></li>
+          <li><h3>Revisions compared</h3><p>Rooms added, removed or resized between issues, and the change in net and gross area.</p><a class="more" href="/docs/#teams">Teams and revisions</a></li>
+          <li><h3>Print to scale</h3><p>Any 1:x on screen; print at an exact paper scale on the smallest ISO sheet that fits.</p><a class="more" href="/docs/#plans">Printing</a></li>
+        </ul>
+      </div>
+    </section>
+
+    <section class="ah section" aria-labelledby="fmt-h">
+      <div class="wrap sheet-grid">
+        <div class="sec-rule"><b>07</b><span>Formats</span><span>Measured or preview</span></div>
+        <div class="ah-head">
+          <h2 id="fmt-h">Works with the drawings you already have.</h2>
+          <p class="rise" style="--k:1">Re-uploading the same file reuses its earlier reading.</p>
+        </div>
+        <div class="formats" style="grid-column:1 / -1">
           <div><h3>Vector PDF <span class="pill ok">Measured</span></h3><p>Lines, text and the sheet's 1:N scale read exactly.</p></div>
           <div><h3>DXF <span class="pill ok">Measured</span></h3><p>Geometry and text from the CAD file; scale from its units.</p></div>
-          <div><h3>Scans and images <span class="pill">Preview</span></h3><p>PDF scans, PNG, JPG, WebP. Scale from the sheet, checked against a dimension.</p></div>
+          <div><h3>Scans and photos <span class="pill">Preview</span></h3><p>PDF scans, PNG, JPG, WebP. Scale from the sheet, checked against a dimension.</p></div>
           <div><h3>DWG and IFC <span class="pill">Not yet</span></h3><p>Export DWG to DXF or PDF. IFC models are next.</p></div>
         </div>
       </div>
     </section>
 
-
-    <section class="k-band" aria-labelledby="cta-h">
-      <div class="k-band-media"><img class="cld " data-cld="dusk" src="/renders/courtyard.png" alt="" width="1600" height="1000" loading="lazy" decoding="async"></div>
-      <div class="k-hero-shade" aria-hidden="true"></div>
-      <div class="wrap k-band-copy">
-        <h2 id="cta-h" class="rise">Start with the pilot house.</h2>
-        <p class="rise" style="--k:1">Free during the pilot. Bring your own drawings when you're ready.</p>
-        <div class="cta-row rise" style="--k:2"><a class="btn" href="/app/#signup">Start a project</a><a class="btn ghost on-dark" href="/docs/">Read the docs</a></div>
+    <section class="band" aria-labelledby="cta-h">
+      <div class="wrap band-row">
+        <div>
+          <h2 id="cta-h">Bring the next drawing.</h2>
+          <p>Free during the pilot. Start on the pilot house, then drop in your own.</p>
+        </div>
+        <div class="cta-row">
+          <a class="btn" href="/app/#signup">Start a project</a>
+          <a class="btn ghost" href="/docs/">Read the docs</a>
+        </div>
       </div>
     </section>
   </main>

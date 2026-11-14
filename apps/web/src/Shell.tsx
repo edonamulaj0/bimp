@@ -1,7 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api, loadMe } from './api';
-import { drawerOpen, go, newProject, newTeam, parsed, projectsVersion, route, sidebarCollapsed, teams, user } from './state';
+import { drawerOpen, go, toggleTheme, newProject, newTeam, parsed, projectsVersion, route, sidebarCollapsed, teams, user } from './state';
 import { Logo } from './brand';
 import { Icon } from './icons';
 import { Dialog, Menu } from './ui';
@@ -54,7 +54,7 @@ export function Sidebar() {
           <li><button class="sb-add" onClick={() => (newTeam.value = true)}><Icon name="plus" />New team</button></li>
         </ul>
         <div class="sb-foot">
-          <Menu label="Account" align="up" class="sb-user" items={[{ label: 'Sign out', onSelect: out }]}
+          <Menu label="Account" align="up" class="sb-user" items={[{ label: 'Light / dark', onSelect: toggleTheme }, { label: 'Sign out', onSelect: out }]}
             text={<><span class="avatar" aria-hidden="true">{email.slice(0, 1).toUpperCase()}</span><span class="sb-email">{email}</span></>} />
         </div>
       </nav>
