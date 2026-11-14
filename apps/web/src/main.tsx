@@ -5,11 +5,12 @@ import { Login } from './Login';
 import { Projects } from './Projects';
 import { ProjectPage } from './Project';
 import { route, user } from './state';
+import { Spinner } from './brand';
 import './app.css';
 
 function App() {
   useEffect(() => { api('/me').then((d) => (user.value = d.user)).catch(() => (user.value = null)); }, []);
-  if (user.value === undefined) return <div class="boot logo">bimp.</div>;
+  if (user.value === undefined) return <div class="boot"><Spinner size={56} /></div>;
   if (!user.value) return <Login />;
   const m = route.value.match(/^#\/p\/([\w-]+)/);
   return m ? <ProjectPage key={m[1]} id={m[1]} /> : <Projects />;

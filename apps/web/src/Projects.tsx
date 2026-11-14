@@ -2,6 +2,7 @@ import { useEffect, useState } from 'preact/hooks';
 import { api } from './api';
 import { go } from './state';
 import { Topbar } from './Topbar';
+import { Spinner } from './brand';
 
 type P = { id: string; name: string; updated_at: number; files: number; has_plan: number };
 
@@ -34,7 +35,7 @@ export function Projects() {
             <input id="pname" placeholder="e.g. Riverside block B" value={name} onInput={(e) => setName(e.currentTarget.value)} maxLength={120} />
             <button class="btn" disabled={!name.trim()}>Create</button>
           </form>
-          {list === null && !err && <p class="muted">Loading…</p>}
+          {list === null && !err && <div class="loading-block"><Spinner /></div>}
           {list?.map((p) => (
             <article class="card" key={p.id}>
               <a class="card-link" href={`#/p/${p.id}`}><h2>{p.name}</h2></a>

@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="5285 3576 1122 1122" role="img" aria-label="Loading" style="fill-rule:evenodd;clip-rule:evenodd">
+ <defs>
+  <style type="text/css">
+    .ld-str0 {stroke:currentColor;stroke-width:93.32;stroke-miterlimit:2.61313}
+    .ld-str1 {stroke:currentColor;stroke-width:69.99;stroke-linecap:round;stroke-miterlimit:2.61313}
+    .ld-fil1 {fill:none;fill-rule:nonzero}
+    .ld-fil0 {fill:#FF6B2B;fill-rule:nonzero}
+    @keyframes ld-spin { to { transform: rotate(360deg) } }
+    .ld-rot { transform-origin: 5846.25px 4136.67px; animation: ld-spin 1.1s linear infinite }
+</style>
+ </defs>
+ <g id="Layer_x0020_1">
+  <g class="ld-rot">
+   <path class="ld-fil0" d="M5846.25 4136.67l0 -369.4c203.98,0 369.41,165.43 369.41,369.4l-369.41 0z"/>
+   <path class="ld-fil0" d="M5846.25 4136.67l0 369.4c-203.97,0 -369.39,-165.42 -369.39,-369.4l369.39 0z"/>
+   <circle class="ld-fil1 ld-str0" cx="5846.25" cy="4136.67" r="369.4"/>
+   <line class="ld-fil1 ld-str1" x1="5360.19" y1="4136.67" x2="6332.3" y2= "4136.67" />
+   <line class="ld-fil1 ld-str1" x1="5846.25" y1="3650.61" x2="5846.25" y2= "4622.72" />
+  </g>
+ </g>
+</svg>

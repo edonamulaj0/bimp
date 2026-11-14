@@ -58,3 +58,7 @@ footer { border-top: 1px solid var(--line); color: var(--muted); font-size: .9re
   .shot, .grid, .two { grid-template-columns: 1fr; }
   .chat { border-right: 0; border-bottom: 1px solid var(--line); }
 }
+
+.mk-logo { display: inline-block; height: 36px; line-height: 0; color: var(--fg); }
+.mk-logo svg { height: 100%; width: auto; }
+.mk-logo.sm { height: 18px; vertical-align: -3px; margin-right: .25rem; }

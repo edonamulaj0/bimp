@@ -9,6 +9,7 @@ import { chatPrompt, hoverRoom, selectedRooms } from './state';
 import { InfoPanel } from './InfoPanel';
 import { suggestLayout } from '../../shared/fengshui';
 import { Topbar } from './Topbar';
+import { Spinner } from './brand';
 
 type Content = {
   text: string; kind?: 'system'; claims?: { text: string; room_ids: string[] }[]; calculation?: string | null;
@@ -41,6 +42,7 @@ export function ProjectPage({ id }: { id: string }) {
         <a href="#/" class="muted small">Projects</a> <span class="muted">/</span> <b>{data?.project.name ?? '…'}</b>
       </Topbar>
       {err && <p class="err pad">{err}</p>}
+      {!data && !err && <div class="loading-block grow"><Spinner size={48} label="Loading project" /></div>}
       {data && (
         <>
           <div class="tabs" role="tablist">
@@ -135,7 +137,7 @@ function Chat({ projectId, messages, hasPlan, resumeJob, onMessages, onPlan }: {
           </div>
         )}
         {messages.map((m, i) => <Message key={i} m={m} />)}
-        {status && <p class="status muted small">{status}</p>}
+        {status && <p class="status muted small"><Spinner size={16} label={status} /> {status}</p>}
       </div>
       <form class="composer" onSubmit={send}>
         <input ref={file} type="file" accept=".pdf,.dxf,.png,.jpg,.jpeg,.webp" hidden

@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api } from './api';
 import { go, user } from './state';
+import { Logo } from './brand';
 
 type Mode = 'login' | 'signup';
 type Step = 'email' | 'password' | 'confirm';
@@ -50,7 +51,7 @@ export function Login() {
     <div class="login">
       <main class="login-left">
         <div class="login-box">
-          <h1 class="logo big">bimp.</h1>
+          <h1 class="logo big"><Logo height={88} /></h1>
           <p class="muted">{mode === 'login' ? 'Sign in to ask your drawings.' : 'Create your account.'}</p>
           <form class="bar" onSubmit={submit} autocomplete="on">
             {step !== 'email' && (

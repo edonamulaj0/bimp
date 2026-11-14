@@ -458,7 +458,15 @@ Avoid: "100% accurate" claims, renders better than the real product, generic AI 
 - Name: **BIMP** — *BIM Pilot*. Tagline candidates: "Every answer, on the drawing.", "Answers you can point to.",
   "Your pilot through the drawing set."
 - Tone: precise, calm, practical, plain words. Professional, not corporate; technical, not cold.
-- Visual identity: **TBD** — to be generated from a brand board. Constraints: no AI clichés (sparkles, glowing orbs,
+- Visual identity (2026-11-14, supplied by the team as CorelDRAW SVGs):
+  - Full logo `apps/web/src/brand/logo.svg` (lowercase "bimp": the b drawn as a door swing, the i's dot as a target
+    mark). Used in the app top bar, login, marketing header and footer. Accent orange **#FF6B2B** in the marks only.
+  - Icon `apps/web/public/brand/favicon.svg` (the b on a #17191c rounded tile) + PNG 32/180/512 fallbacks.
+  - Spinner `apps/web/src/brand/loading.svg` (target mark, rotates) for loading states.
+  - Web versions: cropped to the artwork, print crop marks removed, white → currentColor so the marks follow the
+    text colour (dark on light, light in dark mode), class names prefixed per file. UI accent stays #c2410c for text
+    and buttons (better contrast on white than #FF6B2B).
+- Previously: visual identity TBD — to be generated from a brand board. Constraints: no AI clichés (sparkles, glowing orbs,
   brains, robots, purple-blue gradients, neon, glassmorphism), no construction clichés (hard hats, cranes, stock
   photos), no all-blue blueprint look, no generic rounded startup aesthetic. Fonts must be real and available (e.g.
   Google Fonts). Once chosen, record palette (hex), fonts and logo rules here.
