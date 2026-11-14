@@ -25,6 +25,7 @@ between teams. Anyone with access can upload, ask, comment and label revisions.
 - `PATCH /projects/:id { name?, team_id? }` (`team_id` owner only; `null` = personal)
 - `DELETE /projects/:id` (owner)
 - `GET /projects/:id` → `{ project: {id, name, created_at, updated_at, role, team}, plan, plan_id, revisions, files, jobs, messages }`
+- `GET /projects/:id/files/:fid/preview` → the uploaded drawing as an image: the file itself for PNG/JPG/WebP, the sheet as rendered for reading for PDF/DXF (404 until it has been read)
   - `revisions`: newest first, `[{ id, rev, file_id, filename, note, created_at, rooms, net_m2, measured }]` (`rev` counts from 1, oldest first)
   - `messages[]`: `{ id, role, content, created_at, user_email }` (`user_email` on user messages in shared projects)
 

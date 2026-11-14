@@ -285,6 +285,11 @@ td.c-name { height: 44px; }
 .ft-file { font-size: .86em; }
 .ft-meta { flex: none; display: inline-flex; align-items: center; gap: 6px; font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .ft-rev { padding: 0 4px; border-radius: 3px; background: var(--paper-2); color: var(--ink-2); }
+.fp-stage { display: grid; place-items: center; min-height: 240px; max-height: 70vh; overflow: auto; background: #fff; border: 1px solid var(--line); border-radius: 6px; }
+.fp-stage img { display: block; max-width: 100%; max-height: 70vh; object-fit: contain; }
+.fp-stage img.pending { position: absolute; visibility: hidden; }
+.fp-foot { display: flex; flex-wrap: wrap; align-items: center; gap: var(--s2); }
+.dlg-head h2 { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ft-drop { flex: none; display: flex; align-items: center; gap: var(--s2); margin: var(--s1) var(--s2) var(--s2); padding: var(--s2) var(--s3); border: 1.5px dashed var(--line-strong); border-radius: 6px; background: none; text-align: left; cursor: pointer; color: var(--ink-2); font-size: var(--t-xs); }
 .ft-drop > span { display: flex; flex-direction: column; }
 .ft-drop b { font-weight: 500; color: var(--ink); }
@@ -311,6 +316,27 @@ td.c-name { height: 44px; }
 .empty-h { font: 500 var(--t-base)/1.4 var(--font); margin: 0 0 var(--s1); }
 .msg { max-width: 94%; overflow-wrap: anywhere; line-height: 1.5; }
 .msg p { margin: 0; }
+/* Markdown in answers: blocks are spaced from each other, never from the bubble's edge */
+.md { display: flow-root; line-height: 1.55; }
+.md > * { margin: 0; }
+.md > * + * { margin-top: .6em; }
+.md h3, .md h4, .md h5, .md h6 { font: 600 1em/1.35 var(--font); color: var(--ink); }
+.md h3 { font-size: 1.08em; }
+.md > * + :is(h3, h4, h5, h6) { margin-top: 1em; }
+.md ul, .md ol { padding-left: 1.3em; }
+.md li + li, .md li > ul, .md li > ol { margin-top: .25em; }
+.md li::marker { color: var(--muted); }
+.md strong { font-weight: 600; color: var(--ink); }
+.md code { font: .9em var(--mono); background: var(--surface); border: 1px solid var(--line); border-radius: 3px; padding: 0 .3em; }
+.md pre { padding: var(--s2) var(--s3); background: var(--surface); border: 1px solid var(--line); border-radius: 4px; overflow-x: auto; }
+.md pre code { border: 0; padding: 0; background: none; white-space: pre; }
+.md blockquote { padding-left: var(--s3); border-left: 2px solid var(--line-strong); color: var(--ink-2); }
+.md hr { border: 0; border-top: 1px solid var(--line); margin: .9em 0; }
+.md a { color: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.md-table { overflow-x: auto; }
+.md table { border-collapse: collapse; font-size: var(--t-xs); font-variant-numeric: tabular-nums; }
+.md th, .md td { padding: 3px var(--s2); border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
+.md th { font-weight: 600; border-bottom-color: var(--line-strong); white-space: nowrap; }
 .msg-user { align-self: flex-end; display: flex; flex-direction: column; align-items: flex-end; gap: 2px; max-width: 94%; }
 .who-line { font-size: var(--t-xs); color: var(--muted); }
 .msg.user { background: var(--ink); color: var(--paper); padding: 6px var(--s3); border-radius: 10px 10px 3px 10px; max-width: 100%; }

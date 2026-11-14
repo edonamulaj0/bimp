@@ -16,7 +16,6 @@
     "ALLOW_SIGNUP": "true",
     // Optional: https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>
     "AI_GATEWAY_URL": "",
-    "AI_GATEWAY_URL": "",
     // Cloudinary image generation from the 3D model and for the site. The cloud name and API key are not secret;
     // the API secret is: set it with `wrangler secret put CLOUDINARY_API_SECRET`, never here.
     "CLOUDINARY_CLOUD_NAME": "fg8gkylc",

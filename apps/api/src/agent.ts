@@ -36,7 +36,7 @@ const TOOLS = [
     description: 'Return the answer. Call exactly once, last.',
     parameters: S('OBJECT', undefined, {
       properties: {
-        text: S('STRING', 'Answer in the user\'s language, plain and short.'),
+        text: S('STRING', 'Answer in the user\'s language, short. Markdown: a blank line between paragraphs, a bullet list when listing several rooms or items, **bold** for the key figure, a small table only for comparing several rooms. No headings in a short answer.'),
         claims: S('ARRAY', 'Each factual claim with the room ids it comes from', { items: S('OBJECT', undefined, { properties: { text: S('STRING'), room_ids: S('ARRAY', undefined, { items: S('STRING') }) }, required: ['text', 'room_ids'] }) }),
         calculation: S('STRING', 'Formula with inputs and result, if any arithmetic was done', { nullable: true }),
         assumptions: S('ARRAY', undefined, { items: S('STRING') }),
@@ -158,7 +158,8 @@ export function verify(ans: Omit<Answer, 'verified' | 'issues'>, results: unknow
   const nums = (s: string) => (s.match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => n.replace(',', '.'));
   const known = [...numbersIn(results), ...nums(question), ...plan.assumptions.flatMap((a) => nums(a.replace(/"[^"]*"/g, '')))].map(Number);
   const issues: string[] = [];
-  const said = [ans.text, ...ans.claims.map((c) => c.text), ans.calculation ?? ''].join(' ');
+  // numbered-list markers ("1. ", "2) ") are formatting, not figures
+  const said = [ans.text.replace(/^[ \t]*\d{1,3}[.)][ \t]+/gm, ''), ...ans.claims.map((c) => c.text), ans.calculation ?? ''].join(' ');
   for (const n of new Set(nums(said))) {
     const d = n.split('.')[1]?.length ?? 0;
     if (!known.some((k) => Math.abs(round(k, d) - Number(n)) < 1e-9)) issues.push(`The number ${n} does not come from the plan or a calculation`);

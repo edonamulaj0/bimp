@@ -1,6 +1,6 @@
 // Run: npm test. Checks the drawing-convention and standards logic (Metric Handbook rules) on known cases.
 import { parseDimension, nearestPreferredScale, checkPlan } from '../apps/shared/standards';
-import { regularize, snapPolygon, parseLevel, parseCeiling, buildPlan } from '../apps/api/src/extract';
+import { regularize, snapPolygon, parseLevel, parseCeiling, buildPlan, dominantAxis, seatOpenings } from '../apps/api/src/extract';
 import { verify, runTool } from '../apps/api/src/agent';
 import { calculate } from '../apps/api/src/calc';
 import { diffPlans } from '../apps/shared/diff';
@@ -208,6 +208,32 @@ void doorSweep; void fixtureContains;
   eq('detector: not used on vector sheets', v.detected, undefined);
   const none = buildPlan(raw, { ...an, detections: null }, 'f1', 'sha');
   eq('detector: absent service leaves the plan as read', [none.detected, (runTool(none, 'count', { what: 'wc' }) as { count: number }).count], [undefined, 1]);
+}
+// Slanted walls and openings: a room with one wall at an angle stays square everywhere else and keeps that wall;
+// openings sit in their walls (also the slanted one), repeats from the second reading are dropped, and doors and
+// windows only the detector saw are added.
+{
+  const yx = (pts: number[][]) => pts.map(([x, y]) => [y, x]);
+  const raw = { scale_evidence: { text: '8000', value_m: 8, a: [900, 100], b: [900, 900] }, stated_scale: null, levels: null, fixtures: [],
+    rooms: [{ name: 'Living', type: 'living', polygon: yx([[100, 100], [500, 100], [500, 500], [300, 800], [100, 800]]) }, { name: 'Bed', type: 'bedroom', polygon: yx([[515, 100], [900, 100], [900, 495], [515, 495]]) }],
+    openings: [{ kind: 'window', a: [560, 470], b: [680, 390] }, { kind: 'door', a: [250, 507], b: [330, 507] }, { kind: 'window', a: [85, 650], b: [85, 800] }],
+    more_openings: [{ kind: 'door', a: [255, 500], b: [335, 512] }, { kind: 'door', a: [800, 150], b: [800, 230] }] } as never;
+  const an = { kind: 'image' as const, width: 1000, height: 1000, segments: [], texts: [], scale: null, paper_mm_per_px: null, detections: null };
+  const p = buildPlan(raw, an, 'f1', 'sha');
+  eq('slanted wall: the rest of the room is square', p.rooms[0].polygon.slice(0, 3), [[0, 0], [4, 0], [4, 4]]);
+  eq('slanted wall: kept at its angle', p.rooms[0].polygon.slice(2, 4), [[4, 4], [2, 7]]);
+  eq('axis: the mode, not pulled by the slanted wall', dominantAxis(p.rooms.map((r) => r.polygon)).axis, 0);
+  eq('openings: both readings merged without repeats', p.openings.map((o) => o.kind).sort(), ['door', 'door', 'window', 'window']);
+  const cuts = (o: Plan['openings'][number]) => p.walls.some((w) => wallPieces(w, [o], 2.7).pieces.length > 1);
+  eq('openings: every one cuts a wall, the slanted one too', p.openings.map(cuts), [true, true, true, true]);
+  const slanted = p.openings[0], sl = Math.atan2(slanted.b[1] - slanted.a[1], slanted.b[0] - slanted.a[0]);
+  near('openings: the window in the slanted wall runs along it', Math.abs(Math.sin(sl - Math.atan2(3, -2))), 0, 1e-3);
+  const det = buildPlan(raw, { ...an, detections: [{ kind: 'window', conf: 0.8, bbox: [650, 95, 800, 110] as [number, number, number, number] }, { kind: 'window', conf: 0.7, bbox: [880, 200, 905, 320] as [number, number, number, number] }] }, 'f1', 'sha');
+  eq('detector: a window the model missed is drawn, a known one is not repeated', det.openings.filter((o) => o.kind === 'window').length, 3);
+  eq('detector: the added window is said so', det.assumptions.some((a) => /added from the symbol detector/.test(a)), true);
+  const wall = [{ id: 'w1', a: [0, 0] as [number, number], b: [10, 0] as [number, number], thickness: 0.3 }];
+  eq('seat: a door read as its leaf (across the wall) keeps its width along the wall', seatOpenings([{ kind: 'door', a: [5, 0], b: [5, 0.9] }], wall), [{ kind: 'door', a: [4.55, 0], b: [5.45, 0] }]);
+  eq('seat: far from every wall is left as read', seatOpenings([{ kind: 'door', a: [5, 3], b: [6, 3] }], wall), [{ kind: 'door', a: [5, 3], b: [6, 3] }]);
 }
 // Level and ceiling strings (FN-13)
 eq('level "1.OG OKFF +3.05"', parseLevel('1.OG OKFF +3.05'), 3.05);

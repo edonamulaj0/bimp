@@ -293,6 +293,22 @@ projects.get('/:id/files/:fid', async (c) => {
     'content-security-policy': "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
     ...(f.mime.startsWith('image/') ? {} : { 'content-disposition': 'attachment' }) } });
 });
+/** What an uploaded drawing looks like: the image itself, or for a PDF or DXF the sheet as it was rendered for reading. */
+projects.get('/:id/files/:fid/preview', async (c) => {
+  const project = await projectAccess(c, c.req.param('id'));
+  const f = await c.env.DB.prepare('SELECT r2_key, mime FROM files WHERE id = ? AND project_id = ?').bind(c.req.param('fid'), project.id).first<{ r2_key: string; mime: string }>();
+  if (!f) throw fail(404, 'File not found.');
+  let key = f.r2_key, mime = f.mime;
+  if (!/^image\/(png|jpeg|webp)$/.test(mime)) {
+    const p = await c.env.DB.prepare('SELECT data FROM plans WHERE project_id = ? AND file_id = ? ORDER BY created_at DESC LIMIT 1').bind(project.id, c.req.param('fid')).first<{ data: string }>();
+    const sha = p && (JSON.parse(p.data) as Plan).source?.renderSha;
+    if (!sha || !/^[0-9a-f]{64}$/.test(sha)) throw fail(404, 'This drawing has no preview yet: it has not been read.');
+    key = `projects/${project.id}/renders/${sha}.png`; mime = 'image/png';
+  }
+  const obj = await c.env.FILES.get(key);
+  if (!obj) throw fail(404, 'File not found.');
+  return new Response(obj.body, { headers: { 'content-type': mime, 'cache-control': 'private, max-age=3600', 'x-content-type-options': 'nosniff', 'content-security-policy': "sandbox; default-src 'none'" } });
+});
 // --- chat
 projects.post('/:id/chat', async (c) => {
   const project = await projectAccess(c, c.req.param('id'));

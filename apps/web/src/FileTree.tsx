@@ -4,7 +4,7 @@ import { type Plan, type RoomType, area, round } from '../../shared/plan';
 import { ROOM_COLORS } from './canvas/colors';
 import { hoverRoom, queueFiles, selectedRooms, uploadQueue, visualsOn, visualsOpen } from './state';
 import { Icon } from './icons';
-import { when } from './ui';
+import { Dialog, when } from './ui';
 import type { Revision } from './types';
 
 export type FileRow = { id: string; filename: string; mime: string; size: number; created_at: number };
@@ -26,13 +26,14 @@ const bytes = (n: number) => (n > 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${Math.m
  * The project's files as a tree (drawings by kind, revisions, and the model's rooms), and the drop zone for new drawings.
  * ARIA tree: arrow keys move and open/close, Enter opens, Home/End jump.
  */
-export function FileTree({ name, files, revisions, plan, latestId, viewedId, onViewRev, onAdd, onRefused }: {
-  name: string; files: FileRow[]; revisions: Revision[]; plan: Plan | null; latestId: string | null; viewedId: string | null;
+export function FileTree({ projectId, name, files, revisions, plan, latestId, viewedId, onViewRev, onAdd, onRefused }: {
+  projectId: string; name: string; files: FileRow[]; revisions: Revision[]; plan: Plan | null; latestId: string | null; viewedId: string | null;
   onViewRev(id: string | null): void; onAdd(): void; onRefused(why: string[]): void;
 }) {
-  const [open, setOpen] = useState<Record<string, boolean>>({ root: true, drawings: true, revisions: false, model: true, rooms: true });
+  const [open, setOpen] = useState<Record<string, boolean>>({ root: true, drawings: true, 'k-pdf': true, 'k-cad': true, 'k-img': true, revisions: false, model: true, rooms: true });
   const [focus, setFocus] = useState('root');
   const [over, setOver] = useState(false);
+  const [preview, setPreview] = useState<string | null>(null); // id of the file being looked at
   const depth = useRef(0);
   const tree = useRef<HTMLUListElement>(null);
   const revOfFile = useMemo(() => new Map(revisions.filter((r) => r.file_id).map((r) => [r.file_id!, r])), [revisions]);
@@ -43,8 +44,8 @@ export function FileTree({ name, files, revisions, plan, latestId, viewedId, onV
       return fs.length ? [{ id: `k-${k}`, label, text: label, icon: 'folder', meta: fs.length, children: fs.map((f): Node => {
         const r = revOfFile.get(f.id);
         return { id: `f-${f.id}`, text: f.filename, label: <span class="mono ft-file">{f.filename}</span>, icon: 'file',
-          meta: <>{r && <span class="ft-rev mono">r{r.rev}</span>}{bytes(f.size)}</>, current: !!r && (viewedId ?? latestId) === r.id,
-          onOpen: r ? () => onViewRev(r.id === latestId ? null : r.id) : undefined };
+          meta: <>{r && <span class="ft-rev mono">r{r.rev}</span>}{bytes(f.size)}</>, current: preview === f.id || (!!r && (viewedId ?? latestId) === r.id),
+          onOpen: () => setPreview(f.id) };
       }) }] : [];
     });
     const queued: Node[] = uploadQueue.value.map((f, i) => ({ id: `q-${i}`, text: f.name, label: <span class="mono ft-file">{f.name}</span>, icon: 'upload', meta: 'queued', muted: true }));
@@ -76,7 +77,7 @@ export function FileTree({ name, files, revisions, plan, latestId, viewedId, onV
         ] } as Node] : []),
       ],
     };
-  }, [name, files, revisions, plan, latestId, viewedId, uploadQueue.value, selectedRooms.value, visualsOn.value]);
+  }, [name, files, revisions, plan, latestId, viewedId, preview, uploadQueue.value, selectedRooms.value, visualsOn.value]);
 
   // visible nodes in order, for the keyboard
   const flat: { n: Node; level: number; parent: string | null }[] = [];
@@ -139,6 +140,36 @@ export function FileTree({ name, files, revisions, plan, latestId, viewedId, onV
         <Icon name="upload" size={16} /><span><b>Drop drawings here</b><span class="muted">PDF, DXF, PNG, JPG, WebP · up to 50 MB</span></span>
       </button>
       {over && <div class="drop-veil" aria-hidden="true"><Icon name="upload" size={22} /><b>Drop to add to {name}</b><span>Each drawing becomes the next revision</span></div>}
+      {(() => {
+        const f = files.find((x) => x.id === preview), r = f && revOfFile.get(f.id);
+        return f && <FilePreview projectId={projectId} file={f} rev={r?.rev} shown={!!r && (viewedId ?? latestId) === r.id}
+          onPlan={r ? () => { setPreview(null); onViewRev(r.id === latestId ? null : r.id); } : undefined} onClose={() => setPreview(null)} />;
+      })()}
     </section>
+  );
+}
+
+/** The uploaded drawing itself: an image as uploaded, a PDF or DXF as the sheet bimp rendered to read it. */
+function FilePreview({ projectId, file, rev, shown, onPlan, onClose }: { projectId: string; file: FileRow; rev?: number; shown: boolean; onPlan?(): void; onClose(): void }) {
+  const [state, setState] = useState<'loading' | 'ok' | 'none'>('loading');
+  const isImage = file.mime.startsWith('image/');
+  const base = `/api/projects/${projectId}/files/${file.id}`;
+  return (
+    <Dialog title={file.filename} onClose={onClose} wide>
+      <div class="dlg-body">
+      <div class="fp-stage">
+        {state !== 'none' && <img src={`${base}/preview`} alt={`${file.filename}, the uploaded drawing`} class={state === 'ok' ? '' : 'pending'}
+          onLoad={() => setState('ok')} onError={() => setState('none')} />}
+        {state === 'loading' && <p class="muted small" role="status">Loading the drawing…</p>}
+        {state === 'none' && <p class="muted small">{isImage ? 'This image could not be shown. Download it to open it.' : 'No preview: this drawing has not been read yet. Download it to open it.'}</p>}
+      </div>
+      <div class="fp-foot">
+        <span class="muted small">{isImage ? 'Image as uploaded' : 'Sheet as rendered for reading'} · {bytes(file.size)} · added {when(file.created_at)}</span>
+        <span class="spacer" />
+        <a class="btn ghost sm" href={base} download={file.filename}><Icon name="file" size={16} />Download</a>
+        {onPlan && <button type="button" class="btn sm" onClick={onPlan}>{shown ? `Back to the plan (r${rev})` : `Show its plan (r${rev})`}</button>}
+      </div>
+      </div>
+    </Dialog>
   );
 }
