@@ -41,7 +41,31 @@ app.post('/auth/login', async (c) => {
   return c.json({ user });
 });
 app.post('/auth/logout', async (c) => { await endSession(c); return c.json({ ok: true }); });
-app.get('/me', requireUser, async (c) => c.json({ user: c.get('user'), ai: !!c.env.GEMINI_API_KEY, visuals: visualsOn(c.env), teams: await myTeams(c.env, c.get('user').id) }));
+app.get('/me', requireUser, async (c) => {
+  await refreshSamples(c.env, c.get('user').id).catch(() => {}); // never block sign-in on it
+  return c.json({ user: c.get('user'), ai: !!c.env.GEMINI_API_KEY, visuals: visualsOn(c.env), teams: await myTeams(c.env, c.get('user').id) });
+});
+
+/**
+ * Brings a person's untouched sample project up to the current pilot house, the one drawn on the home page.
+ * Only projects they own, with no uploaded drawings, whose latest plan is an older sample. The new house is added as
+ * the next revision, so the earlier sample, and any comments on it, stay in the project's history.
+ */
+async function refreshSamples(env: Env, userId: string) {
+  const { results } = await env.DB.prepare(
+    `SELECT p.id, (SELECT data FROM plans x WHERE x.project_id = p.id ORDER BY x.created_at DESC LIMIT 1) AS plan
+     FROM projects p WHERE p.user_id = ? AND NOT EXISTS (SELECT 1 FROM files f WHERE f.project_id = p.id)`,
+  ).bind(userId).all<{ id: string; plan: string | null }>();
+  const current = JSON.stringify(housePlan());
+  for (const r of results) {
+    if (!r.plan || r.plan === current || !r.plan.includes('"method":"sample"')) continue;
+    const t = now();
+    await env.DB.batch([
+      env.DB.prepare('INSERT INTO plans (id, project_id, file_id, data, note, created_at) VALUES (?,?,?,?,?,?)').bind(uid(), r.id, null, current, 'New pilot house', t),
+      env.DB.prepare('UPDATE projects SET updated_at = ? WHERE id = ?').bind(t, r.id),
+    ]);
+  }
+}
 
 // --- projects
 async function createProject(env: Env, userId: string, name: string, plan?: Plan, teamId: string | null = null) {
