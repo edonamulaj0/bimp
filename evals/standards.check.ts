@@ -1,8 +1,10 @@
 // Run: npm test. Checks the drawing-convention and standards logic (Metric Handbook rules) on known cases.
 import { parseDimension, nearestPreferredScale, checkPlan } from '../apps/shared/standards';
-import { regularize, snapPolygon } from '../apps/api/src/extract';
+import { regularize, snapPolygon, parseLevel, parseCeiling } from '../apps/api/src/extract';
+import { verify } from '../apps/api/src/agent';
+import { calculate } from '../apps/api/src/calc';
 import { samplePlan } from '../apps/shared/sample-plan';
-import { area, wallsFromFaces, type Plan } from '../apps/shared/plan';
+import { area, wallsFromFaces, wallPieces, type Plan } from '../apps/shared/plan';
 import { escapeRoutes } from '../apps/shared/escape';
 import { wallFootprints, cleanWalls, labelPoint } from '../apps/shared/walls';
 import { doorClashes, doorSweep, fixtureContains, inside, planAreas, roomInfo } from '../apps/shared/rooms';
@@ -62,7 +64,7 @@ eq('escape width 300 people', escapeWidth(300).min_width_mm, 1500);
 const fw = wallsFromFaces([
   { id: 'a', name: 'A', type: 'other', polygon: [[0, 0], [4, 0], [4, 3], [0, 3]] },
   { id: 'b', name: 'B', type: 'other', polygon: [[4.2, 0], [8, 0], [8, 3], [4.2, 3]] },
-]);
+]).walls;
 const party = fw.filter((w) => Math.abs(w.a[0] - 4.1) < 1e-9 && Math.abs(w.b[0] - 4.1) < 1e-9);
 eq('shared wall: one wall at x = 4.1', party.length, 1);
 eq('shared wall thickness 0.2', party[0]?.thickness, 0.2);
@@ -134,6 +136,68 @@ eq('nothing to suggest for the furnished sample', suggestLayout(sp).length, 0);
 const fs = fengShui(sp);
 eq('feng shui flags the entrance lining up across the home or confirms it', fs.some((n) => /entrance/.test(n.text)), true);
 void doorSweep; void fixtureContains;
+
+
+// Wall geometry from inside-face rooms: corners close, partitions meet the outer wall's centre line
+{
+  const { walls, paired } = wallsFromFaces([
+    { id: 'a', name: 'A', type: 'other', polygon: [[0, 0], [4, 0], [4, 3], [0, 3]] },
+    { id: 'b', name: 'B', type: 'other', polygon: [[4.12, 0], [8, 0], [8, 3], [4.12, 3]] },
+  ]);
+  eq('face pair found', paired, true);
+  const ends = walls.flatMap((w) => [w.a, w.b]);
+  const at = (x: number, y: number) => ends.some((p) => Math.abs(p[0] - x) < 1e-6 && Math.abs(p[1] - y) < 1e-6);
+  eq('outer corner closes at (-0.15,-0.15)', at(-0.15, -0.15), true);
+  eq('partition reaches outer centre line', at(4.06, -0.15) && at(4.06, 3.15), true);
+  eq('no face pair on lone room', wallsFromFaces([{ id: 'a', name: 'A', type: 'other', polygon: [[0, 0], [4, 0], [4, 3], [0, 3]] }]).paired, false);
+}
+// Sample plan (centre-line rooms): the bathroom/bedroom line at x = 6.5 is an interior partition
+{
+  const p = samplePlan();
+  const onX = p.walls.filter((w) => Math.abs(w.a[0] - 6.5) < 1e-6 && Math.abs(w.b[0] - 6.5) < 1e-6);
+  eq('x = 6.5 partition is 0.12 m', onX.length > 0 && onX.every((w) => w.thickness === 0.12), true);
+  eq('perimeter walls are 0.30 m', p.walls.filter((w) => (w.a[1] === 0 && w.b[1] === 0)).every((w) => w.thickness === 0.3), true);
+}
+// Window sill never above a lowered wall
+{
+  const w = { id: 'w', a: [0, 0] as [number, number], b: [4, 0] as [number, number], thickness: 0.3 };
+  const pcs = wallPieces(w, [{ id: 'o', kind: 'window', a: [1, 0], b: [2, 0] }], 0.3);
+  eq('sill clipped to wall height', pcs.pieces.every((q: { z1: number }) => q.z1 <= 0.3 + 1e-9), true);
+}
+// Corridor-length escape: the far corner of a long room is reported, not a vertex near the door
+{
+  const plan: Plan = { ...samplePlan(), rooms: [{ id: 'c', name: 'Hall', type: 'corridor', polygon: [[0, 0], [10, 0], [10, 1.2], [0, 1.2]] }], openings: [{ id: 'd', kind: 'door', a: [0, 0.2], b: [0, 1.0] }], walls: [], fixtures: [] };
+  const r = escapeRoutes(plan);
+  eq('corridor escape ≥ 9.5 m', !!r && r.routes.some((x) => x.distance_m >= 9.5), true);
+  const two = escapeRoutes({ ...plan, rooms: [{ id: 'c', name: 'Hall', type: 'corridor', polygon: [[0, 0], [20, 0], [20, 1.2], [0, 1.2]] }],
+    openings: [{ id: 'd1', kind: 'door', a: [0, 0.2], b: [0, 1.0] }, { id: 'd2', kind: 'door', a: [20, 0.2], b: [20, 1.0] }] });
+  eq('20 m corridor with two exits: worst point ≈ 10 m (mid-length)', !!two && two.routes[0].distance_m >= 9.5 && two.routes[0].distance_m <= 10.5, true);
+}
+// Verifier: counts must match, drawing text and the model's own assumptions are not evidence
+{
+  const p = samplePlan();
+  const base = { claims: [{ text: 'x', room_ids: [p.rooms[0].id] }], calculation: null, assumptions: [] as string[], not_found: false };
+  const rooms = p.rooms.map((r) => ({ id: r.id, name: r.name, area_m2: Math.round(area(r.polygon) * 100) / 100 }));
+  const cnt = { what: 'room', room_type: 'bedroom', count: 2, room_ids: ['r1', 'r2'] };
+  eq('wrong count is unverified', verify({ ...base, text: 'There are 6 bedrooms.' }, [rooms, cnt], 'How many bedrooms?', p).length > 0, true);
+  eq('right count is verified', verify({ ...base, text: 'There are 2 bedrooms.' }, [rooms, cnt], 'How many bedrooms?', p), []);
+  eq('model assumption is not evidence', verify({ ...base, text: 'The kitchen is 42 m².', assumptions: ['kitchen taken as 42 m²'] }, [rooms], 'How big is the kitchen?', p).length > 0, true);
+  eq('number in a room name is not evidence', verify({ ...base, text: 'The living room is 99 m².' }, [[{ id: 'r1', name: 'LIVING 99 m2', area_m2: 20 }]], 'Living room size?', p).length > 0, true);
+}
+// Level and ceiling strings (FN-13)
+eq('level "1.OG OKFF +3.05"', parseLevel('1.OG OKFF +3.05'), 3.05);
+eq('level "Level 2 FFL +6.000"', parseLevel('Level 2 FFL +6.000'), 6);
+eq('level "FFL +2700" (mm)', parseLevel('FFL +2700'), 2.7);
+eq('level "±0.00"', parseLevel('±0.00'), 0);
+eq('level "-0.45"', parseLevel('-0.45'), -0.45);
+eq('ceiling "1.OG RH 2,50"', parseCeiling('1.OG RH 2,50'), 2.5);
+eq('ceiling "RH 250 cm"', parseCeiling('RH 250 cm'), 2.5);
+eq('ceiling "CH 2700"', parseCeiling('CH 2700'), 2.7);
+eq('ceiling "2.60 m"', parseCeiling('2.60 m'), 2.6);
+eq('calc -2^2', calculate('-2^2'), -4);
+eq('calc 2^-1', calculate('2^-1'), 0.5);
+eq('calc 2^3^2', calculate('2^3^2'), 512);
+eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');
 process.exit(fail ? 1 : 0);

@@ -216,13 +216,19 @@ Examples: "How many tiles do I need for the bathroom on level 2?", "How many win
 - Email + password. PBKDF2-SHA256, 100k iterations (Workers maximum), 16-byte salt, constant-time compare.
 - Session: 32 random bytes in an `HttpOnly; Secure; SameSite=Lax` `__Host-` cookie; only its SHA-256 is stored (D1 `sessions`), 7-day expiry.
 - CSRF: SameSite=Lax plus an Origin check on every non-GET API request.
-- Brute force: 8 failures per email or 30 per IP in 15 minutes → 429. Login doesn't reveal whether an email exists (sign-up does).
+- Brute force: 8 failures per (email, IP), 30 per IP, or 100 per email across all IPs in 15 minutes → 429, so knowing an email is not enough to lock its owner out. Login doesn't reveal whether an email exists (sign-up does; accepted).
+- Sign-up: at most 5 accounts per IP per hour. Expired sessions are purged on each sign-in.
+- Quotas: one drawing being read at a time per user; re-uploading a file reuses its earlier reading; 200 questions per user per day.
+- Answers: the verifier counts only numeric tool results, the question and the plan's own (code-written) assumptions as evidence. Drawing text (room names, labels) and the model's own assumptions never verify a number, and "N doors" must equal the counted value.
+- Uploaded files are served with `CSP: sandbox` and, unless images, as attachments. User-facing errors never carry library or configuration details.
+- Ingest container: runs as a non-root user; each parse runs in a child process with memory (3 GiB), CPU (90 s) and wall-clock (120 s) limits, one at a time per instance, with caps on DXF entities (200k) and points (2M), MINSERT arrays, PDF drawing items (200k) and text spans (20k), and image pixels (50 MP).
 - Headers: CSP, HSTS, frame-ancestors none, nosniff (`apps/web/public/_headers`).
 - Sign-up switch: `ALLOW_SIGNUP` var. Recommended for the public demo: Turnstile on the login form and/or Cloudflare Access in front.
+- Known, accepted for the hackathon: PBKDF2 at the Workers cap (100k, below OWASP's 600k; Argon2id via WASM later); preview URLs (`preview_urls: true`) share production D1/R2, so protect `*.workers.dev` previews with Cloudflare Access or give them their own bindings before real users arrive; no password reset or "sign out everywhere" yet.
 
 ## 5.4 Plan extraction and the 2D/3D canvas (built, preview)
 
-- Upload PDF/PNG/JPG/WebP (≤ 20 MB) → R2, deduplicated by SHA-256 per project.
+- Upload PDF/DXF/PNG/JPG/WebP (≤ 50 MB) → R2, deduplicated by SHA-256 per project.
 - Gemini reads the drawing with a JSON schema: rooms (label as written, type, polygon), walls, doors/windows, and one
   dimension string with its endpoints. Points are `[y, x]` normalised 0–1000 (Gemini's native convention).
 - Code does the measuring: scale = dimension value ÷ pixel length of that dimension line; fallback 0.9 m median door
@@ -551,6 +557,7 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 | 2026-11-13 | Fire escape distances and wall thickness from facing room edges added from Metric Handbook Ch. 31–42 |
 | 2026-11-13 | Fixtures read from drawings and rendered in 2D/3D; 3D uses the architectural cutaway convention |
 | 2026-11-14 | Design system: #FF682B / #F4F1EA / #1E1D1B, Jost + IBM Plex Mono; multi-page marketing site; redesigned dashboard |
+| 2026-11-14 | Review fixes (security, UI/UX, functionality): wall builder closes corners and pairs faces of any thickness; detail scales no longer win over the plan scale; scale/dimension conflicts make a plan a preview; escape distance sampled along edges and inside rooms; verifier hardened; per-user quotas; ingest parse limits; keyboard access to rooms, live chat regions, info panel docking |
 | 2026-11-14 | Room/plan info panel (net/gross, heights), door swing rules, feng shui checks and suggested layout |
 | 2026-11-14 | Dollhouse cutaway is the default 3D mode; procedural floor materials by room type |
 | 2026-11-14 | Mitered wall footprints + baked occlusion (after neonplan3d, MIT); minimised inset views removed |

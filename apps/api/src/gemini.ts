@@ -3,9 +3,12 @@ import { type Env, fail, now, sha256 } from './util';
 export type Part = { text?: string; inlineData?: { mimeType: string; data: string }; functionCall?: { name: string; args: any }; functionResponse?: { name: string; response: any }; thought?: boolean };
 export type Content = { role: 'user' | 'model'; parts: Part[] };
 
-/** Calls Gemini generateContent, through Cloudflare AI Gateway when configured. Pass cacheKey to never pay twice. */
-export async function generate(env: Env, body: Record<string, unknown>, cacheKey?: string): Promise<Content> {
-  if (!env.GEMINI_API_KEY) throw fail(503, 'AI is not configured yet: set the GEMINI_API_KEY secret.');
+/**
+ * Calls Gemini generateContent, through Cloudflare AI Gateway when configured. Pass cacheKey to never pay twice;
+ * only complete responses (finishReason STOP) that pass `check` are cached, so a bad reply is retried, not replayed.
+ */
+export async function generate(env: Env, body: Record<string, unknown>, cacheKey?: string, check?: (c: Content) => void): Promise<Content> {
+  if (!env.GEMINI_API_KEY) throw fail(503, 'AI answers are switched off on this server right now.');
   const model = env.GEMINI_MODEL;
   const key = cacheKey && (await sha256(`${model}:${cacheKey}`));
   if (key) {
@@ -22,9 +25,11 @@ export async function generate(env: Env, body: Record<string, unknown>, cacheKey
     console.error('gemini', res.status, (await res.text()).slice(0, 500));
     throw fail(502, `The AI service returned an error (${res.status}). Try again.`);
   }
-  const json = (await res.json()) as { candidates?: { content?: Content }[] };
-  const content = json.candidates?.[0]?.content;
+  const json = (await res.json()) as { candidates?: { content?: Content; finishReason?: string }[] };
+  const content = json.candidates?.[0]?.content, fr = json.candidates?.[0]?.finishReason;
   if (!content?.parts?.length) throw fail(502, 'The AI service returned an empty response.');
+  if (fr && fr !== 'STOP') throw fail(502, `The AI response was incomplete (${fr}). Try again.`);
+  check?.(content);
   if (key) await env.DB.prepare('INSERT OR REPLACE INTO model_cache (key, model, response, created_at) VALUES (?, ?, ?, ?)')
     .bind(key, model, JSON.stringify(content), now()).run();
   return content;

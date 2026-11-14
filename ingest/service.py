@@ -9,12 +9,23 @@ POST /analyze (body = file bytes, Content-Type = mime) returns, in one pixel spa
   paper_mm_per_px  size of one render pixel on the paper sheet when known (PDF page size; image DPI metadata), else null.
             Lets the Worker turn a measured dimension into a drawing scale and round it to a preferred one.
 The model never measures; this service and the Worker do.
+
+Every parse runs in a child process with memory, CPU and wall-clock limits, and counts entities, points, drawing items
+and text spans as it goes, so one hostile file (a DXF block bomb, a 30000 x 30000 px PNG, a PDF with millions of path
+operators) fails with 422 instead of taking the instance down.
 """
+import asyncio
 import base64
 import io
 import math
+import multiprocessing as mp
+import os
 import re
+import resource
+import traceback
 from collections import Counter
+
+os.environ.setdefault("OPENCV_IO_MAX_IMAGE_PIXELS", str(50_000_000))
 
 import cv2
 import ezdxf
@@ -32,6 +43,20 @@ MAX_SIDE = 3000          # render size cap; Gemini downsamples larger images any
 MAX_SEGMENTS = 20000
 SCALE_RE = re.compile(r"(?<![\d.,])1\s*:\s*(\d{1,4})(?![\d.,])")
 DXF_UNITS = {1: 0.0254, 2: 0.3048, 4: 0.001, 5: 0.01, 6: 1.0, 14: 0.1}  # $INSUNITS -> metres
+MAX_BODY = 50 * 1024 * 1024
+MAX_PIXELS = 50_000_000  # images and rendered pages
+MAX_ENTITIES = 200_000   # DXF entities after expanding blocks
+MAX_POINTS = 2_000_000   # DXF flattened vertices
+MAX_ITEMS = 200_000      # PDF drawing items
+MAX_SPANS = 20_000       # PDF text spans
+MAX_TEXTS = 5_000        # texts returned
+MEM_LIMIT = 3 * 1024 ** 3
+CPU_S, WALL_S = 90, 120
+Image.MAX_IMAGE_PIXELS = MAX_PIXELS
+
+
+class TooLarge(ValueError):
+    """A limit was hit; the message is safe to show to the user."""
 
 
 def png_b64(img: np.ndarray) -> str:
@@ -84,12 +109,20 @@ def image_dpi(data: bytes):
     try:
         dpi = Image.open(io.BytesIO(data)).info.get("dpi")
         x = float(dpi[0]) if dpi else 0
-        return x if 50 <= x <= 2400 else None
+        return x if 150 <= x <= 2400 and round(x) != 144 else None  # 72/96/144 are software defaults, not a scanner
     except Exception:
         return None
 
 
 def analyze_image(data: bytes):
+    try:
+        w0, h0 = Image.open(io.BytesIO(data)).size  # header only: check the size before decoding
+    except Image.DecompressionBombError:
+        raise TooLarge("the image has too many pixels (50 megapixels at most)")
+    except Exception:
+        raise ValueError("unreadable image")
+    if w0 * h0 > MAX_PIXELS:
+        raise TooLarge("the image has too many pixels (50 megapixels at most)")
     img = cv2.imdecode(np.frombuffer(data, np.uint8), cv2.IMREAD_COLOR)
     if img is None:
         raise ValueError("unreadable image")
@@ -116,8 +149,11 @@ def analyze_pdf(data: bytes):
         q = (p if isinstance(p, pymupdf.Point) else pymupdf.Point(*p)) * rot
         return q.x * k, q.y * k
 
-    segs = []
+    segs, items = [], 0
     for d in page.get_drawings():
+        items += len(d["items"])
+        if items > MAX_ITEMS:
+            raise TooLarge("the sheet has too much line work to read")
         for it in d["items"]:
             if it[0] == "l":
                 segs.append([*pt(it[1]), *pt(it[2])])
@@ -125,9 +161,12 @@ def analyze_pdf(data: bytes):
                 q = it[1].quad if it[0] == "re" else it[1]
                 c = [pt(q.ul), pt(q.ur), pt(q.lr), pt(q.ll)]
                 segs += [[*c[i], *c[(i + 1) % 4]] for i in range(4)]
-    texts = []
+    texts, spans = [], 0
     for b in page.get_text("dict")["blocks"]:
         for line in b.get("lines", []):
+            spans += len(line["spans"])
+            if spans > MAX_SPANS:
+                raise TooLarge("the sheet has too much text to read")
             for s in line["spans"]:
                 if s["text"].strip():
                     r = pymupdf.Rect(s["bbox"]) * rot
@@ -136,7 +175,7 @@ def analyze_pdf(data: bytes):
     size = max(pix.width, pix.height)
     vector = len(segs) > 50 and len(texts) > 3
     out = {"kind": "pdf-vector" if vector else "pdf-scan", "pages": doc.page_count, "width": pix.width, "height": pix.height,
-           "render_png": png_b64(img), "texts": texts, "scale": None, "paper_mm_per_px": 25.4 / 72 / k}
+           "render_png": png_b64(img), "texts": texts[:MAX_TEXTS], "scale": None, "paper_mm_per_px": 25.4 / 72 / k}
     if vector:
         out["segments"] = keep_longest(segs, size * 0.004)
         n, all_ratios = scale_from_texts(texts)
@@ -148,11 +187,20 @@ def analyze_pdf(data: bytes):
     return out
 
 
-def dxf_entities(entities, depth=0):
+def dxf_entities(entities, depth=0, seen=None):
+    """Entities with block references expanded (4 levels deep), counted so nested or arrayed blocks can't explode."""
+    seen = seen if seen is not None else [0]
     for e in entities:
+        seen[0] += 1
+        if seen[0] > MAX_ENTITIES:
+            raise TooLarge("the DXF has too many entities to read")
         if e.dxftype() == "INSERT" and depth < 4:
+            if getattr(e.dxf, "row_count", 1) * getattr(e.dxf, "column_count", 1) > 1000:
+                raise TooLarge("the DXF has a block array that is too large")
             try:
-                yield from dxf_entities(e.virtual_entities(), depth + 1)
+                yield from dxf_entities(e.virtual_entities(), depth + 1, seen)
+            except TooLarge:
+                raise
             except Exception:
                 continue
         else:
@@ -164,18 +212,25 @@ def analyze_dxf(data: bytes):
     msp = doc.modelspace()
     units = int(doc.header.get("$INSUNITS", 0))
     unit_m = DXF_UNITS.get(units)
-    lines, texts = [], []
+    lines, texts, npts = [], [], 0
     for e in dxf_entities(msp):
         t = e.dxftype()
         if t in ("TEXT", "MTEXT"):
             s = e.plain_text() if t == "MTEXT" else e.dxf.text
-            if s and s.strip():
+            if s and s.strip() and len(texts) < MAX_TEXTS:
                 texts.append((s.strip(), e.dxf.insert.x, e.dxf.insert.y, getattr(e.dxf, "height", 0) or getattr(e.dxf, "char_height", 0) or 0))
             continue
         try:
-            pts = list(dxfpath.make_path(e).flattening(0.01))
+            pts = []
+            for p in dxfpath.make_path(e).flattening(0.01):  # a generator: stop a huge circle before it fills memory
+                pts.append(p)
+                if npts + len(pts) > MAX_POINTS:
+                    raise TooLarge("the DXF has too much line work to read")
+        except TooLarge:
+            raise
         except Exception:
             continue
+        npts += len(pts)
         lines += [(a.x, a.y, b.x, b.y) for a, b in zip(pts, pts[1:])]
     if not lines:
         raise ValueError("no line work found in the DXF")
@@ -211,20 +266,58 @@ def analyze_dxf(data: bytes):
             "texts": out_texts, "scale": scale, "units_known": bool(unit_m), "paper_mm_per_px": None}
 
 
+PARSERS = {"application/pdf": "analyze_pdf", "application/dxf": "analyze_dxf"}
+
+
+def _child(name: str, data: bytes, conn):
+    try:
+        resource.setrlimit(resource.RLIMIT_AS, (MEM_LIMIT, MEM_LIMIT))
+        resource.setrlimit(resource.RLIMIT_CPU, (CPU_S, CPU_S + 5))
+        conn.send(("ok", globals()[name](data)))
+    except TooLarge as e:
+        conn.send(("err", f"This drawing is too large to read: {e}."))
+    except MemoryError:
+        conn.send(("err", "This drawing is too large to read."))
+    except Exception:
+        traceback.print_exc()  # details stay in the container log
+        conn.send(("err", "This file could not be read as a drawing. Try a PDF, DXF or a clear image."))
+    finally:
+        conn.close()
+
+
+def run_limited(name: str, data: bytes):
+    """Runs one parser in a fresh child process; kills it on the wall-clock limit."""
+    recv, send = CTX.Pipe(duplex=False)
+    p = CTX.Process(target=_child, args=(name, data, send), daemon=True)
+    p.start()
+    send.close()
+    try:
+        if not recv.poll(WALL_S):
+            return "err", "This drawing took too long to read."
+        return recv.recv()
+    except EOFError:  # the child was killed (CPU or memory limit)
+        return "err", "This drawing is too large to read."
+    finally:
+        p.join(2)
+        if p.is_alive():
+            p.kill()
+            p.join()
+
+
 async def analyze(request: Request):
     mime = request.headers.get("content-type", "").split(";")[0]
+    if int(request.headers.get("content-length") or 0) > MAX_BODY:
+        return JSONResponse({"error": "Files up to 50 MB."}, 413)
     data = await request.body()
-    try:
-        if mime == "application/pdf":
-            out = analyze_pdf(data)
-        elif mime.startswith("image/"):
-            out = analyze_image(data)
-        elif mime == "application/dxf":
-            out = analyze_dxf(data)
-        else:
-            return JSONResponse({"error": f"unsupported type {mime}"}, 415)
-    except Exception as e:  # one broken file never takes the service down
-        return JSONResponse({"error": f"could not read the drawing: {e}"}, 422)
+    if len(data) > MAX_BODY:
+        return JSONResponse({"error": "Files up to 50 MB."}, 413)
+    name = PARSERS.get(mime) or ("analyze_image" if mime.startswith("image/") else None)
+    if not name:
+        return JSONResponse({"error": "Upload a PDF, DXF, PNG, JPG or WebP drawing."}, 415)
+    async with PARSE:  # one parse per instance: its memory limit is most of the instance's 4 GiB
+        kind, out = await asyncio.to_thread(run_limited, name, data)
+    if kind == "err":  # one broken file never takes the service down
+        return JSONResponse({"error": out}, 422)
     return JSONResponse(out)
 
 
@@ -232,4 +325,9 @@ async def health(_: Request):
     return JSONResponse({"ok": True})
 
 
+# forkserver: children start from a clean, preloaded process (fork from a threaded server is unsafe)
+PARSE = asyncio.Semaphore(1)
+CTX = mp.get_context("forkserver")
+if __name__ != "__mp_main__":
+    CTX.set_forkserver_preload([__name__])
 app = Starlette(routes=[Route("/analyze", analyze, methods=["POST"]), Route("/health", health), Route("/ping", health)])

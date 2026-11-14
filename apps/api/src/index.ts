@@ -3,8 +3,8 @@ import { HTTPException } from 'hono/http-exception';
 import { samplePlan } from '../../shared/sample-plan';
 import { type Plan, area } from '../../shared/plan';
 import { ask } from './agent';
-import { checkLogin, createUser, endSession, requireUser, sameOrigin, startSession, validate } from './auth';
-import { type AppEnv, type Env, fail, now, sha256, uid } from './util';
+import { checkLogin, createUser, endSession, requireUser, sameOrigin, signupThrottle, startSession, validate } from './auth';
+import { type AppEnv, type Env, fail, failJob, now, sha256, uid } from './util';
 
 const MAX_UPLOAD = 50 * 1024 * 1024; // the model gets the container's render, not the original
 const MIMES = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'application/dxf']);
@@ -23,6 +23,7 @@ app.use('*', sameOrigin);
 app.post('/auth/signup', async (c) => {
   if (c.env.ALLOW_SIGNUP !== 'true') throw fail(403, 'Sign-up is closed. Ask your admin for an account.');
   const { email, password } = validate(await c.req.json().catch(() => null));
+  await signupThrottle(c.env, c.req.header('cf-connecting-ip') ?? 'local');
   const user = await createUser(c.env, email, password);
   await createProject(c.env, user.id, 'Sample house', samplePlan());
   await startSession(c, user.id);
@@ -35,7 +36,7 @@ app.post('/auth/login', async (c) => {
   return c.json({ user });
 });
 app.post('/auth/logout', async (c) => { await endSession(c); return c.json({ ok: true }); });
-app.get('/me', requireUser, (c) => c.json({ user: c.get('user') }));
+app.get('/me', requireUser, (c) => c.json({ user: c.get('user'), ai: !!c.env.GEMINI_API_KEY }));
 
 // --- projects
 async function createProject(env: Env, userId: string, name: string, plan?: Plan) {
@@ -51,6 +52,13 @@ async function ownProject(c: { env: Env; get: (k: 'user') => { id: string } }, i
     .first<{ id: string; name: string; created_at: number; updated_at: number }>();
   if (!p) throw fail(404, 'Project not found.');
   return p;
+}
+
+/** Per-user cap on questions: each one can make several model calls. */
+async function chatQuota(env: Env, userId: string) {
+  const row = await env.DB.prepare("SELECT COUNT(*) AS n FROM messages m JOIN projects p ON p.id = m.project_id WHERE p.user_id = ? AND m.role = 'user' AND m.content NOT LIKE ? AND m.created_at > ?")
+    .bind(userId, '{"text":"Uploaded %', now() - 24 * 3600_000).first<{ n: number }>();
+  if ((row?.n ?? 0) >= 200) throw fail(429, 'You have reached today\'s limit of questions. Try again tomorrow.');
 }
 
 const latestPlan = async (env: Env, projectId: string) => {
@@ -89,7 +97,7 @@ projects.get('/:id', async (c) => {
   const [files, messages, jobs] = await c.env.DB.batch([
     c.env.DB.prepare('SELECT id, filename, mime, size, created_at FROM files WHERE project_id = ? ORDER BY created_at').bind(project.id),
     c.env.DB.prepare('SELECT id, role, content, created_at FROM messages WHERE project_id = ? ORDER BY id').bind(project.id),
-    c.env.DB.prepare("SELECT id, status, stage FROM jobs WHERE project_id = ? AND status IN ('queued', 'running') ORDER BY created_at").bind(project.id),
+    c.env.DB.prepare("SELECT id, status, stage FROM jobs WHERE project_id = ? AND status IN ('queued', 'running') ORDER BY created_at DESC").bind(project.id),
   ]);
   return c.json({
     project,
@@ -101,20 +109,25 @@ projects.get('/:id', async (c) => {
 });
 projects.delete('/:id', async (c) => {
   const project = await ownProject(c, c.req.param('id'));
+  // Stop running ingestion first so it can't write renders after the R2 sweep, then remove rows, then files.
+  const { results: active } = await c.env.DB.prepare("SELECT id FROM jobs WHERE project_id = ? AND status IN ('queued', 'running')").bind(project.id).all<{ id: string }>();
+  await Promise.all(active.map((j) => c.env.INGEST_WORKFLOW.get(j.id).then((w) => w.terminate()).catch(() => {})));
+  await c.env.DB.prepare('DELETE FROM projects WHERE id = ?').bind(project.id).run();
   let cursor: string | undefined;
   do {
     const page = await c.env.FILES.list({ prefix: `projects/${project.id}/`, cursor });
     if (page.objects.length) await c.env.FILES.delete(page.objects.map((o) => o.key));
     cursor = page.truncated ? page.cursor : undefined;
   } while (cursor);
-  await c.env.DB.prepare('DELETE FROM projects WHERE id = ?').bind(project.id).run();
   return c.json({ ok: true });
 });
 
 // --- files: raw body upload, deduplicated by content hash per project
 projects.post('/:id/files', async (c) => {
   const project = await ownProject(c, c.req.param('id'));
-  const filename = decodeURIComponent(c.req.header('x-filename') ?? 'drawing').slice(0, 200);
+  let filename: string;
+  try { filename = decodeURIComponent(c.req.header('x-filename') ?? 'drawing'); } catch { throw fail(400, 'The file name could not be read. Rename the file and try again.'); }
+  filename = filename.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 200) || 'drawing';
   if (/\.dwg$/i.test(filename)) throw fail(415, 'DWG is a closed format: export it to DXF (or PDF) and upload that.');
   const mime = /\.dxf$/i.test(filename) ? 'application/dxf' : (c.req.header('content-type') ?? '').split(';')[0];
   if (!MIMES.has(mime)) throw fail(415, 'Upload a PDF, DXF, PNG, JPG or WebP drawing.');
@@ -124,7 +137,14 @@ projects.post('/:id/files', async (c) => {
   if (!data.byteLength) throw fail(400, 'The file is empty.');
   const hash = await sha256(data);
   const existing = await c.env.DB.prepare('SELECT id, filename, mime, size, created_at FROM files WHERE project_id = ? AND sha256 = ?').bind(project.id, hash).first<{ id: string }>();
-  if (existing) return c.json({ file: existing, duplicate: true, job: await startJob(c.env, project.id, existing.id) });
+  if (existing) {
+    // The same drawing again: reuse its finished or running reading instead of paying for another one.
+    const prior = await c.env.DB.prepare("SELECT id, status, stage FROM jobs WHERE file_id = ? AND status IN ('queued', 'running', 'done') ORDER BY created_at DESC LIMIT 1").bind(existing.id)
+      .first<{ id: string; status: string; stage: string }>();
+    if (prior) return c.json({ file: existing, duplicate: true, job: prior.status === 'done' ? null : prior });
+  }
+  await oneActiveJob(c.env, c.get('user').id);
+  if (existing) return c.json({ file: existing, duplicate: true, job: await startJob(c.env, project.id, existing.id, filename) });
   const dim = (h: string) => { const n = Number(c.req.header(h)); return Number.isInteger(n) && n > 0 && n < 100_000 ? n : null; };
   const id = uid(), key = `projects/${project.id}/${hash}`;
   await c.env.FILES.put(key, data, { httpMetadata: { contentType: mime } });
@@ -133,30 +153,47 @@ projects.post('/:id/files', async (c) => {
       .bind(id, project.id, filename, mime, data.byteLength, hash, key, dim('x-image-width'), dim('x-image-height'), now()),
     c.env.DB.prepare('UPDATE projects SET updated_at = ? WHERE id = ?').bind(now(), project.id),
   ]);
-  return c.json({ file: { id, filename, mime, size: data.byteLength }, job: await startJob(c.env, project.id, id) });
+  return c.json({ file: { id, filename, mime, size: data.byteLength }, job: await startJob(c.env, project.id, id, filename) });
 });
 
+/** One reading at a time per user: the parsing containers are shared by everyone. */
+async function oneActiveJob(env: Env, userId: string) {
+  const busy = await env.DB.prepare("SELECT 1 FROM jobs j JOIN projects p ON p.id = j.project_id WHERE p.user_id = ? AND j.status IN ('queued', 'running') AND j.created_at > ? LIMIT 1")
+    .bind(userId, now() - 30 * 60_000).first();
+  if (busy) throw fail(429, 'A drawing is still being read. Wait for it to finish, then upload the next one.');
+}
+
 /** One Workflow instance per ingestion run; the jobs row mirrors its progress for the UI. */
-async function startJob(env: Env, projectId: string, fileId: string) {
+async function startJob(env: Env, projectId: string, fileId: string, filename: string) {
   const id = uid(), t = now();
-  await env.DB.prepare("INSERT INTO jobs (id, project_id, file_id, status, stage, created_at, updated_at) VALUES (?,?,?,'queued','Queued',?,?)").bind(id, projectId, fileId, t, t).run();
-  await env.INGEST_WORKFLOW.create({ id, params: { jobId: id, projectId, fileId } });
+  await env.DB.batch([
+    env.DB.prepare("INSERT INTO jobs (id, project_id, file_id, status, stage, created_at, updated_at) VALUES (?,?,?,'queued','Queued',?,?)").bind(id, projectId, fileId, t, t),
+    env.DB.prepare('INSERT INTO messages (project_id, role, content, created_at) VALUES (?,?,?,?)').bind(projectId, 'user', JSON.stringify({ text: `Uploaded ${filename}` }), t),
+  ]);
+  try { await env.INGEST_WORKFLOW.create({ id, params: { jobId: id, projectId, fileId } }); }
+  catch (e) {
+    console.error('workflow create', e);
+    await failJob(env, id, projectId, 'the reading service is unavailable. Try again in a minute.');
+    throw fail(503, 'The reading service is unavailable. Try again in a minute.');
+  }
   return { id, status: 'queued', stage: 'Queued' };
 }
 
 projects.get('/:id/jobs/:jid', async (c) => {
   const project = await ownProject(c, c.req.param('id'));
-  const job = await c.env.DB.prepare('SELECT id, status, stage, error FROM jobs WHERE id = ? AND project_id = ?').bind(c.req.param('jid'), project.id)
-    .first<{ id: string; status: string; stage: string; error: string | null }>();
+  const job = await c.env.DB.prepare('SELECT id, status, stage, error, created_at FROM jobs WHERE id = ? AND project_id = ?').bind(c.req.param('jid'), project.id)
+    .first<{ id: string; status: string; stage: string; error: string | null; created_at?: number }>();
   if (!job) throw fail(404, 'Job not found.');
   if (job.status === 'queued' || job.status === 'running') {
-    // The workflow can die outside a step (e.g. terminated); don't leave the UI waiting forever.
-    const st = await (await c.env.INGEST_WORKFLOW.get(job.id)).status().catch(() => null);
-    if (st && (st.status === 'errored' || st.status === 'terminated')) {
-      job.status = 'failed'; job.error = job.error ?? (typeof st.error === 'string' ? st.error : st.error?.message) ?? 'Ingestion stopped';
-      await c.env.DB.prepare("UPDATE jobs SET status = 'failed', stage = 'Failed', error = ?, updated_at = ? WHERE id = ?").bind(job.error, now(), job.id).run();
+    // The workflow can die outside a step (terminated, or never created); don't leave the UI waiting forever.
+    const st = await c.env.INGEST_WORKFLOW.get(job.id).then((w) => w.status()).catch(() => (now() - job.created_at! > 60_000 ? { status: 'errored' as const, error: undefined } : null));
+    const stale = now() - job.created_at! > 30 * 60_000; // longer than every retry of every step together
+    if (stale || (st && (st.status === 'errored' || st.status === 'terminated'))) {
+      job.status = 'failed'; job.error = job.error ?? (stale ? 'it took too long.' : 'the reading stopped. Try uploading it again.');
+      await failJob(c.env, job.id, project.id, job.error);
     }
   }
+  delete job.created_at;
   if (job.status !== 'done') return c.json({ job });
   const last = await c.env.DB.prepare("SELECT content FROM messages WHERE project_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1").bind(project.id).first<{ content: string }>();
   return c.json({ job, plan: await latestPlan(c.env, project.id), message: last && { role: 'assistant', content: JSON.parse(last.content) } });
@@ -168,14 +205,17 @@ projects.get('/:id/render/:sha', async (c) => {
   if (!/^[0-9a-f]{64}$/.test(sha)) throw fail(404, 'Not found.');
   const obj = await c.env.FILES.get(`projects/${project.id}/renders/${sha}.png`);
   if (!obj) throw fail(404, 'Render not found.');
-  return new Response(obj.body, { headers: { 'content-type': 'image/png', 'cache-control': 'private, max-age=86400, immutable', 'x-content-type-options': 'nosniff' } });
+  return new Response(obj.body, { headers: { 'content-type': 'image/png', 'cache-control': 'private, max-age=86400, immutable', 'x-content-type-options': 'nosniff', 'content-security-policy': "sandbox; default-src 'none'" } });
 });
 projects.get('/:id/files/:fid', async (c) => {
   const project = await ownProject(c, c.req.param('id'));
   const f = await c.env.DB.prepare('SELECT r2_key, mime FROM files WHERE id = ? AND project_id = ?').bind(c.req.param('fid'), project.id).first<{ r2_key: string; mime: string }>();
   const obj = f && (await c.env.FILES.get(f.r2_key));
   if (!obj) throw fail(404, 'File not found.');
-  return new Response(obj.body, { headers: { 'content-type': f.mime, 'cache-control': 'private, max-age=3600', 'x-content-type-options': 'nosniff' } });
+  // Drawings are data, never pages: sandboxed, and anything but an image downloads instead of rendering on our origin.
+  return new Response(obj.body, { headers: { 'content-type': f.mime, 'cache-control': 'private, max-age=3600', 'x-content-type-options': 'nosniff',
+    'content-security-policy': "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
+    ...(f.mime.startsWith('image/') ? {} : { 'content-disposition': 'attachment' }) } });
 });
 // --- chat
 projects.post('/:id/chat', async (c) => {
@@ -186,7 +226,16 @@ projects.post('/:id/chat', async (c) => {
   const plan = await latestPlan(c.env, project.id);
   if (!plan) throw fail(409, 'Upload a floor plan first, then ask about it.');
   const { results } = await c.env.DB.prepare('SELECT role, content FROM messages WHERE project_id = ? ORDER BY id DESC LIMIT 10').bind(project.id).all<{ role: string; content: string }>();
-  const history = results.reverse().map((m) => ({ role: m.role === 'user' ? ('user' as const) : ('model' as const), text: JSON.parse(m.content).text as string }));
+  // Conversation turns only (no upload notes or system messages), alternating and starting with the user.
+  const history: { role: 'user' | 'model'; text: string }[] = [];
+  for (const m of results.reverse()) {
+    const content = JSON.parse(m.content) as { text: string; kind?: string };
+    if (content.kind === 'system' || /^Uploaded /.test(content.text)) continue;
+    const role = m.role === 'user' ? ('user' as const) : ('model' as const), last = history[history.length - 1];
+    if (last?.role === role) last.text += `\n${content.text}`; else if (history.length || role === 'user') history.push({ role, text: content.text });
+  }
+  if (history[history.length - 1]?.role === 'user') history.pop(); // an unanswered question; the new one follows
+  await chatQuota(c.env, c.get('user').id);
   const answer = await ask(c.env, plan, q, history);
   const t = now();
   await c.env.DB.batch([
