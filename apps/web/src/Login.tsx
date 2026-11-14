@@ -15,7 +15,6 @@ export function Login() {
   const [err, setErr] = useState<{ field: 'email' | 'pw' | 'pw2' | null; text: string }>({ field: null, text: '' });
   const [busy, setBusy] = useState(false);
   const [show, setShow] = useState(false);
-  // the site's Cloudinary image of the pilot model, when one has been generated (see apps/api/src/site-images.ts)
   const emailRef = useRef<HTMLInputElement>(null), pwRef = useRef<HTMLInputElement>(null), pw2Ref = useRef<HTMLInputElement>(null);
   useEffect(() => { emailRef.current?.focus(); }, []);
   useEffect(() => { document.title = `${mode === 'login' ? 'Sign in' : 'Create account'} · bimp`; }, [mode]);
