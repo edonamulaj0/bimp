@@ -12,14 +12,16 @@
   "workflows": [{ "name": "bimp-ingest", "binding": "INGEST_WORKFLOW", "class_name": "IngestWorkflow", "script_name": "bimp-ingest" }],
   "preview_urls": true,
   "vars": {
-    "GEMINI_MODEL": "gemini-flash-latest",
+    "GEMINI_MODEL": "gemini-4-hydrogen",
+    // Thinking level for Gemini 4 models: low | medium | high | xhigh. Empty = the model's default (high).
+    "GEMINI_THINKING": "",
     "ALLOW_SIGNUP": "true",
     // Optional: https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>
     "AI_GATEWAY_URL": "",
     // List price in US dollars per million tokens of the model above, for the cost shown with each answer.
-    // Gemini Flash paid tier through 2026-12-31; change these when the model or its price changes.
-    "GEMINI_PRICE_IN": "0.75",
-    "GEMINI_PRICE_OUT": "3.75",
+    // Gemini 4 Hydrogen paid tier; change these when the model or its price changes.
+    "GEMINI_PRICE_IN": "1.50",
+    "GEMINI_PRICE_OUT": "7.50",
     // Cloudinary image generation from the 3D model and for the site. The cloud name and API key are not secret;
     // the API secret is: set it with `wrangler secret put CLOUDINARY_API_SECRET`, never here.
     "CLOUDINARY_CLOUD_NAME": "fg8gkylc",

@@ -6,7 +6,9 @@ export interface Env {
   GEMINI_API_KEY?: string;
   GEMINI_MODEL: string;
   AI_GATEWAY_URL?: string;
-  /** List price in US dollars per million tokens, for the cost shown with each answer (defaults: Gemini Flash paid tier). */
+  /** Gemini 4 thinking level: low | medium | high | xhigh. Unset = the model's default (high for Hydrogen). */
+  GEMINI_THINKING?: string;
+  /** List price in US dollars per million tokens, for the cost shown with each answer (defaults: Gemini 4 Hydrogen paid tier). */
   GEMINI_PRICE_IN?: string;
   GEMINI_PRICE_OUT?: string;
   ALLOW_SIGNUP?: string;

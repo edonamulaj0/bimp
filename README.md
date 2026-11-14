@@ -26,7 +26,7 @@ npm run ingest:dev               # ingestion service on :8090 (stands in for the
 npm run dev                      # http://localhost:5173 (marketing) and /app/ (app); runs both Workers
 ```
 
-`npm test` checks the drawing-convention and standards rules, the plan builder, the code-answer router and the cost figures; `npm run test:ingest` checks room tracing and PDF pages in the Python service. Without a Gemini key, everything works except reading new drawings and chat. Every new account gets a
+`npm test` checks the drawing-convention and standards rules, the plan builder, the code-answer router and the cost figures; `npm run test:ingest` checks room tracing and PDF pages in the Python service. The model is Gemini 4 Hydrogen (`GEMINI_MODEL` in both `wrangler.jsonc` files; `GEMINI_THINKING` sets its thinking level, empty for the default). Without a Gemini key, everything works except reading new drawings and chat. Every new account gets a
 "Pilot house" project (a three-bedroom single-storey house, `apps/shared/house-plan.ts`). `npm run ingest:fixtures` writes test drawings (vector PDF at 1:100, a scan, a DXF) to `evals/fixtures/`.
 
 ## Deploy

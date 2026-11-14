@@ -19,7 +19,7 @@ export async function generate(env: Env, body: Record<string, unknown>, cacheKey
   const call = (m: string) => fetch(`${apiBase(env)}/v1beta/models/${m}:streamGenerateContent?alt=sse`, {
     method: 'POST',
     headers: { 'content-type': 'application/json', 'x-goog-api-key': env.GEMINI_API_KEY! },
-    body: JSON.stringify(body),
+    body: JSON.stringify(forModel(env, m, body)),
   });
   let res = await call(model);
   // 404: the model was retired or renamed. Pick the newest Flash model this key can use, remember it, try once more.
@@ -29,7 +29,7 @@ export async function generate(env: Env, body: Record<string, unknown>, cacheKey
   }
   if (!res.ok) {
     console.error('gemini', res.status, (await res.text()).slice(0, 500));
-    throw fail(502, res.status === 404 ? `The AI model "${model}" isn't available to this API key. Set GEMINI_MODEL to a current model (for example gemini-flash-latest).` : `The AI service returned an error (${res.status}). Try again.`);
+    throw fail(502, res.status === 404 ? `The AI model "${model}" isn't available to this API key. Set GEMINI_MODEL to a current model (for example gemini-4-hydrogen).` : `The AI service returned an error (${res.status}). Try again.`);
   }
   const { content, finishReason: fr, usage } = joinStream(await res.text());
   if (meter) { meter.calls++; meter.tokens_in += usage.in; meter.tokens_out += usage.out; }
@@ -41,6 +41,22 @@ export async function generate(env: Env, body: Record<string, unknown>, cacheKey
   return content;
 }
 
+const DEFAULT_MODEL = 'gemini-4-hydrogen';
+const LEVELS = ['low', 'medium', 'high', 'xhigh'];
+
+/**
+ * The request as the model in use wants it. Gemini 4 models take no sampling parameters (temperature, topP, topK) and
+ * think at a level instead: GEMINI_THINKING (low | medium | high | xhigh), else the model's own default. Older models
+ * get the request unchanged.
+ */
+export function forModel(env: Pick<Env, 'GEMINI_THINKING'>, model: string, body: Record<string, unknown>): Record<string, unknown> {
+  if (!/^gemini-4/.test(model)) return body;
+  const { temperature: _t, topP: _p, topK: _k, ...config } = (body.generationConfig ?? {}) as Record<string, unknown>;
+  const level = (env.GEMINI_THINKING ?? '').toLowerCase();
+  if (LEVELS.includes(level)) config.thinkingConfig = { ...(config.thinkingConfig as object | undefined), thinkingLevel: level };
+  return { ...body, generationConfig: config };
+}
+
 type Chunk = { candidates?: { content?: Partial<Content>; finishReason?: string }[]; usageMetadata?: { promptTokenCount?: number; candidatesTokenCount?: number; thoughtsTokenCount?: number } };
 
 /** What a run of model calls used: calls made, answers served from the cache (free), and tokens in and out (thinking counts as out). */
@@ -48,11 +64,11 @@ export type Meter = { calls: number; cached: number; tokens_in: number; tokens_o
 export const meter = (): Meter => ({ calls: 0, cached: 0, tokens_in: 0, tokens_out: 0 });
 /**
  * Cost in US dollars at the list price per million tokens: GEMINI_PRICE_IN / GEMINI_PRICE_OUT, by default the paid-tier
- * price of Gemini Flash (0.75 in, 3.75 out). An estimate: the free tier, batch and cached-input prices are lower.
+ * price of Gemini 4 Hydrogen (1.50 in, 7.50 out). An estimate: the free tier, batch and cached-input prices are lower.
  */
 export function costUsd(env: Env, m: Meter) {
   const price = (v: string | undefined, d: number) => { const n = Number(v); return v && Number.isFinite(n) && n >= 0 ? n : d; };
-  return (m.tokens_in * price(env.GEMINI_PRICE_IN, 0.75) + m.tokens_out * price(env.GEMINI_PRICE_OUT, 3.75)) / 1e6;
+  return (m.tokens_in * price(env.GEMINI_PRICE_IN, 1.5) + m.tokens_out * price(env.GEMINI_PRICE_OUT, 7.5)) / 1e6;
 }
 
 /** Joins a streamed reply (server-sent events, or one plain JSON body) into a single Content. Text pieces are concatenated; other parts are kept as sent. */
@@ -83,7 +99,7 @@ const apiBase = (env: Env) => (env.AI_GATEWAY_URL ? `${env.AI_GATEWAY_URL.replac
 /** The model in use: GEMINI_MODEL, unless it was found missing earlier in this isolate and replaced. */
 let replaced: { from: string; to: string } | null = null;
 async function currentModel(env: Env) {
-  const configured = env.GEMINI_MODEL || 'gemini-flash-latest';
+  const configured = env.GEMINI_MODEL || DEFAULT_MODEL;
   return replaced?.from === configured ? replaced.to : configured;
 }
 
@@ -98,7 +114,7 @@ async function newestFlash(env: Env, failed: string): Promise<string | null> {
     const stable = names.filter((n) => /^gemini-[\d.]+-flash$/.test(n)).sort((a, b) => version(b) - version(a));
     const pick = names.includes('gemini-flash-latest') && failed !== 'gemini-flash-latest' ? 'gemini-flash-latest'
       : stable[0] ?? names.filter((n) => /flash/.test(n) && !/lite|image|tts|live|audio|embedding/.test(n)).sort((a, b) => version(b) - version(a))[0] ?? null;
-    if (pick) replaced = { from: env.GEMINI_MODEL || 'gemini-flash-latest', to: pick };
+    if (pick) replaced = { from: env.GEMINI_MODEL || DEFAULT_MODEL, to: pick };
     return pick;
   } catch {
     return null;

@@ -2,7 +2,7 @@
 import { parseDimension, nearestPreferredScale, checkPlan } from '../apps/shared/standards';
 import { regularize, snapPolygon, parseLevel, parseCeiling, buildPlan, dominantAxis, seatOpenings, alignEdges, traceRequest } from '../apps/api/src/extract';
 import { quickAnswer } from '../apps/api/src/quick';
-import { costUsd, joinStream, meter } from '../apps/api/src/gemini';
+import { costUsd, forModel, joinStream, meter } from '../apps/api/src/gemini';
 import { evidenceFor } from '../apps/shared/plan';
 import { noteArea, placeNote } from '../apps/web/src/canvas/note';
 import { describe, fixtureInfo, openingInfo, wallInfo } from '../apps/shared/measure';
@@ -305,7 +305,12 @@ void doorSweep; void fixtureContains;
     { candidates: [{ content: { parts: [{ text: 'b' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 200, thoughtsTokenCount: 300 } }].map((c) => `data: ${JSON.stringify(c)}`).join('\n\n');
   eq('cost: tokens are the last totals of the stream, thinking counted as output', joinStream(sse).usage, { in: 1000, out: 500 });
   const m = { ...meter(), calls: 1, tokens_in: 1_000_000, tokens_out: 1_000_000 };
-  eq('cost: list price per million tokens, overridable', [costUsd({} as never, m), costUsd({ GEMINI_PRICE_IN: '0.1', GEMINI_PRICE_OUT: '0.4' } as never, m)], [4.5, 0.5]);
+  eq('cost: list price per million tokens, overridable', [costUsd({} as never, m), costUsd({ GEMINI_PRICE_IN: '0.1', GEMINI_PRICE_OUT: '0.4' } as never, m)], [9, 0.5]);
+  const body4 = { contents: [], generationConfig: { temperature: 0, responseMimeType: 'application/json', mediaResolution: 'MEDIA_RESOLUTION_HIGH' } };
+  eq('model: Gemini 4 gets no sampling parameters, and the rest of the request unchanged', forModel({}, 'gemini-4-hydrogen', body4).generationConfig, { responseMimeType: 'application/json', mediaResolution: 'MEDIA_RESOLUTION_HIGH' });
+  eq('model: a thinking level is sent when set, and only a valid one', [forModel({ GEMINI_THINKING: 'medium' }, 'gemini-4-hydrogen', body4).generationConfig, forModel({ GEMINI_THINKING: 'minimal' }, 'gemini-4-hydrogen', { contents: [] }).generationConfig],
+    [{ responseMimeType: 'application/json', mediaResolution: 'MEDIA_RESOLUTION_HIGH', thinkingConfig: { thinkingLevel: 'medium' } }, {}]);
+  eq('model: older models keep the request as written', forModel({ GEMINI_THINKING: 'low' }, 'gemini-3.8-flash', body4), body4);
 }
 // The answer note on the plan: the area an answer is about, and a place for the note that never covers it
 {
