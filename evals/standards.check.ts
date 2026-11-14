@@ -267,7 +267,15 @@ eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
 
 // Gemini: a retired model (404) is replaced by the newest Flash model the key can use, and the call succeeds
 {
-  const { generate } = await import('../apps/api/src/gemini');
+  const { generate, joinStream } = await import('../apps/api/src/gemini');
+  const sse = (...chunks: unknown[]) => chunks.map((c) => `data: ${JSON.stringify(c)}\r\n\r\n`).join('');
+  const joined = joinStream(sse(
+    { candidates: [{ content: { role: 'model', parts: [{ text: 'thinking', thought: true }] } }] },
+    { candidates: [{ content: { role: 'model', parts: [{ text: '{"rooms":' }] } }] },
+    { candidates: [{ content: { role: 'model', parts: [{ text: '[]}' }, { functionCall: { name: 'count', args: { kind: 'door' } } }] }, finishReason: 'STOP' }] },
+  ));
+  eq('streamed Gemini reply: text pieces joined, thoughts and tool calls kept apart', joined.content?.parts, [{ text: 'thinking', thought: true }, { text: '{"rooms":[]}' }, { functionCall: { name: 'count', args: { kind: 'door' } } }]);
+  eq('streamed Gemini reply: finish reason read from the last piece', joined.finishReason, 'STOP');
   const calls: string[] = [];
   const real = globalThis.fetch;
   globalThis.fetch = (async (url: string) => {
@@ -284,9 +292,27 @@ eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
   try {
     const env = { GEMINI_API_KEY: 'k', GEMINI_MODEL: 'gemini-2.5-flash', DB: null } as never;
     const c = await generate(env, { contents: [] });
-    eq('retired Gemini model: falls back to the newest stable Flash', calls, ['models/gemini-2.5-flash:generateContent', 'models?pageSize=200', 'models/gemini-3.0-flash:generateContent']);
+    eq('retired Gemini model: falls back to the newest stable Flash', calls, ['models/gemini-2.5-flash:streamGenerateContent?alt=sse', 'models?pageSize=200', 'models/gemini-3.0-flash:streamGenerateContent?alt=sse']);
     eq('retired Gemini model: answer still returned', c.parts[0].text, 'ok');
   } finally { globalThis.fetch = real; }
+}
+
+// Question router and official scoring (evals/eval.ts)
+{
+  const { route, templateOf } = await import('../apps/shared/templates');
+  const { score, splitOf } = await import('./eval');
+  const det = (kind: string) => ({ kind, conf: 0.9, bbox: [0, 0, 1, 1] as [number, number, number, number] });
+  const ev = { kind: 'image', detections: [det('door'), det('door'), det('window'), det('toilet')] };
+  eq('router: English door template counts detector doors', route('How many doors are shown on this floor plan? Count doorways fitted with a door.', ev)?.answer, 2);
+  eq('router: Finnish window template', route('Kuinka monta ikkunaa pohjapiirustuksessa on?', ev)?.answer, 1);
+  eq('router: Finnish toilet template', route('Kuinka monta WC-istuinta pohjapiirustukseen on piirretty?', ev)?.answer, 1);
+  eq('router: a class with no detections is zero, not unknown', route('How many showers and bathtubs are drawn on this floor plan in total?', ev)?.answer, 0);
+  eq('router: no detector results (vector sheet) gives no answer', route('How many windows are shown on this floor plan?', { kind: 'pdf-vector', detections: null })?.answer, null);
+  eq('router: other questions are left to the agent', templateOf('How many saunas are on this floor plan?'), null);
+  eq('scoring: counts must be exact', [score({ type: 'count', answer: 5 }, 5), score({ type: 'count', answer: 5 }, 6), score({ type: 'count', answer: 5 }, null)], [true, false, false]);
+  eq('scoring: areas within 2 %', [score({ type: 'area', answer: 100 }, 101.9), score({ type: 'area', answer: 100 }, 102.1)], [true, false]);
+  eq('scoring: text answers are not scored', score({ type: 'text', answer: 'oak' }, null), null);
+  eq('split: a drawing always lands on the same side', splitOf('data/cubicasa5k/colorful-10052.png'), splitOf('data/cubicasa5k/colorful-10052.png'));
 }
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');
