@@ -309,6 +309,25 @@ eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
   eq('router: a class with no detections is zero, not unknown', route('How many showers and bathtubs are drawn on this floor plan in total?', ev)?.answer, 0);
   eq('router: no detector results (vector sheet) gives no answer', route('How many windows are shown on this floor plan?', { kind: 'pdf-vector', detections: null })?.answer, null);
   eq('router: other questions are left to the agent', templateOf('How many saunas are on this floor plan?'), null);
+  // Exactly read drawings (Swiss dwellings): rooms with fill shade, units, doors, fittings
+  const room = (number: string, name: string | null, area_m2: number, unit: number | null, shade: number) => ({ number, name, area_m2, unit, shade, bbox: [0, 0, 1, 1] as [number, number, number, number] });
+  const layered = { kind: 'pdf-vector', layered: {
+    rooms: [room('1.01', 'Zimmer', 12.5, 0, 1), room('1.02', 'Zimmer', 10, 0, 1), room('1.03', 'Balkon', 4, 0, 0.89), room('1.04', null, 2, 0, 0.89),
+      room('1.05', "Cage d'escalier", 9, null, 0.95), room('1.06', 'Bad', 5, 1, 1)],
+    units: [{ index: 0, name: 'Whg. A', bbox: [0, 0, 9, 9] as [number, number, number, number] }, { index: 1, name: 'Whg. B', bbox: [0, 0, 9, 9] as [number, number, number, number] }],
+    doors: [[0, 0, 1, 1], [1, 1, 2, 2]] as [number, number, number, number][],
+    fixtures: [{ kind: 'toilet', bbox: [0, 0, 1, 1] as [number, number, number, number] }],
+  } };
+  eq('router: rooms by label (German)', route('Wie viele Räume mit der Bezeichnung «Zimmer» gibt es in diesem Geschoss?', layered)?.answer, 2);
+  eq('router: a label with an apostrophe (English quoting)', route("How many rooms labelled 'Cage d'escalier' are there on this floor?", layered)?.answer, 1);
+  eq('router: French quoting with spaces', route("Combien de pièces portant la désignation « Cage d'escalier » y a-t-il à cet étage ?", layered)?.answer, 1);
+  eq('router: area of one room', route("What is the net floor area of room 1.01 ('Zimmer') in m²?", layered)?.answer, 12.5);
+  eq('router: apartment area leaves out outdoor rooms, named or not', route('What is the net floor area of apartment A in m², summing all its rooms except balconies?', layered)?.answer, 22.5);
+  eq('router: floor area keeps shared rooms, leaves out outdoor ones', route('What is the total net floor area in m² of all numbered indoor rooms on this floor?', layered)?.answer, 36.5);
+  eq('router: apartments are the tagged units', route('Quanti appartamenti (unità abitative) sono rappresentati in questa pianta?', layered)?.answer, 2);
+  eq('router: doors drawn', route('How many doors (interior doors and entrance doors together) are drawn on this floor plan?', layered)?.answer, 2);
+  eq('router: fittings by kind; none of a kind is zero', [route('Wie viele WCs sind auf diesem Grundriss eingezeichnet?', layered)?.answer, route('How many bathtubs are drawn on this floor plan?', layered)?.answer], [1, 0]);
+  eq('router: windows not read on this drawing gives no answer', route('How many windows are drawn on this floor plan?', layered)?.answer, null);
   eq('scoring: counts must be exact', [score({ type: 'count', answer: 5 }, 5), score({ type: 'count', answer: 5 }, 6), score({ type: 'count', answer: 5 }, null)], [true, false, false]);
   eq('scoring: areas within 2 %', [score({ type: 'area', answer: 100 }, 101.9), score({ type: 'area', answer: 100 }, 102.1)], [true, false]);
   eq('scoring: text answers are not scored', score({ type: 'text', answer: 'oak' }, null), null);
