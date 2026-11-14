@@ -1,4 +1,4 @@
-import { type Plan, area, roomStats, round } from '../../shared/plan';
+import { type Plan, area, roomStats, round, detectedKindOf, detectedCount } from '../../shared/plan';
 import { calculate } from './calc';
 import { ACCESS, BED, CORRIDOR, DOOR, FLAT_TRAVEL, GARAGE, OCCUPANCY, OCCUPANCY_REF, PLAN_SCALES, ROOM_STANDARDS, STAIR, TRAVEL, TRAVEL_REF, TURNING, WALL, checkPlan, escapeWidth } from '../../shared/standards';
 import { escapeRoutes } from '../../shared/escape';
@@ -22,7 +22,7 @@ const TOOLS = [
   { name: 'plan_info', description: 'Overview of the plan: how it was produced, whether measured, scale source, assumptions, extent, counts.', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'list_rooms', description: 'All rooms with id, name, type, area_m2 and perimeter_m (computed from geometry).', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'get_room', description: 'One room by id: area, perimeter, bounding dimensions, doors and windows on its boundary.', parameters: S('OBJECT', undefined, { properties: { id: S('STRING') }, required: ['id'] }) },
-  { name: 'count', description: 'Count doors, windows, rooms of a type, or fittings/furniture drawn on the plan (each counted item is cited by id).', parameters: S('OBJECT', undefined, { properties: { what: S('STRING', 'door | window | room | wc | sink | bathtub | shower | sauna_stove | stove | fridge | washer | bed | sofa | table | desk | wardrobe'), room_type: S('STRING', 'optional room type filter for rooms'), room_id: S('STRING', 'optional: only items in this room') }, required: ['what'] }) },
+  { name: 'count', description: 'Count doors, windows, rooms of a type, or fittings/furniture drawn on the plan (each counted item is cited by id). On scans and images, doors, windows, wc, sink and shower_bath are counted by a symbol detector; it counts showers and bathtubs together, so use shower_bath for that total.', parameters: S('OBJECT', undefined, { properties: { what: S('STRING', 'door | window | room | wc | sink | shower_bath | bathtub | shower | sauna_stove | stove | fridge | washer | bed | sofa | table | desk | wardrobe'), room_type: S('STRING', 'optional room type filter for rooms'), room_id: S('STRING', 'optional: only items in this room') }, required: ['what'] }) },
   { name: 'check_plan', description: 'Plausibility checks of the plan against design standards (room minimum sizes, corridor and door widths, scale). Each check cites its source.', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'space_standard', description: 'Design standard figures with their source: room minimum areas by type, door, corridor, stair, bed, wheelchair turning, preferred plan scales.', parameters: S('OBJECT', undefined, { properties: { topic: S('STRING', 'room type (bedroom, living, kitchen...), or door | corridor | stair | bed | turning | scale') }, required: ['topic'] }) },
   { name: 'escape_route', description: 'Estimated travel distance from the furthest point of each room (or one room) to an exit door, through doors, with the path and the limits that apply (Metric Handbook Ch. 41).', parameters: S('OBJECT', undefined, { properties: { room_id: S('STRING', 'optional room id') } }) },
@@ -58,12 +58,14 @@ the home (size, light, feel), use room_info or plan_areas plus feng_shui, and wr
 Finish by calling final_answer.
 Answer in the language of the question.`;
 
-function runTool(plan: Plan, name: string, args: any): unknown {
+export function runTool(plan: Plan, name: string, args: any): unknown {
   switch (name) {
     case 'plan_info':
       return { method: plan.method, measured: plan.measured, scale_source: plan.scale.source, assumptions: plan.assumptions,
         width_m: plan.width, height_m: plan.height, wall_height_m: plan.wallHeight, rooms: plan.rooms.length,
-        doors: plan.openings.filter((o) => o.kind === 'door').length, windows: plan.openings.filter((o) => o.kind === 'window').length,
+        doors: detectedCount(plan, 'door')?.length ?? plan.openings.filter((o) => o.kind === 'door').length,
+        windows: detectedCount(plan, 'window')?.length ?? plan.openings.filter((o) => o.kind === 'window').length,
+        ...(plan.detected ? { counts_from: `symbol detector ${plan.detected.model}` } : {}),
         total_room_area_m2: round(plan.rooms.reduce((s, r) => s + area(r.polygon), 0)) };
     case 'list_rooms':
       return plan.rooms.map(roomStats);
@@ -76,6 +78,18 @@ function runTool(plan: Plan, name: string, args: any): unknown {
         doors: ops.filter((o) => o.kind === 'door').length, windows: ops.filter((o) => o.kind === 'window').length };
     }
     case 'count': {
+      // Scans and images: the detector's count wins for the kinds it was trained on; the model's reading is kept for comparison.
+      const dk = detectedKindOf(String(args.what)), det = dk && detectedCount(plan, dk, args.room_id);
+      if (dk && det) {
+        const drawn = dk === 'door' || dk === 'window' ? plan.openings.filter((o) => o.kind === dk).length
+          : (plan.fixtures ?? []).filter((f) => (dk === 'toilet' ? f.kind === 'wc' : dk === 'sink' ? f.kind === 'sink' : f.kind === 'shower' || f.kind === 'bathtub') && (!args.room_id || f.room_id === args.room_id)).length;
+        return { what: args.what, count: det.length, source: `symbol detector ${plan.detected!.model}`, items: det.map((d) => ({ id: d.id, room_id: d.room_id })),
+          ...(args.room_id && (dk === 'door' || dk === 'window') ? {} : { read_by_language_model: drawn }) };
+      }
+      if (args.what === 'shower_bath') {
+        const fx = (plan.fixtures ?? []).filter((f) => (f.kind === 'shower' || f.kind === 'bathtub') && (!args.room_id || f.room_id === args.room_id));
+        return { what: 'shower_bath', count: fx.length, items: fx.map((f) => ({ id: f.id, room_id: f.room_id })) };
+      }
       if (args.what === 'door' || args.what === 'window') return { what: args.what, count: plan.openings.filter((o) => o.kind === args.what).length };
       if (args.what !== 'room') {
         const fx = (plan.fixtures ?? []).filter((f) => f.kind === args.what && (!args.room_id || f.room_id === args.room_id));

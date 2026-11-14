@@ -1,5 +1,5 @@
 // Drawing -> Plan. The model reads (labels, room outlines, openings); code measures (snapping, scale, areas).
-import { type Plan, type Pt, type Room, type Opening, type Fixture, FIXTURE_KINDS, placeFixture, ROOM_TYPES, bounds, dist, wallsFromFaces, wallsFromRooms, round } from '../../shared/plan';
+import { type Plan, type Pt, type Room, type Opening, type Fixture, FIXTURE_KINDS, DETECTED_KINDS, type DetectedKind, placeFixture, ROOM_TYPES, bounds, dist, wallsFromFaces, wallsFromRooms, round } from '../../shared/plan';
 import { generate, textOf } from './gemini';
 import type { Analysis } from './ingest';
 import { BOOK, nearestPreferredScale, parseDimension } from '../../shared/standards';
@@ -355,6 +355,22 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     })
     .filter((f) => f.size[0] > 0.1 && f.size[1] > 0.1 && f.size[0] < 4 && f.size[1] < 4);
 
+  // Scans and images: the detector's symbols, in metres. Counting these is its job, not the language model's.
+  let detected: Plan['detected'];
+  if (an.detections && (an.kind === 'image' || an.kind === 'pdf-scan')) {
+    const n: Record<string, number> = {};
+    detected = { model: 'fixtures-v1', items: an.detections
+      .filter((d) => (DETECTED_KINDS as readonly string[]).includes(d.kind) && d.bbox?.length === 4)
+      .map((d) => {
+        const a = toM([d.bbox[0], d.bbox[1]]), b = toM([d.bbox[2], d.bbox[3]]);
+        const c: Pt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
+        n[d.kind] = (n[d.kind] ?? 0) + 1;
+        return { id: `x${d.kind[0]}${n[d.kind]}`, kind: d.kind as DetectedKind, conf: d.conf, box: [round(a[0], 3), round(a[1], 3), round(b[0], 3), round(b[1], 3)] as [number, number, number, number],
+          room_id: rooms.find((r) => inside(c, r.polygon))?.id ?? null };
+      }) };
+    assumptions.push('Windows, doors, toilets, sinks, and showers and bathtubs are counted by the symbol detector, not by the language model');
+  }
+
   // Levels: code parses the strings the model copied. Ceiling heights in mm or m (Metric Handbook Ch. 1 §2).
   const ceilText = raw.levels?.ceiling_height_text ?? null, floorText = raw.levels?.floor_level_text ?? null;
   const ceiling = parseCeiling(ceilText);
@@ -372,6 +388,7 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     walls,
     openings,
     fixtures,
+    ...(detected ? { detected } : {}),
     levels: { floor, ceiling: ceilingOk,
       source: [floorText && `floor "${floorText}"`, ceilingOk && `ceiling "${ceilText}"`].filter(Boolean).join(', ') || 'not stated on the drawing' },
     scale: { metersPerPx: m, source: scaleSource, ...(ratio ? { ratio } : {}) },

@@ -20,6 +20,18 @@ export const FIXTURE_LABEL: Record<FixtureKind, string> = {
   fridge: 'fridge', washer: 'washing machine', bed: 'bed', sofa: 'sofa', table: 'table', desk: 'desk', wardrobe: 'wardrobe',
 };
 
+/** What the symbol detector (ml/, fixtures-v1) can find on a scan or image. Showers and bathtubs are one class. */
+export const DETECTED_KINDS = ['window', 'door', 'toilet', 'sink', 'shower_bath'] as const;
+export type DetectedKind = (typeof DETECTED_KINDS)[number];
+/** Symbols found by the detector: each with its box in metres (plan coordinates), confidence and the room it lies in. */
+export interface Detected { model: string; items: { id: string; kind: DetectedKind; conf: number; box: [number, number, number, number]; room_id: string | null }[] }
+/** Detector class for something the chat can be asked to count, or null when the detector has no such class. */
+export const detectedKindOf = (what: string): DetectedKind | null =>
+  what === 'door' || what === 'window' || what === 'sink' || what === 'shower_bath' ? what : what === 'wc' || what === 'toilet' ? 'toilet' : null;
+/** How many of a kind the detector found (optionally in one room); null when this plan has no detector results. */
+export const detectedCount = (plan: Plan, kind: DetectedKind, roomId?: string) =>
+  plan.detected ? plan.detected.items.filter((d) => d.kind === kind && (!roomId || d.room_id === roomId)) : null;
+
 export interface Plan {
   version: 1;
   method: 'sample' | 'gemini' | 'hybrid';
@@ -31,6 +43,8 @@ export interface Plan {
   walls: Wall[];
   openings: Opening[];
   fixtures?: Fixture[];
+  /** Scans and images only: symbols counted by the detector. When present, counts of these kinds come from here. */
+  detected?: Detected;
   /** Floor level (FFL, m) and clear ceiling height (m) when read from the drawing; null = not stated. */
   levels?: { floor: number | null; ceiling: number | null; source: string };
   /** ratio = the drawing's own stated scale (1:ratio) when known. */
