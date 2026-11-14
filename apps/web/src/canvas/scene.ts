@@ -332,6 +332,7 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
     return hit ? [hit.x, hit.z] : null;
   };
   let down: { x: number; y: number; b: number; t: number } | null = null, hoverRaf = 0, press = 0;
+  let lastTap: { t: number; x: number; y: number } | null = null, tapMenuAt = 0, touches = 0; // double tap on touch screens (iOS sends no dblclick)
   const onMove = (e: PointerEvent) => {
     if (down && Math.hypot(e.clientX - down.x, e.clientY - down.y) > 6) { clearTimeout(press); press = 0; }
     if (e.buttons || hoverRaf) return;
@@ -342,23 +343,39 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
     });
   };
   const onDown = (e: PointerEvent) => {
+    if (e.pointerType === 'touch') touches++;
     down = { x: e.clientX, y: e.clientY, b: e.button, t: performance.now() };
     if (e.pointerType === 'touch' && opts.onMenu) press = window.setTimeout(() => { press = 0; down = null; opts.onMenu!(e.clientX, e.clientY, pick(e.clientX, e.clientY), planPoint(e.clientX, e.clientY)); }, 550);
   };
   const onUp = (e: PointerEvent) => {
     clearTimeout(press); press = 0;
     if (!down) return;
-    const still = Math.hypot(e.clientX - down.x, e.clientY - down.y) < 5;
+    const still = Math.hypot(e.clientX - down.x, e.clientY - down.y) < 8;
+    if (e.pointerType === 'touch') {
+      const multi = touches > 1;
+      touches = Math.max(0, touches - 1);
+      if (still && !multi && opts.onMenu) {
+        const t = performance.now();
+        if (lastTap && t - lastTap.t < 350 && Math.hypot(e.clientX - lastTap.x, e.clientY - lastTap.y) < 30) {
+          lastTap = null; tapMenuAt = t; down = null;
+          opts.onMenu(e.clientX, e.clientY, pick(e.clientX, e.clientY), planPoint(e.clientX, e.clientY));
+          return;
+        }
+        lastTap = { t, x: e.clientX, y: e.clientY };
+      }
+    }
     if (still && down.b === 0) opts.onClick(pick(e.clientX, e.clientY));
     if (still && down.b === 2 && opts.onMenu) opts.onMenu(e.clientX, e.clientY, pick(e.clientX, e.clientY), planPoint(e.clientX, e.clientY));
     down = null;
   };
   const onLeave = () => opts.onHover(null, 0, 0);
-  const onDbl = (e: MouseEvent) => { if (opts.onMenu) opts.onMenu(e.clientX, e.clientY, pick(e.clientX, e.clientY), planPoint(e.clientX, e.clientY)); else api.view('iso'); };
+  const onDbl = (e: MouseEvent) => { if (performance.now() - tapMenuAt < 700) return; if (opts.onMenu) opts.onMenu(e.clientX, e.clientY, pick(e.clientX, e.clientY), planPoint(e.clientX, e.clientY)); else api.view('iso'); };
   el.addEventListener('pointermove', onMove);
   el.addEventListener('pointerdown', onDown);
   el.addEventListener('pointerup', onUp);
   el.addEventListener('pointerleave', onLeave);
+  const onCancel = () => { touches = 0; down = null; clearTimeout(press); press = 0; };
+  el.addEventListener('pointercancel', onCancel);
   if (!opts.compact) el.addEventListener('dblclick', onDbl);
 
   const ro = new ResizeObserver(fit);

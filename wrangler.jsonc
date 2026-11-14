@@ -12,7 +12,7 @@
   "workflows": [{ "name": "bimp-ingest", "binding": "INGEST_WORKFLOW", "class_name": "IngestWorkflow", "script_name": "bimp-ingest" }],
   "preview_urls": true,
   "vars": {
-    "GEMINI_MODEL": "gemini-2.5-flash",
+    "GEMINI_MODEL": "gemini-flash-latest",
     "ALLOW_SIGNUP": "true",
     // Optional: https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>
     "AI_GATEWAY_URL": "",

@@ -463,7 +463,8 @@ details { margin-top: var(--s2); } details summary { cursor: pointer; } details 
 .views.mode-split { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); }
 .views.mode-split .view + .view { border-left: 1px solid var(--line); }
 .view { position: relative; min-width: 0; min-height: 0; }
-.plan2d { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; user-select: none; }
+.plan2d { display: block; width: 100%; height: 100%; touch-action: none; cursor: grab; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
+.plan3d { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; -webkit-tap-highlight-color: transparent; }
 .plan2d:active { cursor: grabbing; }
 .plan2d .room { cursor: pointer; transition: fill-opacity .12s; }
 .plan2d .room:focus { outline: none; }

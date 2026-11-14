@@ -244,5 +244,29 @@ eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
   eq('custom prompts are cleaned', cleanPrompt('  a <b>garden</b> | with "trees"  '), 'a b garden b with trees');
 }
 
+// Gemini: a retired model (404) is replaced by the newest Flash model the key can use, and the call succeeds
+{
+  const { generate } = await import('../apps/api/src/gemini');
+  const calls: string[] = [];
+  const real = globalThis.fetch;
+  globalThis.fetch = (async (url: string) => {
+    calls.push(String(url).replace('https://generativelanguage.googleapis.com/v1beta/', ''));
+    if (String(url).includes('models?')) return new Response(JSON.stringify({ models: [
+      { name: 'models/gemini-2.0-flash', supportedGenerationMethods: ['generateContent'] },
+      { name: 'models/gemini-3.0-flash', supportedGenerationMethods: ['generateContent'] },
+      { name: 'models/gemini-3.0-flash-lite', supportedGenerationMethods: ['generateContent'] },
+      { name: 'models/text-embedding-004', supportedGenerationMethods: ['embedContent'] },
+    ] }));
+    if (String(url).includes('gemini-2.5-flash:')) return new Response('{"error":{"code":404}}', { status: 404 });
+    return new Response(JSON.stringify({ candidates: [{ content: { role: 'model', parts: [{ text: 'ok' }] }, finishReason: 'STOP' }] }));
+  }) as typeof fetch;
+  try {
+    const env = { GEMINI_API_KEY: 'k', GEMINI_MODEL: 'gemini-2.5-flash', DB: null } as never;
+    const c = await generate(env, { contents: [] });
+    eq('retired Gemini model: falls back to the newest stable Flash', calls, ['models/gemini-2.5-flash:generateContent', 'models?pageSize=200', 'models/gemini-3.0-flash:generateContent']);
+    eq('retired Gemini model: answer still returned', c.parts[0].text, 'ok');
+  } finally { globalThis.fetch = real; }
+}
+
 console.log(fail ? `\n${fail} failed` : '\nall passed');
 process.exit(fail ? 1 : 0);
