@@ -253,6 +253,10 @@ Examples: "How many tiles do I need for the bathroom on level 2?", "How many win
 - 2D: plan symbols per kind, overall dimension lines, haloed labels. 3D: architectural cutaway convention (dark cut
   wall tops), soft shadows, door leaves, window glass, fixtures as CC0 Kenney Furniture Kit models (`apps/web/public/models/kenney`,
   scaled to the size read from the drawing, clipped at the wall height; boxes for kinds without a model), room labels.
+- Walls (`apps/shared/walls.ts`): mitered footprints (node-based corner intersection, T-junction splitting) drawn
+  fill-only in 2D and extruded in 3D after cutting at opening edges; outline from shared-edge cancellation; baked
+  occlusion (wall-base gradient, floor contact strips skipping doorways); door/window frames and sills; room labels
+  at the pole of inaccessibility. Techniques after neonplan3d (MIT, © 2026 Mastershort), reimplemented.
 - VespeneLabs/floor-view was reviewed: its code is UNLICENSED (private), so only its CC0 Kenney assets were reused.
 
 ## 5.5 Ingestion: Workflows + Containers (built)
@@ -505,5 +509,6 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 | 2026-11-13 | Metric Handbook (4th ed.) adopted as the design-knowledge reference; rules encoded with citations in `apps/shared/standards.ts` |
 | 2026-11-13 | Fire escape distances and wall thickness from facing room edges added from Metric Handbook Ch. 31–42 |
 | 2026-11-13 | Fixtures read from drawings and rendered in 2D/3D; 3D uses the architectural cutaway convention |
+| 2026-11-14 | Mitered wall footprints + baked occlusion (after neonplan3d, MIT); minimised inset views removed |
 | 2026-11-14 | 3D fixtures use the CC0 Kenney Furniture Kit; VespeneLabs floor-view code not reused (UNLICENSED) |
 | 2026-11-13 | Marketing page v1: plain static HTML + one CSS file in `apps/web/`, system fonts, no build step, default styling; focus stays on functionality. Results section is a placeholder until evals run. Demo CTA points to `/app` |

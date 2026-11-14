@@ -4,6 +4,7 @@ import { regularize, snapPolygon } from '../apps/api/src/extract';
 import { samplePlan } from '../apps/shared/sample-plan';
 import { area, wallsFromFaces, type Plan } from '../apps/shared/plan';
 import { escapeRoutes } from '../apps/shared/escape';
+import { wallFootprints, cleanWalls, labelPoint } from '../apps/shared/walls';
 import { escapeWidth } from '../apps/shared/standards';
 
 let fail = 0;
@@ -73,6 +74,25 @@ const wc = samplePlan().fixtures!.find((f) => f.kind === 'wc')!;
 near('WC faces away from its wall (+90°)', wc.angle, Math.PI / 2, 1e-3);
 eq('WC is in the bathroom', wc.room_id, 'r5');
 eq('every sample fixture is inside a room', samplePlan().fixtures!.every((f) => f.room_id), true);
+
+// Mitered walls: L-corner of two 0.2 m walls meets at outer (-0.1,-0.1) and inner (0.1,0.1) corners
+const L = wallFootprints([{ id: 'x', a: [0, 0], b: [4, 0], thickness: 0.2 }, { id: 'y', a: [0, 0], b: [0, 3], thickness: 0.2 }]);
+const pts = L.flatMap((f) => f.poly.map((p) => p.map((v) => Math.round(v * 1000) / 1000).join(',')));
+eq('L-corner: outer miter point shared', pts.filter((p) => p === '-0.1,-0.1').length, 2);
+eq('L-corner: inner miter point shared', pts.filter((p) => p === '0.1,0.1').length, 2);
+// T-junction: a wall ending 5 cm off another wall's centre line is snapped onto it and the other wall is split
+const T = cleanWalls([{ id: 'y', a: [0, 0], b: [4, 0], thickness: 0.2 }, { id: 'x', a: [2, 0.05], b: [2, 3], thickness: 0.12 }]);
+eq('T-junction splits the through wall', T.length, 3);
+eq('T-junction end snapped to centre line', T.find((w) => w.id === 'x')!.a, [2, 0]);
+const sf = wallFootprints(samplePlan().walls);
+eq('sample: every footprint is a closed hexagon', sf.every((f) => f.poly.length === 6), true);
+// footprints of the sample cover the wall area without big overlaps: total ≈ Σ length × thickness (± corners)
+const polyArea = (q: number[][]) => Math.abs(q.reduce((s2, p, i) => s2 + p[0] * q[(i + 1) % q.length][1] - q[(i + 1) % q.length][0] * p[1], 0)) / 2;
+const fpArea = sf.reduce((s2, f) => s2 + polyArea(f.poly), 0), naive = samplePlan().walls.reduce((s2, w) => s2 + Math.hypot(w.b[0] - w.a[0], w.b[1] - w.a[1]) * w.thickness, 0);
+eq(`sample: footprint area ${fpArea.toFixed(2)} within 5% of length×thickness ${naive.toFixed(2)}`, Math.abs(fpArea / naive - 1) < 0.05, true);
+// label point of an L-shaped room sits inside the room, away from the notch
+const lp = labelPoint([[0, 0], [6, 0], [6, 2], [2, 2], [2, 6], [0, 6]]);
+eq('L-room label inside the L', (lp[0] <= 2 || lp[1] <= 2) && lp[0] >= 0 && lp[1] >= 0, true);
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');
 process.exit(fail ? 1 : 0);

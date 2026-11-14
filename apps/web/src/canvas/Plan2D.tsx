@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
 import { doorLinks, escapeRoutes } from '../../../shared/escape';
+import { labelPoint, wallFootprints } from '../../../shared/walls';
 import { type Plan, type Pt, area, centroid, dist, round } from '../../../shared/plan';
 import { hoverRoom, selectedRooms } from '../state';
 import { ROOM_COLORS } from './colors';
@@ -23,6 +24,20 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
   const [typed, setTyped] = useState<string | null>(null);
   const [showEscape, setShowEscape] = useState(false);
   const escape = useMemo(() => (showEscape ? escapeRoutes(plan) : null), [plan, showEscape]);
+  const footprints = useMemo(() => wallFootprints(plan.walls), [plan]);
+  const labelAt = useMemo(() => new Map(plan.rooms.map((r) => [r.id, labelPoint(r.polygon)])), [plan]);
+  // wall thickness at each opening, for door jamb ticks and gap width
+  const openingT = useMemo(() => new Map(plan.openings.map((o) => {
+    const m = [(o.a[0] + o.b[0]) / 2, (o.a[1] + o.b[1]) / 2];
+    let best = 0.2, bd = Infinity;
+    for (const w of plan.walls) {
+      const L = dist(w.a, w.b) || 1, u = [(w.b[0] - w.a[0]) / L, (w.b[1] - w.a[1]) / L];
+      const t = Math.max(0, Math.min(L, (m[0] - w.a[0]) * u[0] + (m[1] - w.a[1]) * u[1]));
+      const d = Math.hypot(m[0] - w.a[0] - u[0] * t, m[1] - w.a[1] - u[1] * t);
+      if (d < bd) { bd = d; best = w.thickness; }
+    }
+    return [o.id, best];
+  })), [plan]);
   const exits = useMemo(() => (showEscape ? doorLinks(plan).filter((d) => d.exit) : []), [plan, showEscape]);
   useEffect(() => setVb(home), [plan]);
   useEffect(() => {
@@ -108,8 +123,8 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
         );
       })}
       <g pointer-events="none" class="fixtures">{(plan.fixtures ?? []).map((f) => <FixtureSymbol key={f.id} f={f} />)}</g>
-      <g stroke="var(--wall)" stroke-linecap="square" pointer-events="none">
-        {plan.walls.map((w) => <line key={w.id} x1={w.a[0]} y1={w.a[1]} x2={w.b[0]} y2={w.b[1]} stroke-width={w.thickness} />)}
+      <g fill="var(--wall)" pointer-events="none">
+        {footprints.map((f) => <polygon key={f.wall.id} points={f.poly.map((p) => p.join(',')).join(' ')} />)}
       </g>
       <g pointer-events="none" fill="none">
         {plan.openings.map((o) => {
@@ -118,7 +133,8 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
           const tip: Pt = [o.a[0] + n[0] * len, o.a[1] + n[1] * len];
           return (
             <g key={o.id}>
-              <line x1={o.a[0]} y1={o.a[1]} x2={o.b[0]} y2={o.b[1]} stroke="var(--paper)" stroke-width={0.34} />
+              <line x1={o.a[0]} y1={o.a[1]} x2={o.b[0]} y2={o.b[1]} stroke="var(--paper)" stroke-width={(openingT.get(o.id) ?? 0.3) + 0.03} />
+              {o.kind === 'door' && [o.a, o.b].map((p, i) => { const h = (openingT.get(o.id) ?? 0.3) / 2; return <line key={i} x1={p[0] + n[0] * h} y1={p[1] + n[1] * h} x2={p[0] - n[0] * h} y2={p[1] - n[1] * h} stroke="var(--wall)" stroke-width={0.025} />; })}
               {o.kind === 'door'
                 ? <path d={`M${o.b[0]},${o.b[1]} A${len},${len} 0 0 1 ${tip[0]},${tip[1]} L${o.a[0]},${o.a[1]}`} stroke="var(--wall)" stroke-width={0.03} />
                 : [-0.07, 0, 0.07].map((k) => <line key={k} x1={o.a[0] + n[0] * k} y1={o.a[1] + n[1] * k} x2={o.b[0] + n[0] * k} y2={o.b[1] + n[1] * k} stroke="var(--wall)" stroke-width={0.025} />)}
@@ -138,7 +154,7 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
       {!compact && (
         <g pointer-events="none" text-anchor="middle" class="labels" stroke="var(--paper)" stroke-width={fs * 0.22} paint-order="stroke" stroke-linejoin="round">
           {plan.rooms.map((r) => {
-            const [x, y] = centroid(r.polygon);
+            const [x, y] = labelAt.get(r.id) ?? centroid(r.polygon);
             return (
               <text key={r.id} x={x} y={y} font-size={fs}>
                 <tspan x={x} font-weight="600">{r.name}</tspan>
