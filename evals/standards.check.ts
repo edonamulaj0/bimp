@@ -2,9 +2,13 @@
 import { parseDimension, nearestPreferredScale, checkPlan } from '../apps/shared/standards';
 import { regularize, snapPolygon, parseLevel, parseCeiling, buildPlan, dominantAxis, seatOpenings, alignEdges, traceRequest } from '../apps/api/src/extract';
 import { quickAnswer } from '../apps/api/src/quick';
-import { costUsd, joinStream, meter } from '../apps/api/src/gemini';
+import { costUsd, forModel, joinStream, meter } from '../apps/api/src/gemini';
 import { evidenceFor } from '../apps/shared/plan';
-import { verify, runTool } from '../apps/api/src/agent';
+import { noteArea, placeNote } from '../apps/web/src/canvas/note';
+import { describe, fixtureInfo, openingInfo, wallInfo } from '../apps/shared/measure';
+import { housePlan } from '../apps/shared/house-plan';
+import { FIXTURE_KINDS, FIXTURE_LABEL, fixtureName } from '../apps/shared/plan';
+import { verify, runTool, traceStep } from '../apps/api/src/agent';
 import { calculate } from '../apps/api/src/calc';
 import { diffPlans } from '../apps/shared/diff';
 import { samplePlan } from '../apps/shared/sample-plan';
@@ -15,8 +19,6 @@ import { doorClashes, doorSweep, fixtureContains, inside, planAreas, roomInfo } 
 import { fengShui, suggestLayout } from '../apps/shared/fengshui';
 import { escapeWidth } from '../apps/shared/standards';
 import { clipPlan, clipSegment, parseRegion, regionContents } from '../apps/shared/region';
-import { signParams, transformationFor } from '../apps/api/src/visuals';
-import { cleanPrompt } from '../apps/shared/visual-styles';
 
 let fail = 0;
 const eq = (name: string, got: unknown, want: unknown) => {
@@ -202,8 +204,12 @@ void doorSweep; void fixtureContains;
   const p = buildPlan(raw, an, 'f1', 'sha');
   eq('detector: items kept by known kind', p.detected?.items.map((d) => d.kind), ['toilet', 'toilet', 'window']);
   eq('detector: item lies in its room', p.detected?.items[0].room_id, p.rooms[0].id);
-  const wc = runTool(p, 'count', { what: 'wc' }) as { count: number; source: string; read_by_language_model: number };
-  eq('detector: wc count comes from the detector', [wc.count, wc.read_by_language_model, /detector/.test(wc.source)], [2, 1, true]);
+  const wc = runTool(p, 'count', { what: 'wc' }) as { count: number; source: string; drawn_in_model: number };
+  eq('detector: wc count comes from the detector, and both toilets are drawn', [wc.count, wc.drawn_in_model, /detector/.test(wc.source)], [2, 2, true]);
+  // the model read the toilet 12 px off; the detector's box is where it is drawn. The second toilet only the detector saw.
+  const wcs = p.fixtures!.filter((f) => f.kind === 'wc').map((f) => f.src!.box.map((v, i) => Math.abs(v - [[150, 150, 220, 250], [300, 150, 370, 250]][f.id === 'f1' ? 0 : 1][i]) <= 12)); // the box plus its 10 cm margin
+  eq('detector: fittings stand where the detector found them', wcs, [[true, true, true, true], [true, true, true, true]]);
+  eq('detector: said in the assumptions', p.assumptions.some((a) => /1 where the symbol detector found them, 1 only the symbol detector found/.test(a)), true);
   eq('detector: window count comes from the detector', (runTool(p, 'count', { what: 'window' }) as { count: number }).count, 1);
   eq('detector: a kind it found none of counts zero', (runTool(p, 'count', { what: 'sink' }) as { count: number }).count, 0);
   eq('detector: other kinds still come from the plan', (runTool(p, 'count', { what: 'bed' }) as { count: number; source?: string }).source, undefined);
@@ -256,6 +262,14 @@ void doorSweep; void fixtureContains;
   near('traced: the room is as wide as the traced outline (1600 px = 8 m), not as read (1640 px)', p.rooms[0].polygon[1][0] - p.rooms[0].polygon[0][0], 8, 0.01);
   eq('traced: said in the assumptions', p.assumptions.some((a) => /2 of 2 room outlines traced/.test(a)), true);
   eq('aligned: the shared wall face is one line in both rooms', p.rooms[0].polygon[0][0] === p.rooms[1].polygon[0][0], true);
+  // what the service measured on the render: a room fitted edge by edge, a bed tightened onto its lines, 24 px outside walls
+  const seenOn = buildPlan(raw, an, 'f1', 'a'.repeat(64), { rooms: traced, how: ['traced', 'fitted'], boxes: [[1210, 1205, 1590, 1600]], exterior_px: 60 });
+  eq('measured: a room fitted edge by edge is said so', seenOn.assumptions.some((a) => /2 of 2 room outlines traced.*\(1 edge by edge/.test(a)), true);
+  const bed = seenOn.fixtures!.find((f) => f.kind === 'bed')!;
+  eq('measured: furniture stands on the lines drawn for it, not where it was read', [Math.abs(bed.src!.box[0] - 1210) <= 25, Math.abs(bed.src!.box[2] - 1590) <= 25, p.fixtures!.find((f) => f.kind === 'bed')!.src!.box[0] < 1210], [true, true, true]);
+  eq('measured: outside walls as thick as they are drawn (60 px = 0.30 m at this scale stays; 80 px = 0.40 m)', [seenOn.walls.some((w) => w.thickness === 0.3),
+    buildPlan(raw, an, 'f1', 'a'.repeat(64), { rooms: traced, exterior_px: 80 }).walls.some((w) => w.thickness === 0.4)], [true, true]);
+  eq('trace request: furniture boxes go along, by index', traceRequest(raw, an).boxes, [[1200, 1200, 1600, 1600]]);
   eq('aligned: faces a wall apart stay apart', alignEdges([[[0, 0], [10, 0], [10, 10], [0, 10]], [[0, 10.2], [10, 10.2], [10, 20], [0, 20]]], 0, 0.05).map((q) => q[2][1])[0], 10);
   eq('source: every room, opening and fitting keeps its page and box', [p.rooms.every((r) => r.src?.page === 2 && r.src.box[2] > r.src.box[0]), p.openings.every((o) => !!o.src), p.fixtures?.every((f) => !!f.src)], [true, true, true]);
   eq('source: a room box covers its outline on the render', p.rooms[0].src?.box.map((v, i) => Math.abs(v - [200, 200, 1800, 980][i]) <= 40), [true, true, true, true]);
@@ -273,6 +287,14 @@ void doorSweep; void fixtureContains;
   eq('code answer: total area', /net floor area is \*\*/.test(quickAnswer('What is the total floor area?', p)?.text ?? ''), true);
   eq('code answer: largest room', quickAnswer('Which is the largest room?', p)?.claims[0].room_ids.length, 1);
   eq('code answer: list of rooms', quickAnswer('List the rooms', p)?.claims.length, 2);
+  eq('reasoning: a room area says which room matched, its size, how area is computed and where the geometry comes from',
+    [k!.reasoning.length >= 4, /matches the room labelled "Kitchen"/.test(k!.reasoning[0]), k!.reasoning.some((x) => /shoelace/.test(x)), /^Geometry: .*Scale: /.test(k!.reasoning.at(-1)!)], [true, true, true, true]);
+  const tot = quickAnswer('What is the total floor area?', p)!;
+  eq('reasoning: the total lists every room and the walls', [p.rooms.every((r) => tot.reasoning.some((x) => x.includes(r.name))), tot.reasoning.some((x) => /gross floor area/.test(x))], [true, true]);
+  eq('reasoning: a detector count says who counted and where', quickAnswer('How many windows are there?', p)!.reasoning.slice(0, 2).map((x) => /symbol detector|found 1 on this sheet/.test(x)), [true, true]);
+  eq('reasoning: its figures pass the same check as the answer', verify({ ...k!, reasoning: [...k!.reasoning, 'The kitchen is 99.5 m².'] }, [runTool(p, 'list_rooms', {})], 'What is the area of the kitchen?', p).some((x) => /99.5/.test(x)), true);
+  eq('trail: a lookup is written out in words by code', traceStep(p, 'room_info', { id: p.rooms[0].id }, runTool(p, 'room_info', { id: p.rooms[0].id })).tool, 'Room: Kitchen');
+  eq('trail: a calculation shows its expression and result', traceStep(p, 'calculate', {}, runTool(p, 'calculate', { expression: '2 * 3.5' })).found, '2 * 3.5 = 7');
   eq('code answer: an unknown room goes to the agent', quickAnswer('What is the area of the garage?', p), null);
   eq('code answer: open questions go to the agent', [quickAnswer('Is the kitchen big enough for a family of four?', p), quickAnswer('How many people can sleep here?', p)], [null, null]);
   eq('verifier: a room name with a number in it is a label, not a figure', verify({ text: 'Bedroom 2 is the quietest room.', claims: [{ text: 'Bedroom 2', room_ids: [p.rooms[1].id] }], calculation: null, assumptions: [], not_found: false }, [], 'Which room is quietest?', p), []);
@@ -281,7 +303,43 @@ void doorSweep; void fixtureContains;
     { candidates: [{ content: { parts: [{ text: 'b' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 200, thoughtsTokenCount: 300 } }].map((c) => `data: ${JSON.stringify(c)}`).join('\n\n');
   eq('cost: tokens are the last totals of the stream, thinking counted as output', joinStream(sse).usage, { in: 1000, out: 500 });
   const m = { ...meter(), calls: 1, tokens_in: 1_000_000, tokens_out: 1_000_000 };
-  eq('cost: list price per million tokens, overridable', [costUsd({} as never, m), costUsd({ GEMINI_PRICE_IN: '0.1', GEMINI_PRICE_OUT: '0.4' } as never, m)], [4.5, 0.5]);
+  eq('cost: list price per million tokens, overridable', [costUsd({} as never, m), costUsd({ GEMINI_PRICE_IN: '0.1', GEMINI_PRICE_OUT: '0.4' } as never, m)], [9, 0.5]);
+  const body4 = { contents: [], generationConfig: { temperature: 0, responseMimeType: 'application/json', mediaResolution: 'MEDIA_RESOLUTION_HIGH' } };
+  eq('model: Gemini 4 gets no sampling parameters, and the rest of the request unchanged', forModel({}, 'gemini-4-hydrogen', body4).generationConfig, { responseMimeType: 'application/json', mediaResolution: 'MEDIA_RESOLUTION_HIGH' });
+  eq('model: a thinking level is sent when set, and only a valid one', [forModel({ GEMINI_THINKING: 'medium' }, 'gemini-4-hydrogen', body4).generationConfig, forModel({ GEMINI_THINKING: 'minimal' }, 'gemini-4-hydrogen', { contents: [] }).generationConfig],
+    [{ responseMimeType: 'application/json', mediaResolution: 'MEDIA_RESOLUTION_HIGH', thinkingConfig: { thinkingLevel: 'medium' } }, {}]);
+  eq('model: older models keep the request as written', forModel({ GEMINI_THINKING: 'low' }, 'gemini-3.8-flash', body4), body4);
+}
+// The answer note on the plan: the area an answer is about, and a place for the note that never covers it
+{
+  const p = samplePlan(), r = p.rooms[0];
+  eq('note: the cited room is the area', noteArea(p, { rooms: [r.id], items: [], region: null })?.polys, [r.polygon]);
+  eq('note: counted items are marked instead of their rooms', noteArea(p, { rooms: [r.id], items: [p.openings[0].id], region: null })?.marks.length, 1);
+  eq('note: a marked region is the area', noteArea(p, { rooms: [r.id], items: [], region: { x0: 1, y0: 1, x1: 3, y1: 2 } })?.box, [1, 1, 3, 2]);
+  eq('note: nothing cited, nothing to point at', noteArea(p, { rooms: [], items: [], region: null }), null);
+  const covers = (n: { left: number; top: number }, a: number[], w: number, h: number) => !(n.left + w <= a[0] || n.left >= a[2] || n.top + h <= a[1] || n.top >= a[3]);
+  const cases: [number[], string][] = [[[100, 200, 300, 400], 'right'], [[700, 200, 950, 400], 'left'], [[350, 20, 650, 120], 'below'], [[350, 450, 650, 590], 'above']];
+  eq('note: stands on the side with the most room', cases.map(([a]) => placeNote(a as never, 300, 150, 1000, 600).side), cases.map((c) => c[1]));
+  eq('note: never covers the area when a side has room, and stays in view', cases.map(([a]) => { const n = placeNote(a as never, 300, 150, 1000, 600); return [n.clear, covers(n, a, 300, 150), n.left >= 8 && n.left + 300 <= 992 && n.top >= 8 && n.top + 150 <= 592]; }),
+    cases.map(() => [true, false, true]));
+  eq('note: an area that fills the view is reported, so the plan zooms out to make room', placeNote([20, 20, 980, 580], 300, 150, 1000, 600).clear, false);
+}
+// Measurements of things the drawing does not dimension, and names of symbols
+{
+  const h = housePlan();
+  const front = openingInfo(h, h.openings.find((o) => o.id === 'd1')!);
+  eq('measure: a door has its width, the rooms it joins, and whether it leads outside', [front.width_m, front.exit, front.where], [1, true, 'Entrance hall, outside wall']);
+  eq('measure: a door between rooms names both', openingInfo(h, h.openings.find((o) => o.id === 'd6')!).where, 'between Bedroom 3 and Entrance hall');
+  const outer = h.walls.map((w) => wallInfo(h, w)).filter((w) => w.exterior), inner = h.walls.map((w) => wallInfo(h, w)).filter((w) => !w.exterior);
+  eq('measure: outside walls are 0.30 m, partitions 0.12 m, each with its length', [outer.every((w) => w.thickness_m === 0.3 && w.length_m > 0), inner.every((w) => w.thickness_m === 0.12), outer.length > 3 && inner.length > 5], [true, true, true]);
+  near('measure: the outside walls add up to the perimeter of the house (16.8 × 9.6 m)', outer.reduce((s, w) => s + w.length_m, 0), 2 * (16.8 + 9.6), 0.05);
+  const bed = h.fixtures!.find((f) => f.kind === 'bed')!;
+  eq('measure: a fitting has its size and room', [fixtureInfo(h, bed).width_m, fixtureInfo(h, bed).depth_m, fixtureInfo(h, bed).room], [1.4, 2, 'Bedroom 3']);
+  eq('measure: the read-out says what it is and how big', describe(h, 'opening', 'w2'), { title: 'Window', detail: '1800 mm wide · Bedroom 3, outside wall' });
+  eq('measure: the tools give the same figures', [(runTool(h, 'list_walls', {}) as { total_length_m: number }).total_length_m > 80, (runTool(h, 'list_openings', { kind: 'door' }) as { count: number }).count, (runTool(h, 'list_fixtures', { room_id: 'r2' }) as { count: number }).count], [true, 13, 3]);
+  eq('symbols: every kind has a name', FIXTURE_KINDS.every((k) => !!FIXTURE_LABEL[k]), true);
+  eq('symbols: a name given by a person wins', [fixtureName({ kind: 'unknown', label: 'piano' }), fixtureName({ kind: 'unknown' }), fixtureName({ kind: 'radiator' })], ['piano', 'unknown symbol', 'radiator']);
+  eq('evidence: a cited wall is marked on the sheet crop and on the plan', [noteArea(h, { rooms: [], items: [`wall-${h.walls[0].id}`], region: null })?.marks.length], [1]);
 }
 // Level and ceiling strings (FN-13)
 eq('level "1.OG OKFF +3.05"', parseLevel('1.OG OKFF +3.05'), 3.05);
@@ -331,12 +389,19 @@ eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
   eq('bad region rejected', parseRegion({ x0: 'a' }, p), null);
 }
 
-// Cloudinary: request signing (the documented example) and generated-image transformations
+
+// Cloudinary: request signing (the documented example), and prompts that cannot break the transformation
 {
+  const { signParams, transformationFor, cropTransformation } = await import('../apps/api/src/visuals');
+  eq('evidence image: the crop is cut by position and size, then framed', cropTransformation([120, 40, 520, 340]), 'c_crop,x_120,y_40,w_400,h_300/c_limit,w_1400/bo_6px_solid_rgb:ff682b/f_jpg,q_auto');
+  const { VISUAL_STYLES, cleanPrompt } = await import('../apps/shared/visual-styles');
   const sig = await signParams({ eager: 'w_400,h_300,c_pad|w_260,h_200,c_crop', public_id: 'sample_image', timestamp: '1315060510' }, 'abcd');
   eq('Cloudinary signature matches the documented example', sig, 'bfd09f95f331f558cbd1320e67aa8d488770583e');
-  eq('prompt commas and slashes are escaped in the transformation', transformationFor('custom', 'garden, trees/sky'), 'e_gen_background_replace:prompt_garden%2C%20trees%2Fsky/c_limit,w_1600/f_jpg,q_auto');
-  eq('custom prompts are cleaned', cleanPrompt('  a <b>garden</b> | with "trees"  '), 'a b garden b with trees');
+  eq('a prompt goes in as plain words: commas, slashes and percent signs never reach the transformation', transformationFor('custom', 'garden, trees/sky 100%'), 'e_gen_background_replace:prompt_garden%20trees%20sky%20100/c_limit,w_1600/f_jpg,q_auto');
+  eq('custom prompts are cleaned', cleanPrompt('  a <b>garden</b> | with "trees", low sun.  '), 'a b garden b with trees low sun');
+  // the image URL is decoded before Cloudinary reads it: after decoding, a transformation must still split into the same parts
+  const parts = (t: string) => decodeURIComponent(t).split('/').map((c) => c.split(',').length);
+  eq('every preset survives the decoding of its image URL', VISUAL_STYLES.map((s) => { const t = transformationFor(s.key, s.prompt); return JSON.stringify(parts(t)) === JSON.stringify(t.split('/').map((c) => c.split(',').length)) && !/%2C|%2F|%25/i.test(t); }), VISUAL_STYLES.map(() => true));
 }
 
 // Gemini: a retired model (404) is replaced by the newest Flash model the key can use, and the call succeeds

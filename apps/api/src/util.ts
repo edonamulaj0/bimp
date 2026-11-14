@@ -6,17 +6,21 @@ export interface Env {
   GEMINI_API_KEY?: string;
   GEMINI_MODEL: string;
   AI_GATEWAY_URL?: string;
-  /** List price in US dollars per million tokens, for the cost shown with each answer (defaults: Gemini Flash paid tier). */
+  /** Gemini 4 thinking level: low | medium | high | xhigh. Unset = the model's default (high for Hydrogen). */
+  GEMINI_THINKING?: string;
+  /** List price in US dollars per million tokens, for the cost shown with each answer (defaults: Gemini 4 Hydrogen paid tier). */
   GEMINI_PRICE_IN?: string;
   GEMINI_PRICE_OUT?: string;
   ALLOW_SIGNUP?: string;
-  /** Cloudinary image generation from the 3D model (optional): cloud name and API key as vars, API secret as a secret. */
+  /** Cloudinary (optional): presentation images of the plan and shareable evidence images. Cloud name and API key as vars, the API secret as a secret. */
   CLOUDINARY_CLOUD_NAME?: string;
   CLOUDINARY_API_KEY?: string;
   CLOUDINARY_API_SECRET?: string;
   /** Only bound in the bimp-ingest Worker. */
   INGEST: DurableObjectNamespace<import('./ingest').IngestContainer>;
   INGEST_URL?: string;
+  /** "off" skips measuring walls and fittings on the drawing: plans are built from the language model's reading alone. */
+  MEASURE_ON_DRAWING?: string;
   INGEST_WORKFLOW: Workflow<import('./workflow').IngestParams>;
 }
 export type User = { id: string; email: string };

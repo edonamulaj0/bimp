@@ -327,6 +327,9 @@ def trace_rooms(data: bytes):
     by the wall lines, or null when no enclosed space matches it (then the rough outline stands).
     Two wall masks are tried: thick strokes only (filled or hatched walls; thin dimension, furniture and text lines
     vanish), then all line work (walls drawn as thin double lines), which must match more closely to be accepted.
+    A room still without an outline has each of its edges moved onto the wall face beside it (`how`: traced | fitted).
+    `boxes` (rough boxes of fittings and furniture) come back tightened onto the line work drawn there, or null.
+    `exterior_px` is the measured thickness of the outside walls where they are drawn filled, else null.
     """
     import json
     req = json.loads(data)
@@ -342,6 +345,7 @@ def trace_rooms(data: bytes):
     k = max(3, round(max(h, w) / 500))
     thick = cv2.morphologyEx(bw, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (k, k)))
     best = [None] * len(rooms)  # (iou, polygon)
+    axis = plan_axis(bw, max(h, w))
     for mask, need in ((thick, 0.6), (bw, 0.75)):
         walls = mask.copy()
         for x1, y1, x2, y2 in close:
@@ -379,9 +383,252 @@ def trace_rooms(data: bytes):
             if not cs:
                 continue
             out = cv2.approxPolyDP(max(cs, key=cv2.contourArea), max(2.0, 0.75 * k), True).reshape(-1, 2)
-            if len(out) >= 3:
+            # Only a clean outline replaces the reading: straight runs along the drawing's axes and no more corners
+            # than the reading plus a jog. A contour that wanders round door leaves, hatching or handwriting is noise,
+            # and a wrong wall is worse than one a little out of place.
+            if len(out) >= 3 and clean_outline(out.astype(float), poly, axis, k, 0.03 * max(h, w)):
                 best[i] = (float(iou), [[float(px + cx), float(py + cy)] for px, py in out])
-    return {"rooms": [b and b[1] for b in best], "match": [b and round(b[0], 3) for b in best]}
+    # Rooms with no enclosed space of their own (an open plan, a doorway nobody reported): each edge of the outline as
+    # read is moved onto the wall face it runs along. A wall is still mostly wall where a door or window breaks it, so
+    # this needs no openings at all.
+    how = ["traced" if b else None for b in best]
+    walls_thick = int(thick.sum()) > 255 * 0.002 * h * w   # are there filled walls at all, or only thin lines
+    for i, poly in enumerate(rooms):
+        if best[i] or len(poly) < 3:
+            continue
+        # filled walls first; walls drawn as thin lines, hatched or empty, next
+        fit = fit_edges(poly, thick, k, h, w, solid_run=k + 1, axis=axis) if walls_thick else None
+        if fit is None:
+            fit = fit_edges(poly, bw, k, h, w, solid_run=1, axis=axis)
+        if fit is not None:
+            best[i], how[i] = (0.0, fit), "fitted"
+
+    out_rooms = [b and b[1] for b in best]
+    return {"rooms": out_rooms, "match": [b and round(b[0], 3) for b in best], "how": how,
+            "boxes": refine_boxes(req.get("boxes", [])[:400], bw, k, h, w),
+            "exterior_px": exterior_thickness(out_rooms, thick, k, h, w) if walls_thick else None}
+
+
+def plan_axis(bw: np.ndarray, size: int) -> float:
+    """The direction (radians, modulo 90°) most of the drawing's line work runs along."""
+    lines = cv2.HoughLinesP(bw, 1, np.pi / 360, threshold=60, minLineLength=size * 0.04, maxLineGap=4)
+    if lines is None:
+        return 0.0
+    l = lines.reshape(-1, 4).astype(float)
+    ang = np.arctan2(l[:, 3] - l[:, 1], l[:, 2] - l[:, 0]) % (np.pi / 2)
+    hist = np.bincount(np.rint(np.degrees(ang) * 2).astype(int) % 180, weights=np.hypot(l[:, 2] - l[:, 0], l[:, 3] - l[:, 1]), minlength=180)
+    hist = hist + np.roll(hist, 1) + np.roll(hist, -1)
+    return float(np.radians(int(hist.argmax()) / 2))
+
+
+def off_axis(u, axis: float) -> float:
+    """Degrees between a direction and the nearest of the drawing's two axes."""
+    d = abs(math.degrees(math.atan2(u[1], u[0]) - axis)) % 90
+    return min(d, 90 - d)
+
+
+def reads_slanted(u, L: float, axis: float, noise: float) -> bool:
+    """Whether an edge as read is really a slanted wall: off the axes by more than a sloppy reading of a straight wall
+    explains. A short edge read 15° off is noise; a long one is a slanted wall."""
+    off = off_axis(u, axis)
+    return off > 12 and L * math.sin(math.radians(off)) > 1.5 * noise
+
+
+def clean_outline(out: np.ndarray, read: np.ndarray, axis: float, k: int, noise: float) -> bool:
+    """Whether a traced contour is fit to replace the outline as read (see trace_rooms)."""
+    if len(out) > len(read) + 4:
+        return False
+    edges = np.roll(out, -1, axis=0) - out
+    length = np.hypot(edges[:, 0], edges[:, 1])
+    if length.sum() <= 0 or length[length < 4 * k].sum() > 0.08 * length.sum():
+        return False                                          # too much of it is little steps
+    r_edges = np.roll(read, -1, axis=0) - read
+    r_len = np.hypot(r_edges[:, 0], r_edges[:, 1])
+    if any(L > 0 and reads_slanted(e, L, axis, noise) for e, L in zip(r_edges, r_len)):                                               # a room read with a slanted wall: the fit below keeps its shape
+        return False
+    return all(off_axis(e, axis) <= 3 for e, L in zip(edges, length) if L >= 4 * k)
+
+
+def _sample(mask: np.ndarray, pts: np.ndarray, h: int, w: int) -> np.ndarray:
+    """mask > 0 at float points (..., 2), False outside the image."""
+    x, y = np.rint(pts[..., 0]).astype(int), np.rint(pts[..., 1]).astype(int)
+    ok = (x >= 0) & (x < w) & (y >= 0) & (y < h)
+    out = np.zeros(x.shape, bool)
+    out[ok] = mask[y[ok], x[ok]] > 0
+    return out
+
+
+def fit_edges(poly: np.ndarray, mask: np.ndarray, k: int, h: int, w: int, solid_run: int = 1, axis: float = 0.0):
+    """Moves each edge of a rough outline onto the inside face of the wall beside it; None if too few edges find one.
+
+    `solid_run`: how many pixels of wall must follow a face for it to count, so that a boldly drawn piece of furniture
+    is not taken for a filled wall. 1 when the walls themselves are thin lines."""
+    n = len(poly)
+    area2 = float(np.sum(poly[:, 0] * np.roll(poly[:, 1], -1) - np.roll(poly[:, 0], -1) * poly[:, 1]))
+    if abs(area2) < 2 * 16 * k * k:
+        return None
+    sign = 1.0 if area2 > 0 else -1.0
+    size = math.sqrt(abs(area2) / 2)
+    reach = int(max(3 * k, min(0.035 * max(h, w), 0.3 * size)))   # how far off the model may have put an edge
+    lines, fitted, total = [], 0.0, 0.0
+    for i in range(n):
+        a, b = poly[i], poly[(i + 1) % n]
+        L = float(np.hypot(*(b - a)))
+        if L < 1e-6:
+            lines.append(None)
+            continue
+        u = (b - a) / L
+        nrm = np.array([u[1], -u[0]]) * sign               # points out of the room
+        total += L
+        d0 = d1 = 0.0                                          # how far the face lies outward at the edge's two ends
+        if L >= 4 * k:
+            t = np.arange(0.1 * L, 0.9 * L, 2.0)             # the corners belong to the neighbouring walls
+            offs = np.arange(-reach, reach + 1)
+            hit = _sample(mask, a + u * t[:, None, None] + nrm * offs[None, :, None], h, w)   # (along, across)
+            # in every column across the edge: the places where it turns from room to wall going outward, with real
+            # wall behind them. A door or window leaves its columns empty; furniture adds stray ones.
+            run = max(1, solid_run)
+            solid = hit.copy()
+            for r in range(1, run):
+                solid[:, :-r] &= hit[:, r:]
+                solid[:, -r:] = False
+            rise = solid[:, 1:] & ~hit[:, :-1]
+            ti, oi = np.nonzero(rise)
+            if len(ti) >= 6:
+                tt, dd = t[ti], offs[oi + 1].astype(float)
+                # a wall has ink behind its face (fill, hatching, its other face); the edge of a worktop or a rug has
+                # blank floor behind it. Each place counts for more the more ink follows it.
+                csum = np.concatenate([np.zeros((hit.shape[0], 1)), np.cumsum(hit, axis=1)], axis=1)
+                span = 4 * k
+                end = np.minimum(oi + 1 + span, hit.shape[1])
+                weight = 1 + 3 * (csum[ti, end] - csum[ti, oi + 1]) / span
+                # the face is a straight line d = c + m·t; the outline as read may be tilted against it, so tilts are
+                # tried and the line most columns agree on wins, the one nearest the read edge on a tie
+                best = None
+                for m in np.linspace(-0.12, 0.12, 49):
+                    r = dd - m * (tt - L / 2)
+                    bins = np.rint(r).astype(int) + reach * 2
+                    cnt = np.bincount(bins[bins >= 0], weights=weight[bins >= 0], minlength=4 * reach + 1)
+                    c = int(cnt.argmax())
+                    score = (round(float(cnt[c] + cnt[max(0, c - 1)] + cnt[min(len(cnt) - 1, c + 1)]), 1), -abs(c - reach * 2) - 40 * abs(m))
+                    if best is None or score > best[0]:
+                        best = (score, m, c - reach * 2)
+                (votes, _), m, c = best
+                near = np.abs(dd - m * (tt - L / 2) - c) <= 1.5
+                cols = len(np.unique(ti[near]))
+                if cols >= 0.35 * len(t):                     # the wall is there along a good part of the edge (openings take the rest)
+                    m, c0 = np.polyfit(tt[near], dd[near], 1) if cols >= 8 else (m, c - m * L / 2)
+                    d0, d1 = float(c0), float(c0 + m * L)
+                    fitted += L
+        # The fit says where the wall is, not which way it runs: an edge read along the drawing's axes lies exactly on
+        # the axis; an edge read as slanted keeps its own direction unless the fit runs the same way. So a room keeps
+        # the shape it was read with, and stray marks cannot bend a wall.
+        mid = (a + b) / 2 + nrm * ((d0 + d1) / 2 - 0.5)
+        p0, p1 = a + nrm * (d0 - 0.5), b + nrm * (d1 - 0.5)
+        fit_u = (p1 - p0) / max(1e-9, float(np.hypot(*(p1 - p0))))
+        if not reads_slanted(u, L, axis, reach):
+            ang = axis + round((math.atan2(u[1], u[0]) - axis) / (math.pi / 2)) * (math.pi / 2)
+            use = np.array([math.cos(ang), math.sin(ang)])
+        else:
+            use = fit_u if abs(fit_u[0] * u[1] - fit_u[1] * u[0]) <= math.sin(math.radians(3)) else u
+        lines.append((mid, use))
+    if total <= 0 or fitted / total < 0.6:
+        return None
+    out = []
+    for i in range(n):
+        p, q = lines[i - 1], lines[i]                        # corner i lies on the edge before and the edge after
+        if p is None or q is None:
+            out.append(poly[i].tolist())
+            continue
+        cross = p[1][0] * q[1][1] - p[1][1] * q[1][0]
+        if abs(cross) < 0.2:                                  # nearly one line: keep the corner, moved onto it
+            out.append((q[0] + q[1] * float(np.dot(poly[i] - q[0], q[1]))).tolist())
+            continue
+        t = ((q[0][0] - p[0][0]) * q[1][1] - (q[0][1] - p[0][1]) * q[1][0]) / cross
+        c = p[0] + p[1] * t
+        out.append(c.tolist() if np.hypot(*(c - poly[i])) <= 3 * reach else poly[i].tolist())
+    return [[float(x), float(y)] for x, y in out]
+
+
+def refine_boxes(boxes, bw: np.ndarray, k: int, h: int, w: int):
+    """Tightens rough boxes of fittings and furniture onto the line work actually drawn there; None where it is unclear."""
+    if not boxes:
+        return []
+    # everything but the walls. Furniture is drawn in lines up to about the width that counts as a thick stroke, so
+    # only strokes twice that wide are taken out here.
+    wide = cv2.morphologyEx(bw, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (2 * k, 2 * k)))
+    thin = cv2.bitwise_and(bw, cv2.bitwise_not(cv2.dilate(wide, np.ones((k, k), np.uint8))))
+    out = []
+    for box in boxes:
+        try:
+            x0, y0, x1, y1 = [float(v) for v in box]
+        except (TypeError, ValueError):
+            out.append(None)
+            continue
+        bw_, bh_ = x1 - x0, y1 - y0
+        if bw_ < 4 or bh_ < 4:
+            out.append(None)
+            continue
+        px, py = max(6.0, 0.3 * bw_), max(6.0, 0.3 * bh_)
+        cx0, cy0, cx1, cy1 = int(max(0, x0 - px)), int(max(0, y0 - py)), int(min(w, x1 + px)), int(min(h, y1 + py))
+        crop = thin[cy0:cy1, cx0:cx1]
+        if crop.size == 0:
+            out.append(None)
+            continue
+        n, _, stats, _ = cv2.connectedComponentsWithStats(crop, connectivity=8)
+        H, W = crop.shape
+        keep = []
+        for sx, sy, sw, sh, area in stats[1:]:
+            if area < 6:
+                continue
+            # a line that runs on past the search window belongs to something else (a floor pattern, a dimension line)
+            if (sx <= 0 and cx0 > 0) or (sy <= 0 and cy0 > 0) or (sx + sw >= W and cx1 < w) or (sy + sh >= H and cy1 < h):
+                continue
+            mx, my = cx0 + sx + sw / 2, cy0 + sy + sh / 2
+            if x0 - 0.1 * bw_ <= mx <= x1 + 0.1 * bw_ and y0 - 0.1 * bh_ <= my <= y1 + 0.1 * bh_:
+                keep.append((cx0 + sx, cy0 + sy, cx0 + sx + sw, cy0 + sy + sh))
+        if not keep:
+            out.append(None)
+            continue
+        rx0, ry0, rx1, ry1 = min(b[0] for b in keep), min(b[1] for b in keep), max(b[2] for b in keep), max(b[3] for b in keep)
+        ix, iy = max(0.0, min(x1, rx1) - max(x0, rx0)), max(0.0, min(y1, ry1) - max(y0, ry0))
+        ra, ba = (rx1 - rx0) * (ry1 - ry0), bw_ * bh_
+        iou = ix * iy / (ra + ba - ix * iy)
+        out.append([float(rx0), float(ry0), float(rx1), float(ry1)] if iou >= 0.35 and 0.4 <= ra / ba <= 1.8 else None)
+    return out
+
+
+def exterior_thickness(rooms, thick: np.ndarray, k: int, h: int, w: int):
+    """Median thickness, in pixels, of filled walls with no room behind them: the outside walls. None if unclear."""
+    polys = [np.array(r, np.float32) for r in rooms if r]
+    if len(polys) < 1:
+        return None
+    reach = int(max(6 * k, 0.03 * max(h, w)))
+    found = []
+    for pi, poly in enumerate(polys):
+        area2 = float(np.sum(poly[:, 0] * np.roll(poly[:, 1], -1) - np.roll(poly[:, 0], -1) * poly[:, 1]))
+        sign = 1.0 if area2 > 0 else -1.0
+        for i in range(len(poly)):
+            a, b = poly[i].astype(float), poly[(i + 1) % len(poly)].astype(float)
+            L = float(np.hypot(*(b - a)))
+            if L < 6 * k:
+                continue
+            u = (b - a) / L
+            nrm = np.array([u[1], -u[0]]) * sign
+            beyond = a + u * (L / 2) + nrm * (reach + 2 * k)
+            if any(cv2.pointPolygonTest(q, (float(beyond[0]), float(beyond[1])), False) >= 0 for qi, q in enumerate(polys) if qi != pi):
+                continue                                     # another room lies behind this wall: a partition
+            t = np.linspace(0.2 * L, 0.8 * L, 15)
+            offs = np.arange(0, reach + 1)
+            hit = _sample(thick, a + u * t[:, None, None] + nrm * offs[None, :, None], h, w)
+            for row in hit:                                   # wall run starting at (or just beyond) the room's face
+                start = int(np.argmax(row)) if row.any() else -1
+                if start < 0 or start > 2 * k:
+                    continue
+                stop = start + int(np.argmin(row[start:])) if not row[start:].all() else len(row)
+                if stop < len(row) and stop - start >= k:
+                    found.append(stop - start)
+    return float(np.median(found)) if len(found) >= 12 else None
 
 
 PARSERS = {"application/pdf": "analyze_pdf", "application/dxf": "analyze_dxf"}

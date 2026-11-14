@@ -11,6 +11,8 @@ export type ProjectRow = {
 export type Content = {
   text: string; kind?: 'system' | 'error'; claims?: { text: string; room_ids: string[]; item_ids?: string[]; evidence?: import('../../shared/plan').Evidence }[]; calculation?: string | null;
   assumptions?: string[]; not_found?: boolean; verified?: boolean; issues?: string[];
+  /** How the answer was worked out, in steps; and what was looked up on the plan to get there. */
+  reasoning?: string[]; steps?: { tool: string; found: string }[];
   /** How the answer was produced and what it cost: by code from the stored plan (free), by model calls, or the cost of reading a drawing. */
   cost?: { by: 'code' | 'model' | 'reading'; usd: number; calls?: number; tokens_in?: number; tokens_out?: number; ms?: number; note?: string };
   /** A question asked about a marked region of the plan. */

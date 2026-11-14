@@ -9,7 +9,7 @@ Read `docs/BIMP.md` first: it is the project's source of truth.
 | Path | What |
 |---|---|
 | `apps/web/index.html` | Marketing page (static) |
-| `apps/web/app/`, `apps/web/src/` | App: login, projects, workspace (chat + 2D/3D canvas). Preact + three.js |
+| `apps/web/app/`, `apps/web/src/` | App: login, projects, workspace (chat + 2D canvas). Preact |
 | `apps/api/src/` | Worker code. `index.ts` = web/API Worker `bimp` (auth, projects, uploads, jobs, chat). `ingest-worker.ts` = Worker `bimp-ingest` (ingestion Workflow + Container) |
 | `ingest/` | Python ingestion service (PyMuPDF, OpenCV, ezdxf) for Cloudflare Containers; `make_fixtures.py` makes test drawings with known geometry |
 | `apps/shared/` | Plan model and geometry used by both sides |
@@ -26,7 +26,7 @@ npm run ingest:dev               # ingestion service on :8090 (stands in for the
 npm run dev                      # http://localhost:5173 (marketing) and /app/ (app); runs both Workers
 ```
 
-`npm test` checks the drawing-convention and standards rules, the plan builder, the code-answer router and the cost figures; `npm run test:ingest` checks room tracing and PDF pages in the Python service. Without a Gemini key, everything works except reading new drawings and chat. Every new account gets a
+`npm test` checks the drawing-convention and standards rules, the plan builder, the code-answer router and the cost figures; `npm run test:ingest` checks room tracing and PDF pages in the Python service. The model is Gemini 4 Hydrogen (`GEMINI_MODEL` in both `wrangler.jsonc` files; `GEMINI_THINKING` sets its thinking level, empty for the default). Without a Gemini key, everything works except reading new drawings and chat. Every new account gets a
 "Pilot house" project (a three-bedroom single-storey house, `apps/shared/house-plan.ts`). `npm run ingest:fixtures` writes test drawings (vector PDF at 1:100, a scan, a DXF) to `evals/fixtures/`.
 
 ## Deploy
@@ -72,29 +72,35 @@ Version URLs are public: put Cloudflare Access in front if the data must stay pr
 
 1. **Analyse** (Python service, no model): line work, text, scale, a render of the sheet; on scans, the symbol detector. Every page of a PDF, up to 8 per file; each page with a floor plan becomes its own revision ("Page 2 of 5").
 2. **Read** (Gemini, twice per page, cached by the render's hash): rooms, labels and openings, then a second reading for doors and windows only.
-3. **Trace** (Python service, no model): each room's outline is replaced by the exact outline of the enclosed space on the drawing, bounded by its wall lines. A room that matches no enclosed space keeps the outline as read; the plan's assumptions say how many were traced.
+3. **Measure on the drawing** (Python service, no language model): each room's outline is replaced by the exact outline of the enclosed space on the drawing, bounded by its wall lines. A room that is open to its neighbour (a doorway nobody reported, an open plan) has each edge moved onto the wall face beside it instead. Fittings and furniture are tightened onto the lines drawn for them, and the outside walls get the thickness they are drawn with. On scans and images the symbol detector (`ml/`, trained on Colab) decides where doors, windows, toilets, sinks, showers and bathtubs stand, and adds the ones the language model missed. The reading gives each room its shape; measuring only moves its walls onto the lines of the drawing, square to the drawing's axes, and a traced outline is used only when it is clean (no kinks round door leaves, hatching or handwriting). Whatever the drawing gives no clear answer for stays as read; the plan's assumptions say which is which. Set `MEASURE_ON_DRAWING` to `off` in `ingest/wrangler.jsonc` to switch this step off.
 4. **Measure and save** (code): scale, walls, openings seated in walls, and for every room, opening and fitting the page and box it was read from (`src`).
 
-The uploaded drawing is on the canvas as soon as it is rendered; the model is drawn over it when the reading is done. **Overlay** in the canvas toolbar sets how strongly the drawing and the model are drawn (in 3D the drawing lies on the floor).
+The uploaded drawing is on the canvas as soon as it is rendered; the model is drawn over it when the reading is done. **Overlay** in the canvas toolbar sets how strongly the drawing and the plan are drawn.
+
+Symbols: bimp names 29 kinds of fitting, appliance and furniture. One it cannot name is drawn dashed with a "?" pin; anyone on the project can say what it is, and each answer is stored with its place on the sheet (`symbol_labels`) as an example for the next symbol model. Hovering a wall, door, window or symbol on the 2D plan shows what it is and its measurements, whether or not the drawing states them; the chat has the same figures (`list_walls`, `list_openings`, `list_fixtures`).
 
 Questions are answered from the stored plan. Counts, room areas, the total area, the largest or smallest room and the room list are answered by code (`apps/api/src/quick.ts`): no model call, 0¢. Everything else goes to the agent, and the answer shows what it cost at the model's list price (`GEMINI_PRICE_IN` / `GEMINI_PRICE_OUT`, US dollars per million tokens, in both `wrangler.jsonc` files: update them when the model or its price changes). Each citation carries a crop of the source sheet with the cited rooms or items outlined.
 
-### Architectural images (Cloudinary, optional)
+### Cloudinary (optional)
 
-The 3D view can generate architectural images (the model set in a garden, a street at dusk, a 16:9 panorama, or a
-presentation board) with Cloudinary's generative AI. Enable generative AI on your Cloudinary account, then:
+Two things use Cloudinary; both are off until its three settings are present (`CLOUDINARY_CLOUD_NAME` and
+`CLOUDINARY_API_KEY` in `wrangler.jsonc`, `CLOUDINARY_API_SECRET` as a secret):
 
 ```bash
-# in wrangler.jsonc "vars": CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY
 npx wrangler secret put CLOUDINARY_API_SECRET -c apps/web/dist/bimp/wrangler.json
-npm run db:migrate:remote   # adds the visuals table (0004)
 ```
 
-Snapshots are uploaded with signed requests into `bimp/<project id>/`, and each image is generated as an eager
-transformation, so it works with "strict transformations" on. Generative styles use Cloudinary credits; each user can
-make 20 images a day.
+- **Presentation images** (the Images button on the canvas): a snapshot of the 2D plan, as a sheet, is set on a
+  drawing desk, a site office table or a presentation board. The scenes use Cloudinary's generative AI, which must be
+  enabled on the account and uses its credits; each person can make 20 images a day. Scene prompts are plain words
+  only: a comma or slash in a prompt breaks the image URL, so `cleanPrompt` removes them.
+- **Evidence images** ("Share as image" under a citation's crop): Cloudinary cuts the cited piece out of the source
+  sheet and serves it from its CDN, so the proof of an answer can be pasted into a report or a message. The sheet is
+  uploaded once per drawing, into `bimp/<project id>/sheets/`. This sends the drawing to Cloudinary.
+
+### Site images
 
 The marketing site uses photographs and plan sheets in `apps/web/public/photos/` (credits in the docs), not generated
-images. The `site_images` table from `db/migrations/0005` is no longer read.
+images. `db/migrations/0008` drops the unused `site_images` table and clears the images of the removed 3D view from `visuals`. The app is 2D only: the 3D view was removed, and presentation images are made from the 2D plan.
 
 Set `ALLOW_SIGNUP` to `"false"` in `wrangler.jsonc` to close sign-up after creating your accounts.

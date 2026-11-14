@@ -6,7 +6,7 @@ import { BOOK, nearestPreferredScale, parseDimension } from '../../shared/standa
 import { orientDoors } from '../../shared/rooms';
 import type { Env } from './util';
 
-const PROMPT_VERSION = 'read-v6';
+const PROMPT_VERSION = 'read-v7';
 const P = { type: 'ARRAY', items: { type: 'NUMBER' } }; // [y, x] normalised 0-1000
 const SCHEMA = {
   type: 'OBJECT',
@@ -69,9 +69,18 @@ openings: EVERY door and EVERY window, each as the segment from one jamb to the 
 scale_evidence: one dimension string with its dimension line (prefer the longest overall dimension). text = exactly as written
   ("12000", "12.00", "12,00", "3'-6\""). Drawings use millimetres without decimals or metres with decimals; value_m = that length
   in metres. a, b = the two ends of the dimension line. null if there are no dimensions.
-fixtures: every fitting and furniture item drawn: toilet bowls (wc), wash basins and kitchen sinks (sink; a double-bowl sink
-  is one), bathtubs, showers, sauna stoves (kiuas), cookers/hobs (stove), fridges, washing machines (washer), beds, sofas, tables,
-  desks, wardrobes. box = [ymin, xmin, ymax, xmax] normalised 0-1000. One entry per item; skip anything you cannot see.
+fixtures: every fitting, appliance and furniture item drawn, each with the closest kind:
+  sanitary: toilet bowls (wc), bidet, urinal, wash basins and kitchen sinks (sink; a double-bowl sink is one), bathtub, shower,
+    sauna stoves (sauna_stove, "kiuas");
+  kitchen and services: cookers/hobs (stove), oven (a tall or separate oven), fridge (also fridge-freezers, often "JK", "JK/PK", "F"),
+    dishwasher ("APK", "DW"), washing machine (washer, "PK", "PKK", "WM"), dryer ("KR", "TD"), water_heater ("LVV", "WH"), radiator,
+    fireplace (also stoves for heating), counter (kitchen worktops and base units without an appliance in them);
+  furniture: bed, bedside, sofa, armchair, chair, table (dining and coffee tables, with their chairs as separate chair items only
+    when drawn apart from it), desk, wardrobe (cupboards, closets, tall storage), bookshelf (open shelving), tv (TV or media unit),
+    plant; structure: column (a free-standing column or pier).
+  Letter codes written in or beside a symbol tell you what it is; use them.
+  A symbol that is clearly an object but that you cannot name is kind "unknown": report it, do not leave it out and do not guess.
+  box = [ymin, xmin, ymax, xmax] normalised 0-1000, tight around the symbol. One entry per item; skip anything you cannot see.
 levels: the finished floor level of this plan as written (e.g. "FFL ±0.00", "OKFF +3.05", "NGF 102.40") and the clear ceiling
   height if stated (e.g. "RH 2.50", "lichte Höhe 2,60", "HSP 2.50", "CH 2400"), as written; null where not stated.
 stated_scale: the drawing scale written on the sheet (title block or under the plan, e.g. "1:100", "M 1:50", "Scale 1/100"),
@@ -316,7 +325,7 @@ export function alignEdges(polys: Pt[][], axis: number, tol: number): Pt[][] {
 type Op = { kind: 'door' | 'window'; a: Pt; b: Pt };
 /**
  * Seats openings in the walls and drops repeats. Each opening is projected onto the centre line of the nearest wall
- * (any angle), so it cuts that wall in 2D and 3D instead of floating beside it; one that is already there, from an
+ * (any angle), so it cuts that wall instead of floating beside it; one that is already there, from an
  * earlier source in the list, is not added again. Openings with no wall within reach are kept where they were read.
  */
 export function seatOpenings(ops: Op[], walls: Wall[], reach = 0.6): Op[] {
@@ -372,7 +381,7 @@ const norm = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[^\p{L}\p
  * What the ingestion service needs to trace exact room outlines (POST /trace): the rooms as read, and every opening
  * known so far (both readings and the symbol detector) to draw shut, all in render pixels. Rooms keep their index.
  */
-export function traceRequest(raw: Raw, an: Pick<Analysis, 'width' | 'height' | 'detections'>): { rooms: Pt[][]; close: Seg[] } {
+export function traceRequest(raw: Raw, an: Pick<Analysis, 'width' | 'height' | 'detections'>): { rooms: Pt[][]; close: Seg[]; boxes: number[][] } {
   const px = (p: number[]): Pt => [((p?.[1] ?? 0) / 1000) * an.width, ((p?.[0] ?? 0) / 1000) * an.height];
   const close: Seg[] = [...raw.openings, ...(raw.more_openings ?? [])].filter((o) => o?.a?.length === 2 && o?.b?.length === 2).map((o) => [...px(o.a), ...px(o.b)] as Seg);
   for (const d of an.detections ?? []) {
@@ -380,11 +389,22 @@ export function traceRequest(raw: Raw, an: Pick<Analysis, 'width' | 'height' | '
     const [x0, y0, x1, y1] = d.bbox, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
     close.push(x1 - x0 >= y1 - y0 ? [x0, cy, x1, cy] : [cx, y0, cx, y1]); // the box lies across the wall: its long axis runs along it
   }
-  return { rooms: raw.rooms.map((r) => (r.polygon?.length >= 3 ? r.polygon.map(px) : [])), close };
+  // fittings and furniture as read, [x0, y0, x1, y1], by index: the service tightens each onto the lines drawn there
+  const boxes = (raw.fixtures ?? []).map((f) => { if (f.box?.length !== 4) return []; const a = px([f.box[0], f.box[1]]), b = px([f.box[2], f.box[3]]); return [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])]; });
+  return { rooms: raw.rooms.map((r) => (r.polygon?.length >= 3 ? r.polygon.map(px) : [])), close, boxes };
 }
 
-/** `traced[i]` is the exact outline of raw.rooms[i] from the service (render pixels), or null to use the outline as read. */
-export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: string, renderSha: string, traced?: (number[][] | null)[]): Plan {
+/**
+ * What the ingestion service measured on the render itself (POST /trace), all in render pixels and by index:
+ * rooms[i] the outline of raw.rooms[i] (how[i]: traced from an enclosed space, or its edges fitted to the wall faces),
+ * boxes[i] the box of raw.fixtures[i] tightened onto its lines, exterior_px the thickness of the outside walls.
+ * null wherever the drawing gave no clear answer: then what the model read stands.
+ */
+export type Measured = { rooms: (number[][] | null)[]; how?: (string | null)[]; boxes?: (number[] | null)[]; exterior_px?: number | null };
+
+export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: string, renderSha: string, measuredOn?: Measured | (number[][] | null)[]): Plan {
+  const seen: Measured | undefined = Array.isArray(measuredOn) ? { rooms: measuredOn } : measuredOn;
+  const traced = seen?.rooms;
   const { width: W, height: H } = an;
   const px = (p: number[]): Pt => [((p?.[1] ?? 0) / 1000) * W, ((p?.[0] ?? 0) / 1000) * H];
   const tol = Math.max(W, H) * 0.01;
@@ -393,11 +413,11 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
 
   // Vector line work is exact; raster lines (OpenCV on stroke faces) are not, so raster outlines are straightened too.
   const raster = an.kind === 'image' || an.kind === 'pdf-scan';
-  let tracedN = 0;
-  const read = raw.rooms.map((r, i) => ({ r, t: traced?.[i] })).filter(({ r }) => r.polygon?.length >= 3).map(({ r, t }) => {
+  let tracedN = 0, fittedN = 0;
+  const read = raw.rooms.map((r, i) => ({ r, t: traced?.[i], i })).filter(({ r }) => r.polygon?.length >= 3).map(({ r, t, i }) => {
     // The outline traced from the wall lines is exact; the one the model read is the fallback.
     const exact = t && t.length >= 3 && t.every((p) => p?.length === 2 && p.every(Number.isFinite)) ? (t as Pt[]) : null;
-    if (exact) tracedN++;
+    if (exact) { tracedN++; if (seen?.how?.[i] === 'fitted') fittedN++; }
     const start = exact ?? r.polygon.map(px);
     const res = snapPolygon(start, an.segments, tol);
     corners += start.length; snapped += res.snapped;
@@ -503,7 +523,7 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     'Wall height 2.7 m (assumed)', `Wall thickness measured between neighbouring rooms where they face each other; otherwise exterior 0.30 m, interior 0.12 m (assumed, typical masonry: ${BOOK} Ch. 37)`,
   );
 
-  if (traced) assumptions.splice(1, 0, tracedN ? `${tracedN} of ${rooms0.length} room outlines traced from the drawing's own wall lines${tracedN < rooms0.length ? '; the rest as read by AI' : ''}` : 'Room outlines as read by AI: no enclosed space on the drawing matched them');
+  if (traced) assumptions.splice(1, 0, tracedN ? `${tracedN} of ${rooms0.length} room outlines traced from the drawing's own wall lines${fittedN ? ` (${fittedN} edge by edge, where a room is open to its neighbour)` : ''}${tracedN < rooms0.length ? '; the rest as read by AI' : ''}` : 'Room outlines as read by AI: no enclosed space on the drawing matched them');
   const m = mpp!;
   const ox = ext.x0, oy = ext.y0;
   const toM = (p: Pt): Pt => [round((p[0] - ox) * m, 3), round((p[1] - oy) * m, 3)];
@@ -514,7 +534,13 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     polygon: r.poly.map(toM),
   }));
   // Vector outlines snap to wall faces (inside-face rooms); fall back to centreline merging if no wall gaps are found.
-  const { walls: faceWalls, paired } = wallsFromFaces(rooms);
+  // Outside walls at the thickness they are drawn with, where the drawing shows them filled; else the usual assumption.
+  const drawnT = seen?.exterior_px ? seen.exterior_px * m : 0, exteriorT = drawnT >= 0.1 && drawnT <= 0.7 ? round(drawnT, 2) : 0.3;
+  if (exteriorT !== 0.3 || (drawnT >= 0.1 && drawnT <= 0.7)) {
+    const k = assumptions.findIndex((a) => a.startsWith('Wall thickness measured between'));
+    if (k >= 0) assumptions[k] = `Wall thickness measured on the drawing: outside walls ${exteriorT.toFixed(2)} m, walls between rooms where they face each other; otherwise interior 0.12 m (assumed)`;
+  }
+  const { walls: faceWalls, paired } = wallsFromFaces(rooms, exteriorT);
   const walls = paired ? faceWalls : wallsFromRooms(rooms);
   // Scans and images: doors and windows the symbol detector found. Its boxes lie across the wall at each opening, so the
   // ones neither reading reported are added along the wall they sit in.
@@ -534,7 +560,9 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     const len = Math.min(d.kind === 'door' ? 2.4 : 6, bw * Math.abs(u[0]) + bh * Math.abs(u[1])); // the box's extent along the wall
     if (len >= 0.4) fromDetector.push({ kind: d.kind, a: [c[0] - (u[0] * len) / 2, c[1] - (u[1] * len) / 2], b: [c[0] + (u[0] * len) / 2, c[1] + (u[1] * len) / 2] });
   }
-  const seated = seatOpenings([...read0, ...fromDetector], walls);
+  // The detector's boxes sit on the opening itself, so where it and a reading report the same door or window the
+  // detector's position is the one drawn; the readings add what the detector missed.
+  const seated = seatOpenings([...fromDetector, ...read0], walls);
   const readCount = seatOpenings(read0, walls).length, added = seated.length - readCount;
   if (added > 0) assumptions.push(`${added} door${added === 1 ? '' : 's'} or window${added === 1 ? '' : 's'} the language model did not report ${added === 1 ? 'was' : 'were'} added from the symbol detector`);
   // Every item keeps where it was read from: the page and its box on the render, for citations and crops.
@@ -547,15 +575,43 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
   const n = { door: 0, window: 0 };
   const openings: Opening[] = seated.map((o) => ({ id: `${o.kind[0]}${++n[o.kind]}`, kind: o.kind, a: o.a, b: o.b, src: src([o.a, o.b], 0.5) }));
   const bb = bounds([...rooms.flatMap((r) => r.polygon), ...walls.flatMap((w) => [w.a, w.b])]);
-  const fixtures: Fixture[] = (raw.fixtures ?? [])
-    .filter((f) => (FIXTURE_KINDS as readonly string[]).includes(f.kind) && f.box?.length === 4)
-    .map((f, i) => {
-      const [y0, x0, y1, x1] = f.box;
-      const a = toM(px([y0, x0])), b = toM(px([y1, x1]));
-      const w = Math.abs(b[0] - a[0]), h = Math.abs(b[1] - a[1]);
-      return { ...placeFixture(f.kind as Fixture['kind'], [round((a[0] + b[0]) / 2, 3), round((a[1] + b[1]) / 2, 3)], round(w, 3), round(h, 3), walls, rooms, `f${i + 1}`), src: src([a, b], 0.1) };
-    })
-    .filter((f) => f.size[0] > 0.1 && f.size[1] > 0.1 && f.size[0] < 4 && f.size[1] < 4);
+  // Fittings and furniture, each as a box in render pixels. Where it stands comes from the best source there is:
+  // the symbol detector for what it was trained on (toilets, sinks, showers and bathtubs), else the lines the service
+  // found drawn there, else the box as the model read it.
+  type Fx = { kind: Fixture['kind']; box: [number, number, number, number]; by: 'detector' | 'lines' | 'read' };
+  const fx: Fx[] = (raw.fixtures ?? []).map((f, i): Fx | null => {
+    if (!(FIXTURE_KINDS as readonly string[]).includes(f.kind) || f.box?.length !== 4) return null;
+    const t = seen?.boxes?.[i], a = px([f.box[0], f.box[1]]), b = px([f.box[2], f.box[3]]);
+    const tight = t && t.length === 4 && t.every(Number.isFinite) && t[2] > t[0] && t[3] > t[1];
+    return { kind: f.kind as Fixture['kind'], by: tight ? 'lines' : 'read',
+      box: tight ? (t as [number, number, number, number]) : [Math.min(a[0], b[0]), Math.min(a[1], b[1]), Math.max(a[0], b[0]), Math.max(a[1], b[1])] };
+  }).filter((f): f is Fx => !!f);
+  let fxFromDetector = 0, fxMoved = 0;
+  if (an.detections && raster) {
+    const kindsOf: Record<string, Fixture['kind'][]> = { toilet: ['wc'], sink: ['sink'], shower_bath: ['shower', 'bathtub'] };
+    for (const d of an.detections) {
+      const kinds = kindsOf[d.kind];
+      if (!kinds || d.bbox?.length !== 4) continue;
+      const [x0, y0, x1, y1] = d.bbox, pw = (x1 - x0) / 2, ph = (y1 - y0) / 2;
+      // the reading's item of that kind standing in (or right by) the detector's box is the same object
+      const hit = fx.find((f) => f.by !== 'detector' && kinds.includes(f.kind) && (f.box[0] + f.box[2]) / 2 > x0 - pw && (f.box[0] + f.box[2]) / 2 < x1 + pw && (f.box[1] + f.box[3]) / 2 > y0 - ph && (f.box[1] + f.box[3]) / 2 < y1 + ph);
+      if (hit) { hit.box = [x0, y0, x1, y1]; hit.by = 'detector'; fxMoved++; }
+      else { // only the detector saw it: a long box is a bathtub, a squarish one a shower
+        const long = Math.max(x1 - x0, y1 - y0) / Math.max(1, Math.min(x1 - x0, y1 - y0));
+        fx.push({ kind: d.kind === 'shower_bath' ? (long >= 1.6 ? 'bathtub' : 'shower') : kinds[0], box: [x0, y0, x1, y1], by: 'detector' });
+        fxFromDetector++;
+      }
+    }
+  }
+  const tightened = fx.filter((f) => f.by === 'lines').length;
+  if (fxMoved + fxFromDetector + tightened > 0) assumptions.push(`Fittings and furniture placed from the drawing itself: ${[
+    fxMoved && `${fxMoved} where the symbol detector found them`, fxFromDetector && `${fxFromDetector} only the symbol detector found`, tightened && `${tightened} on the lines drawn there`,
+  ].filter(Boolean).join(', ')}; the rest where the language model read them`);
+  const fixtures: Fixture[] = fx.map((f, i) => {
+    const a = toM([f.box[0], f.box[1]]), b = toM([f.box[2], f.box[3]]);
+    const w = Math.abs(b[0] - a[0]), h = Math.abs(b[1] - a[1]);
+    return { ...placeFixture(f.kind, [round((a[0] + b[0]) / 2, 3), round((a[1] + b[1]) / 2, 3)], round(w, 3), round(h, 3), walls, rooms, `f${i + 1}`), src: src([a, b], 0.1) };
+  }).filter((f) => f.size[0] > 0.1 && f.size[1] > 0.1 && f.size[0] < 4 && f.size[1] < 4);
 
   // Scans and images: the detector's symbols, in metres. Counting these is its job, not the language model's.
   let detected: Plan['detected'];

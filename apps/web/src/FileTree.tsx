@@ -68,7 +68,7 @@ export function FileTree({ projectId, name, files, revisions, plan, latestId, vi
           children: revisions.length ? revisions.map((r): Node => ({ id: `v-${r.id}`, text: `r${r.rev}`, label: <><span class="mono">r{r.rev}</span>{r.note ? ` · ${r.note}` : r.filename ? ` · ${r.filename}` : ''}</>,
             meta: r.id === latestId ? 'latest' : when(r.created_at), current: (viewedId ?? latestId) === r.id, onOpen: () => onViewRev(r.id === latestId ? null : r.id) }))
             : [{ id: 'nrev', text: 'No revisions', label: 'No revisions yet', muted: true }] },
-        ...(plan && visualsOn.value ? [{ id: 'images', label: 'Architectural images', text: 'Architectural images', icon: 'sparkle', onOpen: () => (visualsOpen.value = true) } as Node] : []),
+        ...(plan && visualsOn.value ? [{ id: 'images', label: 'Presentation images', text: 'Presentation images', icon: 'sparkle', onOpen: () => (visualsOpen.value = true) } as Node] : []),
         ...(plan ? [{ id: 'model', label: 'Model', text: 'Model', icon: 'cube', children: [
           { id: 'rooms', label: 'Rooms', text: 'Rooms', icon: 'folder', meta: rooms.length, children: groups },
           { id: 'openings', label: 'Doors and windows', text: 'Doors and windows', icon: 'door', meta: <>{plan.openings.filter((o) => o.kind === 'door').length} · {plan.openings.filter((o) => o.kind === 'window').length}</> },

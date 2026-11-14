@@ -38,6 +38,9 @@ async function call<T>(env: Env, path: string, init: RequestInit): Promise<T> {
 export const analyze = (env: Env, data: ArrayBuffer, mime: string, page = 1) =>
   call<Analysis>(env, '/analyze', { method: 'POST', headers: { 'content-type': mime, 'x-page': String(page) }, body: data });
 
-/** Exact room outlines traced from the wall lines of a render: one per room asked for, null where none matched. */
-export const trace = (env: Env, png: string, rooms: number[][][], close: number[][]) =>
-  call<{ rooms: (number[][] | null)[] }>(env, '/trace', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ png, rooms, close }) });
+/**
+ * What the render itself shows: exact room outlines from its wall lines, the boxes of fittings and furniture tightened
+ * onto their lines, and the thickness of the outside walls. One answer per room and box asked for, null where unclear.
+ */
+export const trace = (env: Env, png: string, req: { rooms: number[][][]; close: number[][]; boxes: number[][] }) =>
+  call<import('./extract').Measured>(env, '/trace', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ png, ...req }) });

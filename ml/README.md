@@ -33,5 +33,7 @@ Running at 1536 px did not help (72.5%). Windows and doors need a change to trai
 
 `ingest/service.py` runs the detector on scans and images (`detections` in `/analyze`). `buildPlan` stores them as
 `plan.detected`, and the chat's `count` tool answers door, window, wc, sink and shower_bath counts from the detector
-when a plan has them; vector PDFs and DXF are unaffected. The language model still reads rooms, labels and everything
-else. To replace the model: export to ONNX at 1024 px, update `DET_THRESHOLD` in `service.py`, redeploy the container.
+when a plan has them; vector PDFs and DXF are unaffected. Its boxes also decide where those five kinds are drawn: a
+door, window, toilet, sink, shower or bathtub the language model also read is moved to the detector's box, and one
+only the detector saw is added. It knows nothing else: walls and rooms are measured on the image by `ingest/service.py`
+(`/trace`), and beds, sofas, tables and the like are still found by the language model and tightened onto their lines. To replace the model: export to ONNX at 1024 px, update `DET_THRESHOLD` in `service.py`, redeploy the container.

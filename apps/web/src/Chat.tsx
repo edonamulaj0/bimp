@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Plan } from '../../shared/plan';
 import { api } from './api';
-import { AI_OFF, ACCEPT, ai, chatPrompt, pendingDrawing, queueFiles, region, say, uploadQueue } from './state';
+import { AI_OFF, ACCEPT, ai, answerNote, chatPrompt, pendingDrawing, queueFiles, region, say, selectedRooms, uploadQueue } from './state';
 import { regionSize } from '../../shared/region';
 import { BimpMark, Spinner } from './brand';
 import { Icon } from './icons';
@@ -54,7 +54,7 @@ export function Chat({ projectId, planId, messages, hasPlan, shared, resumeJob, 
   };
   useEffect(() => {
     if (resumeJob) { setT0(Date.now()); setJob('Reading the drawing…'); follow(resumeJob).catch(fail).finally(done); }
-    return () => { alive.current = false; pendingDrawing.value = null; if (local.current) URL.revokeObjectURL(local.current); };
+    return () => { alive.current = false; answerNote.value = null; pendingDrawing.value = null; if (local.current) URL.revokeObjectURL(local.current); };
   }, []);
 
   /** Polls an ingestion job (a Cloudflare Workflow) until it finishes, showing its stage. Stops on unmount; rides out brief network errors. */
@@ -100,7 +100,20 @@ export function Chat({ projectId, planId, messages, hasPlan, shared, resumeJob, 
     const r = region.peek();
     push({ role: 'user', content: r ? { text: q, region: r } : { text: q } });
     asker.current = new AbortController();
-    try { const d = await api(`/projects/${projectId}/chat`, { json: { message: q, ...(r ? { region: r } : {}), ...(planId ? { plan_id: planId } : {}) }, signal: asker.current.signal }); push(d.message); }
+    answerNote.value = null;
+    try {
+      const d = await api<{ message: Msg }>(`/projects/${projectId}/chat`, { json: { message: q, ...(r ? { region: r } : {}), ...(planId ? { plan_id: planId } : {}) }, signal: asker.current.signal });
+      push(d.message);
+      // the answer goes onto the plan too: the rooms or items it rests on are highlighted, with the answer beside them
+      const c = d.message.content, rooms = [...new Set((c.claims ?? []).flatMap((cl) => cl.room_ids))], items = [...new Set((c.claims ?? []).flatMap((cl) => cl.item_ids ?? []))];
+      if (alive.current && !c.not_found && (r || rooms.length || items.length)) {
+        // the note beside the area is short: the claims themselves ("Kitchen 21.28 m²"), else the answer's first sentence
+        const plain = (t: string) => t.replace(/[*_`#>]/g, '').replace(/\s+/g, ' ').trim();
+        const brief = (c.claims ?? []).map((cl) => plain(cl.text)).filter(Boolean).slice(0, 3).join(' · ') || plain(c.text).split(/(?<=[.!?])\s/)[0];
+        answerNote.value = { key: Date.now(), planId: planId ?? null, question: q, text: brief.length > 110 ? `${brief.slice(0, 108)}…` : brief, rooms, items, region: r, verified: c.verified };
+        if (rooms.length) selectedRooms.value = rooms;
+      }
+    }
     catch (e) {
       if ((e as Error).name === 'AbortError') push({ role: 'assistant', content: { text: 'Stopped waiting for the answer. If bimp had already finished it, it appears here when the project is opened again.', kind: 'system', claims: [] } });
       else fail(e);
@@ -158,7 +171,7 @@ export function Chat({ projectId, planId, messages, hasPlan, shared, resumeJob, 
         {!messages.length && (
           <div class="empty">
             <h2 class="empty-h">{hasPlan ? 'Ask about this plan' : 'Start with a drawing'}</h2>
-            <p class="muted small">{hasPlan ? 'Try: "What is the area of the kitchen?", "How many windows are there?", or mark a region on the plan (R) and ask about just that area.' : 'Drop a floor plan (PDF, DXF, PNG, JPG or WebP) on the file list, or use the + button. bimp builds a 2D plan and a 3D model from it.'}</p>
+            <p class="muted small">{hasPlan ? 'Try: "What is the area of the kitchen?", "How many windows are there?", or mark a region on the plan (R) and ask about just that area.' : 'Drop a floor plan (PDF, DXF, PNG, JPG or WebP) on the file list, or use the + button. bimp draws a measured 2D plan from it.'}</p>
           </div>
         )}
         {messages.map((m, i) => <Message key={m.id ?? i} m={m} shared={shared} />)}
