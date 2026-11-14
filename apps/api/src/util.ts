@@ -17,6 +17,8 @@ export interface Env {
   /** Only bound in the bimp-ingest Worker. */
   INGEST: DurableObjectNamespace<import('./ingest').IngestContainer>;
   INGEST_URL?: string;
+  /** "off" skips measuring walls and fittings on the drawing: plans are built from the language model's reading alone. */
+  MEASURE_ON_DRAWING?: string;
   INGEST_WORKFLOW: Workflow<import('./workflow').IngestParams>;
 }
 export type User = { id: string; email: string };

@@ -73,6 +73,7 @@ export class IngestWorkflow extends WorkflowEntrypoint<Env, IngestParams> {
 
         // Exact outlines from the wall lines. The plan stands without them, so a failure here is not a failed reading.
         const traced = await step.do(`trace page ${n}`, { retries: { limit: 1, delay: '3 seconds' }, timeout: '3 minutes' }, async (): Promise<Measured> => {
+          if (this.env.MEASURE_ON_DRAWING === 'off') return { rooms: [] };
           await stage(`${of}Measuring walls and fittings on the drawing…`);
           try {
             const [png, an] = await Promise.all([loadPng(), loadAnalysis()]);

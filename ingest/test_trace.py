@@ -83,6 +83,38 @@ with tempfile.TemporaryDirectory() as tmp:
         off = [max(abs(v - w) for v, w in zip(b, f)) for f, b in zip(furn, out["boxes"]) if b]
         check(f"open plan, reading {seed}: furniture tightened onto its lines within 3 px", len(off) >= 2 and max(off) <= 3, off)
         check(f"open plan, reading {seed}: outside walls measured at 10 px, give or take one", out["exterior_px"] is not None and abs(out["exterior_px"] - t) <= 1.5, out["exterior_px"])
+    # the same house with walls drawn as two thin lines with hatching between them, a worktop along one wall, and
+    # handwriting over the rooms: nothing may be bent or kinked, and the open rooms are still moved onto their walls
+    img = np.full((H, W), 255, np.uint8)
+    t = 14
+
+    def hatched(x0, y0, x1, y1):
+        a, b = (min(x0, x1) - t // 2, min(y0, y1) - t // 2), (max(x0, x1) + t // 2, max(y0, y1) + t // 2)
+        cv2.rectangle(img, a, b, 0, 1)
+        for d in range(-t, max(b[0] - a[0], b[1] - a[1]) + t, 6):
+            cv2.line(img, (a[0] + d, b[1]), (a[0] + d + t, a[1]), 0, 1) if b[0] - a[0] > b[1] - a[1] else cv2.line(img, (a[0], a[1] + d + t), (b[0], a[1] + d), 0, 1)
+    for x in X:
+        hatched(x, Y[0], x, Y[2])
+    for y in Y:
+        hatched(X[0], y, X[3], y)
+    for x0, y0, x1, y1 in [(700, 300, 700, 390), (1100, 700, 1100, 790), (400, 600, 490, 600), (850, 600, 940, 600)]:
+        cv2.rectangle(img, (min(x0, x1) - t // 2 - 1, min(y0, y1) - t // 2 - 1), (max(x0, x1) + t // 2 + 1, max(y0, y1) + t // 2 + 1), 255, -1)
+        cv2.line(img, (x0, y0), (x0 + 90, y0) if x0 == x1 else (x0, y0 + 90), 0, 2)
+        cv2.ellipse(img, (x0, y0), (90, 90), 0, 0, 90, 0, 1)
+    rng = np.random.default_rng(2)
+    for _ in range(6):
+        cv2.polylines(img, [(rng.random((12, 2)) * [160, 90] + [rng.integers(250, 1200), rng.integers(200, 850)]).astype(np.int32)], False, 0, 3)
+    cv2.rectangle(img, (215, 165), (690, 225), 0, 2)
+    png = base64.b64encode(cv2.imencode(".png", img)[1]).decode()
+    for seed in (1, 2, 3):
+        random.seed(seed)
+        rough = [[[a + random.uniform(-20, 20), b + random.uniform(-20, 20)] for a, b in ((x0, y0), (x1, y0), (x1, y1), (x0, y1))] for x0, y0, x1, y1 in truth]
+        out = service.trace_rooms(json.dumps({"png": png, "rooms": rough, "close": []}).encode())
+        square = all(r and len(r) == 4 and all(min(abs(r[i][0] - r[(i + 1) % 4][0]), abs(r[i][1] - r[(i + 1) % 4][1])) < 0.01 for i in range(4)) for r in out["rooms"])
+        worst = max(abs(v) for tr, r in zip(truth, out["rooms"]) if r for v in (
+            min(p[0] for p in r) - tr[0] - t / 2, min(p[1] for p in r) - tr[1] - t / 2, max(p[0] for p in r) - tr[2] + t / 2, max(p[1] for p in r) - tr[3] + t / 2))
+        check(f"hatched walls, reading {seed}: every room stays a square-cornered rectangle, no kinks or bent walls", square, out["how"])
+        check(f"hatched walls, reading {seed}: walls within half a wall of their face (read up to 20 px off)", worst <= 8, round(worst, 1))
     # pages
     two = pymupdf.open()
     two.insert_pdf(pymupdf.open(Path(tmp, "plan-vector.pdf")))

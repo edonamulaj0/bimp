@@ -345,6 +345,7 @@ def trace_rooms(data: bytes):
     k = max(3, round(max(h, w) / 500))
     thick = cv2.morphologyEx(bw, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (k, k)))
     best = [None] * len(rooms)  # (iou, polygon)
+    axis = plan_axis(bw, max(h, w))
     for mask, need in ((thick, 0.6), (bw, 0.75)):
         walls = mask.copy()
         for x1, y1, x2, y2 in close:
@@ -382,7 +383,10 @@ def trace_rooms(data: bytes):
             if not cs:
                 continue
             out = cv2.approxPolyDP(max(cs, key=cv2.contourArea), max(2.0, 0.75 * k), True).reshape(-1, 2)
-            if len(out) >= 3:
+            # Only a clean outline replaces the reading: straight runs along the drawing's axes and no more corners
+            # than the reading plus a jog. A contour that wanders round door leaves, hatching or handwriting is noise,
+            # and a wrong wall is worse than one a little out of place.
+            if len(out) >= 3 and clean_outline(out.astype(float), poly, axis, k, 0.03 * max(h, w)):
                 best[i] = (float(iou), [[float(px + cx), float(py + cy)] for px, py in out])
     # Rooms with no enclosed space of their own (an open plan, a doorway nobody reported): each edge of the outline as
     # read is moved onto the wall face it runs along. A wall is still mostly wall where a door or window breaks it, so
@@ -392,7 +396,10 @@ def trace_rooms(data: bytes):
     for i, poly in enumerate(rooms):
         if best[i] or len(poly) < 3:
             continue
-        fit = fit_edges(poly, thick if walls_thick else bw, k, h, w, solid_run=k + 1 if walls_thick else 1)
+        # filled walls first; walls drawn as thin lines, hatched or empty, next
+        fit = fit_edges(poly, thick, k, h, w, solid_run=k + 1, axis=axis) if walls_thick else None
+        if fit is None:
+            fit = fit_edges(poly, bw, k, h, w, solid_run=1, axis=axis)
         if fit is not None:
             best[i], how[i] = (0.0, fit), "fitted"
 
@@ -400,6 +407,46 @@ def trace_rooms(data: bytes):
     return {"rooms": out_rooms, "match": [b and round(b[0], 3) for b in best], "how": how,
             "boxes": refine_boxes(req.get("boxes", [])[:400], bw, k, h, w),
             "exterior_px": exterior_thickness(out_rooms, thick, k, h, w) if walls_thick else None}
+
+
+def plan_axis(bw: np.ndarray, size: int) -> float:
+    """The direction (radians, modulo 90°) most of the drawing's line work runs along."""
+    lines = cv2.HoughLinesP(bw, 1, np.pi / 360, threshold=60, minLineLength=size * 0.04, maxLineGap=4)
+    if lines is None:
+        return 0.0
+    l = lines.reshape(-1, 4).astype(float)
+    ang = np.arctan2(l[:, 3] - l[:, 1], l[:, 2] - l[:, 0]) % (np.pi / 2)
+    hist = np.bincount(np.rint(np.degrees(ang) * 2).astype(int) % 180, weights=np.hypot(l[:, 2] - l[:, 0], l[:, 3] - l[:, 1]), minlength=180)
+    hist = hist + np.roll(hist, 1) + np.roll(hist, -1)
+    return float(np.radians(int(hist.argmax()) / 2))
+
+
+def off_axis(u, axis: float) -> float:
+    """Degrees between a direction and the nearest of the drawing's two axes."""
+    d = abs(math.degrees(math.atan2(u[1], u[0]) - axis)) % 90
+    return min(d, 90 - d)
+
+
+def reads_slanted(u, L: float, axis: float, noise: float) -> bool:
+    """Whether an edge as read is really a slanted wall: off the axes by more than a sloppy reading of a straight wall
+    explains. A short edge read 15° off is noise; a long one is a slanted wall."""
+    off = off_axis(u, axis)
+    return off > 12 and L * math.sin(math.radians(off)) > 1.5 * noise
+
+
+def clean_outline(out: np.ndarray, read: np.ndarray, axis: float, k: int, noise: float) -> bool:
+    """Whether a traced contour is fit to replace the outline as read (see trace_rooms)."""
+    if len(out) > len(read) + 4:
+        return False
+    edges = np.roll(out, -1, axis=0) - out
+    length = np.hypot(edges[:, 0], edges[:, 1])
+    if length.sum() <= 0 or length[length < 4 * k].sum() > 0.08 * length.sum():
+        return False                                          # too much of it is little steps
+    r_edges = np.roll(read, -1, axis=0) - read
+    r_len = np.hypot(r_edges[:, 0], r_edges[:, 1])
+    if any(L > 0 and reads_slanted(e, L, axis, noise) for e, L in zip(r_edges, r_len)):                                               # a room read with a slanted wall: the fit below keeps its shape
+        return False
+    return all(off_axis(e, axis) <= 3 for e, L in zip(edges, length) if L >= 4 * k)
 
 
 def _sample(mask: np.ndarray, pts: np.ndarray, h: int, w: int) -> np.ndarray:
@@ -411,7 +458,7 @@ def _sample(mask: np.ndarray, pts: np.ndarray, h: int, w: int) -> np.ndarray:
     return out
 
 
-def fit_edges(poly: np.ndarray, mask: np.ndarray, k: int, h: int, w: int, solid_run: int = 1):
+def fit_edges(poly: np.ndarray, mask: np.ndarray, k: int, h: int, w: int, solid_run: int = 1, axis: float = 0.0):
     """Moves each edge of a rough outline onto the inside face of the wall beside it; None if too few edges find one.
 
     `solid_run`: how many pixels of wall must follow a face for it to count, so that a boldly drawn piece of furniture
@@ -449,26 +496,42 @@ def fit_edges(poly: np.ndarray, mask: np.ndarray, k: int, h: int, w: int, solid_
             ti, oi = np.nonzero(rise)
             if len(ti) >= 6:
                 tt, dd = t[ti], offs[oi + 1].astype(float)
+                # a wall has ink behind its face (fill, hatching, its other face); the edge of a worktop or a rug has
+                # blank floor behind it. Each place counts for more the more ink follows it.
+                csum = np.concatenate([np.zeros((hit.shape[0], 1)), np.cumsum(hit, axis=1)], axis=1)
+                span = 4 * k
+                end = np.minimum(oi + 1 + span, hit.shape[1])
+                weight = 1 + 3 * (csum[ti, end] - csum[ti, oi + 1]) / span
                 # the face is a straight line d = c + m·t; the outline as read may be tilted against it, so tilts are
                 # tried and the line most columns agree on wins, the one nearest the read edge on a tie
                 best = None
                 for m in np.linspace(-0.12, 0.12, 49):
                     r = dd - m * (tt - L / 2)
                     bins = np.rint(r).astype(int) + reach * 2
-                    cnt = np.bincount(bins[(bins >= 0)], minlength=4 * reach + 1)
+                    cnt = np.bincount(bins[bins >= 0], weights=weight[bins >= 0], minlength=4 * reach + 1)
                     c = int(cnt.argmax())
-                    score = (int(cnt[c]) + int(cnt[max(0, c - 1)]) + int(cnt[min(len(cnt) - 1, c + 1)]), -abs(c - reach * 2) - 40 * abs(m))
+                    score = (round(float(cnt[c] + cnt[max(0, c - 1)] + cnt[min(len(cnt) - 1, c + 1)]), 1), -abs(c - reach * 2) - 40 * abs(m))
                     if best is None or score > best[0]:
                         best = (score, m, c - reach * 2)
                 (votes, _), m, c = best
                 near = np.abs(dd - m * (tt - L / 2) - c) <= 1.5
                 cols = len(np.unique(ti[near]))
-                if cols >= 0.3 * len(t):                      # most of the edge that is not an opening agrees
+                if cols >= 0.35 * len(t):                     # the wall is there along a good part of the edge (openings take the rest)
                     m, c0 = np.polyfit(tt[near], dd[near], 1) if cols >= 8 else (m, c - m * L / 2)
                     d0, d1 = float(c0), float(c0 + m * L)
                     fitted += L
+        # The fit says where the wall is, not which way it runs: an edge read along the drawing's axes lies exactly on
+        # the axis; an edge read as slanted keeps its own direction unless the fit runs the same way. So a room keeps
+        # the shape it was read with, and stray marks cannot bend a wall.
+        mid = (a + b) / 2 + nrm * ((d0 + d1) / 2 - 0.5)
         p0, p1 = a + nrm * (d0 - 0.5), b + nrm * (d1 - 0.5)
-        lines.append((p0, (p1 - p0) / max(1e-9, float(np.hypot(*(p1 - p0))))))
+        fit_u = (p1 - p0) / max(1e-9, float(np.hypot(*(p1 - p0))))
+        if not reads_slanted(u, L, axis, reach):
+            ang = axis + round((math.atan2(u[1], u[0]) - axis) / (math.pi / 2)) * (math.pi / 2)
+            use = np.array([math.cos(ang), math.sin(ang)])
+        else:
+            use = fit_u if abs(fit_u[0] * u[1] - fit_u[1] * u[0]) <= math.sin(math.radians(3)) else u
+        lines.append((mid, use))
     if total <= 0 or fitted / total < 0.6:
         return None
     out = []
