@@ -4,6 +4,7 @@ import { writeFileSync } from 'node:fs';
 import { samplePlan } from '../apps/shared/sample-plan';
 import { wallFootprints, labelPoint } from '../apps/shared/walls';
 import { dist, wallPieces, type Pt } from '../apps/shared/plan';
+import { roomInfo } from '../apps/shared/rooms';
 import { clipHalf } from '../apps/shared/walls';
 
 const p = samplePlan(), S = 50, M = 70; // px per metre, margin
@@ -51,10 +52,13 @@ dim(X(-0.15), Y(-0.15) - 34, X(p.width + 0.15), Y(-0.15) - 34, '14 700');
 dim(X(-0.15) - 34, Y(-0.15), X(-0.15) - 34, Y(p.height + 0.15), '10 500', true);
 // room labels
 const labels = p.rooms.filter((r) => !/Linen|wardrobe|WC|Utility/.test(r.name)).map((r) => { const [x, y] = labelPoint(r.polygon); return `<text class="rl" x="${X(x)}" y="${Y(y)}" text-anchor="middle">${r.name}</text>`; });
+// room hit areas: hovering or focusing one reports its name, net area and clear size in the plate's title block
+const hits = p.rooms.map((r) => { const n = roomInfo(p, r) as any; return `<path class="room" tabindex="0" role="button" aria-label="${r.name}, ${n.net_area_m2} square metres" data-name="${r.name}" data-area="${n.net_area_m2.toFixed(1)} m²" data-size="${n.length.toFixed(2)} × ${n.width.toFixed(2)} m" d="${poly(r.polygon)}"/>`; });
 const plan = `<svg class="drawing plan-drawing" viewBox="0 0 ${f(W)} ${f(H)}" role="img" aria-label="Floor plan of the pilot house, drawn line by line: walls, doors with their swings, windows and overall dimensions of 14.7 by 10.5 metres.">
 <g class="grid" aria-hidden="true">${out.filter((s) => s.includes('class="g"')).join('')}</g>
 <g class="lines" aria-hidden="true">${out.filter((s) => !s.includes('class="g"')).join('')}</g>
 <g class="labels" aria-hidden="true">${labels.join('')}</g>
+<g class="rooms">${hits.join('')}</g>
 </svg>`;
 writeFileSync('apps/web/partials/plan-drawing.html', plan + '\n');
 
