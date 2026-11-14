@@ -230,6 +230,7 @@ def analyze_pdf(data: bytes):
         if n:
             # 1 px = 1/k pt; 1 pt = 0.0254/72 m on paper; × N in the real world
             out["scale"] = {"meters_per_px": 0.0254 / 72 / k * n, "ratio": n, "source": f"Sheet scale 1:{n}", "all_ratios": all_ratios}
+            out["layered"] = pdf_rooms(page, pt, n)
     else:
         out["segments"] = wall_segments(cv2.cvtColor(img, cv2.COLOR_BGR2GRAY))
     return out
@@ -253,6 +254,206 @@ def dxf_entities(entities, depth=0, seen=None):
                 continue
         else:
             yield e
+
+
+ROOM_NUMBER_RE = re.compile(r"^[A-Za-z]{0,2}-?\d+[.\-]\d+$")
+VOID_SHADE = 0.81  # fill of shafts and voids on the sheets read by pdf_rooms
+ROOM_AREA_RE = re.compile(r"^(\d+(?:[.,]\d+)?)\s*m(?:²|2)$")
+
+
+def _poly(e):
+    return [(p[0], p[1]) for p in e.get_points()]
+
+
+def _area(pts):
+    return abs(sum(pts[i][0] * pts[(i + 1) % len(pts)][1] - pts[(i + 1) % len(pts)][0] * pts[i][1] for i in range(len(pts)))) / 2
+
+
+def _inside(pt, pts):
+    x, y, hit = pt[0], pt[1], False
+    for (x1, y1), (x2, y2) in zip(pts, pts[1:] + pts[:1]):
+        if (y1 > y) != (y2 > y) and x < (x2 - x1) * (y - y1) / (y2 - y1) + x1:
+            hit = not hit
+    return hit
+
+
+def _bbox(pts):
+    xs, ys = [p[0] for p in pts], [p[1] for p in pts]
+    return min(xs), min(ys), max(xs), max(ys)
+
+
+def read_rooms(outlines, units, texts, m2, box):
+    """
+    Rooms from closed outlines and their labels. outlines: [{"pts", "shade"}]; units: [{"pts"}]; texts: [(text, (x, y),
+    height)] with y growing upwards. A label is, top to bottom: name, room number, and on some sheets the area; a room
+    too small for its label has the number only. A label that belongs to no number is the tag of the unit around it
+    ("Whg. A"). Returns (rooms, units); areas are net of void-shaded outlines lying wholly inside the room.
+    """
+    for o in outlines:
+        o["area"] = _area(o["pts"])
+    is_name = lambda t: not ROOM_NUMBER_RE.match(t) and not ROOM_AREA_RE.match(t)
+    numbered, missing = {}, []
+    for i, (txt, at, h) in enumerate(texts):
+        if ROOM_NUMBER_RE.match(txt):
+            inside = [o for o in outlines if _inside((at[0], at[1] + h / 2), o["pts"])] or [o for o in outlines if _inside(at, o["pts"])]
+            if inside:
+                numbered[i] = min(inside, key=lambda o: o["area"])
+            else:
+                missing.append(txt)
+    taken = {id(o) for o in numbered.values()}
+    rooms, used = [], set()
+    for i, (txt, at, h) in enumerate(texts):
+        if not ROOM_NUMBER_RE.match(txt):
+            continue
+        near = lambda t, lo, hi: abs(t[1][0] - at[0]) < 4 * h and lo < t[1][1] - at[1] < hi
+        above = [(j, t) for j, t in enumerate(texts) if j not in used and is_name(t[0]) and near(t, 0, 3 * h) and abs(t[2] - h) < 0.1 * h]
+        name = min(above, key=lambda jt: jt[1][1][1] - at[1], default=None)
+        if name:
+            used.add(name[0])
+        printed = next((float(ROOM_AREA_RE.match(t[0]).group(1).replace(",", ".")) for t in texts if ROOM_AREA_RE.match(t[0]) and near(t, -3 * h, 0)), None)
+        o = numbered.get(i)
+        area = None
+        if o:
+            holes = [h_ for h_ in outlines if id(h_) not in taken and h_["shade"] == VOID_SHADE and h_["area"] < o["area"] and all(_inside(q, o["pts"]) for q in h_["pts"])]
+            area = round(float((o["area"] - o.get("holes", 0) - sum(h_["area"] for h_ in holes)) * m2), 4)
+        unit = next((k for k, u in enumerate(units) if _inside(at, u["pts"])), None)
+        rooms.append({"number": txt, "name": name[1][0] if name else None, "area_m2": printed if printed is not None else area, "outline_m2": area, "printed_m2": printed, "unit": unit,
+                      "shade": o["shade"] if o else None, "bbox": box(o["pts"]) if o else None})
+    for u in units:
+        u["name"] = None
+    for j, (txt, at, _) in enumerate(texts):
+        if j in used or not is_name(txt):
+            continue
+        u = next((u for u in units if _inside(at, u["pts"]) and u["name"] is None), None)
+        if u:
+            u["name"] = txt
+    tagged = [{"index": k, "name": u["name"], "bbox": box(u["pts"])} for k, u in enumerate(units) if u["name"]]
+    if not tagged:  # no tags on the sheet: units that hold a room, lettered in drawing order
+        holding = [k for k in range(len(units)) if any(r["unit"] == k for r in rooms)]
+        tagged = [{"index": k, "name": chr(65 + n), "bbox": box(units[k]["pts"])} for n, k in enumerate(holding[:26])]
+    return rooms, tagged
+
+
+def dxf_layers(msp, unit_m, to_px):
+    """
+    Drawings that name their layers (ROOM_OUTLINE, ROOM_TEXT, UNIT_OUTLINE, DOOR, WINDOW, FIXTURE) are read exactly:
+    rooms with number, name, area and unit; doors, windows and fittings as items with a box in render pixels.
+    None when the DXF has no room outlines on a layer of that name.
+    """
+    by = {}
+    for e in msp:
+        by.setdefault((e.dxf.layer.upper(), e.dxftype()), []).append(e)
+    outlines = [{"pts": pts, "shade": None} for pts in (_poly(e) for e in by.get(("ROOM_OUTLINE", "LWPOLYLINE"), [])) if len(pts) >= 3 and _area(pts) > 0]
+    if not outlines:
+        return None
+
+    def box(pts):
+        x0, y0, x1, y1 = _bbox(pts)
+        (ax, ay), (bx, by_) = to_px(x0, y1), to_px(x1, y0)
+        return [round(float(v), 1) for v in (ax, ay, bx, by_)]
+
+    units = [{"pts": pts} for pts in (_poly(e) for e in by.get(("UNIT_OUTLINE", "LWPOLYLINE"), [])) if len(pts) >= 3]
+    texts = [(e.dxf.text.strip(), (e.dxf.insert.x, e.dxf.insert.y), getattr(e.dxf, "height", 0) or 0.2) for e in by.get(("ROOM_TEXT", "TEXT"), []) if e.dxf.text.strip()]
+    rooms, units = read_rooms(outlines, units, texts, (unit_m or 1.0) ** 2, box)
+
+    # A door is its opening (a five-point outline) with one or two leaves; a window is its closed outline.
+    doors = [box(pts) for pts in (_poly(e) for e in by.get(("DOOR", "LWPOLYLINE"), [])) if len(pts) == 5]
+    windows = [box(_poly(e)) for e in by.get(("WINDOW", "LWPOLYLINE"), []) if e.closed and len(e) >= 4]
+
+    # Fittings: a closed outline with its symbol drawn inside.
+    fx_pl = [(_poly(e), e.closed) for e in by.get(("FIXTURE", "LWPOLYLINE"), [])]
+    circles = [(e.dxf.center.x, e.dxf.center.y, e.dxf.radius) for e in by.get(("FIXTURE", "CIRCLE"), [])]
+    fixtures = []
+    for pts, closed in fx_pl:
+        if not closed or len(pts) != 4:
+            continue
+        x0, y0, x1, y1 = _bbox(pts)
+        eps = 0.02 * max(x1 - x0, y1 - y0)
+        within = lambda q: x0 - eps <= q[0] <= x1 + eps and y0 - eps <= q[1] <= y1 + eps
+        inner = [len(p) for p, c in fx_pl if not c and all(within(q) for q in p)]
+        dots = [r for cx, cy, r in circles if within((cx, cy))]
+        curved = [n for n in inner if n >= 20]
+        if any(n >= 60 for n in inner):
+            kind = "bathtub"
+        elif curved and dots:
+            kind = "washbasin"  # bowl with a drain
+        elif curved:
+            kind = "toilet"     # bowl with the cistern line
+        elif len(dots) == 1 and 5 in inner:
+            kind = "shower"
+        elif len(dots) >= 4:
+            kind = "kitchen"
+        else:
+            kind = "other"
+        fixtures.append({"kind": kind, "bbox": box(pts)})
+    return {"source": "dxf layers", "rooms": rooms, "units": units, "doors": doors, "windows": windows, "fixtures": fixtures}
+
+
+def pdf_rooms(page, pt, n):
+    """
+    Vector sheets that draw each room as a filled outline with its number inside are read exactly: rooms with number,
+    name, area (from the sheet scale 1:n), fill shade and unit. Units are the closed dashed outlines. None when the
+    sheet has no such rooms.
+    """
+    def path(d):
+        """A path made of straight pieces: its largest ring, and the area to take off it for the other rings."""
+        segs = []
+        for it in d["items"]:
+            if it[0] == "l":
+                segs.append([it[1], it[2]])
+            elif it[0] in ("re", "qu"):
+                q = it[1].quad if it[0] == "re" else it[1]
+                segs.append([q.ul, q.ur, q.lr, q.ll, q.ul])
+            elif it[0] == "c":  # a curved wall: the Bézier as eight chords
+                a, b, c, e = it[1:5]
+                bez = lambda t, i: (1 - t) ** 3 * a[i] + 3 * (1 - t) ** 2 * t * b[i] + 3 * (1 - t) * t ** 2 * c[i] + t ** 3 * e[i]
+                segs.append([pymupdf.Point(bez(k / 8, 0), bez(k / 8, 1)) for k in range(9)])
+            else:
+                return None
+        rings = []
+        for seg in segs:
+            pts = [(p.x, -p.y) for p in seg]  # y up, as in read_rooms
+            if rings and abs(rings[-1][-1][0] - pts[0][0]) + abs(rings[-1][-1][1] - pts[0][1]) < 1e-4:
+                rings[-1] += pts[1:]
+            else:
+                rings.append(pts)
+        rings = [r[:-1] if abs(r[0][0] - r[-1][0]) + abs(r[0][1] - r[-1][1]) < 1e-4 else r for r in rings]
+        rings = [r for r in rings if len(r) >= 3]
+        if not rings:
+            return None
+        outer = max(rings, key=_area)
+        # an inner ring is a hole; a ring beside the outer one is another part of the same room
+        return outer, sum(_area(r) * (1 if _inside(r[0], outer) else -1) for r in rings if r is not outer)
+
+    outlines, units = [], []
+    for d in page.get_drawings():
+        fill, stroke = d.get("fill"), d.get("color")
+        if fill and stroke and min(fill) >= 0.75 and max(fill) - min(fill) < 0.02 and max(stroke) < 0.9:
+            ring = path(d)
+            if ring:
+                outlines.append({"pts": ring[0], "holes": ring[1], "shade": round(float(fill[0]), 2)})
+        elif stroke and not fill and d.get("dashes") not in (None, "", "[] 0"):
+            ring = path(d)
+            if ring and _area(ring[0]) > 0:
+                units.append({"pts": ring[0]})
+    texts = []
+    for b in page.get_text("dict")["blocks"]:
+        for line in b.get("lines", []):
+            t = "".join(s["text"] for s in line["spans"]).strip()
+            x0, y0, x1, y1 = line["bbox"]
+            if t:
+                texts.append((t, ((x0 + x1) / 2, -y1), y1 - y0))
+    if not any(ROOM_NUMBER_RE.match(t[0]) for t in texts) or not outlines:
+        return None
+
+    def box(pts):
+        x0, y0, x1, y1 = _bbox(pts)
+        (ax, ay), (bx, by_) = pt((x0, -y1)), pt((x1, -y0))
+        return [round(float(v), 1) for v in (min(ax, bx), min(ay, by_), max(ax, bx), max(ay, by_))]
+
+    rooms, units = read_rooms(outlines, units, texts, (0.0254 / 72 * n) ** 2, box)
+    rooms = [r for r in rooms if r["bbox"]]
+    return {"source": "pdf vectors", "rooms": rooms, "units": units} if rooms else None
 
 
 def analyze_dxf(data: bytes):
@@ -311,7 +512,8 @@ def analyze_dxf(data: bytes):
     if unit_m:
         scale = {"meters_per_px": unit_m / s, "source": f"DXF drawing units ({ {1: 'in', 2: 'ft', 4: 'mm', 5: 'cm', 6: 'm', 14: 'dm'}[units] })"}
     return {"kind": "dxf", "width": W, "height": H, "render_png": png_b64(img), "segments": keep_longest(segs, MAX_SIDE * 0.004),
-            "texts": out_texts, "scale": scale, "units_known": bool(unit_m), "paper_mm_per_px": None}
+            "texts": out_texts, "scale": scale, "units_known": bool(unit_m), "paper_mm_per_px": None,
+            "layered": dxf_layers(msp, unit_m, to_px)}
 
 
 PARSERS = {"application/pdf": "analyze_pdf", "application/dxf": "analyze_dxf"}

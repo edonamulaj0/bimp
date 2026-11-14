@@ -7,11 +7,16 @@ change as the work; decisions also go in the decision log in `docs/BIMP.md`.
 - **Live:** site and app (`bimp` Worker); ingestion Worker `bimp-ingest` **with its container image and the symbol
   detector** (`fixtures-v1`); Gemini key on both Workers; the dataset in `r2://bimp-files/dataset/`.
 - **Tested live end to end:** a CubiCasa scan uploaded, read (detector + Gemini), and asked count questions in chat.
-- **Measured (`npm run eval -- --sample 500`, dev split, code only, no language model):** 31.0 % of scored questions
-  correct. Only five CubiCasa templates are answered so far: toilets 98 %, sinks 95 %, showers/baths 76 %, doors 76 %,
-  windows 62 %. Everything else is unanswered and counts as wrong. The sample includes plans the detector was trained
-  on, so these five are optimistic (72 % overall on its own test plans).
-- **Not built:** Swiss vector reading, Finnish room-label rules, IFC, boxes on the source sheet, the agent in the eval.
+- **Measured (`npm run eval -- --sample 500`, dev split, code only, no language model):** 60.4 % of scored questions
+  correct (31.0 % before the Swiss reader).
+  - Swiss dwellings: 147 of 147 in that sample; 99.1 % on 1,500 Swiss dev questions (floor-area totals 90.5 %,
+    apartment areas 97.8 %, everything else 98.7–100 %). Rooms, units and areas are read from the vector PDF; doors,
+    windows and fittings from the DXF of the same name.
+  - CubiCasa, five detector templates: toilets 98 %, sinks 95 %, showers/baths 76 %, doors 76 %, windows 62 %. The
+    sample includes plans the detector was trained on, so these are optimistic (72 % overall on its own test plans).
+  - Everything else is unanswered and counts as wrong.
+- **Not built:** Finnish room-label rules, IFC, boxes on the source sheet, the router and the agent wired together
+  (the router answers in the eval only, not yet in the chat), the agent in the eval.
 - **Known problems:** the chat agent sometimes ends with "Agent did not finish" on count questions (2 of 7 live);
   a slow Gemini read used to be cut at about 125 s (now streamed).
 
@@ -64,7 +69,9 @@ for everything else.
 - **Room counts from Finnish labels** in code: MH (bedroom), KH/KPH/PH/PESUH (bath/wash), WC, S (sauna), K/KK/KEITTIÖ (kitchen), PARV (balcony).
 - **Done when:** CubiCasa counts reach ≥ 90 % exact on dev, with no category below 80 %.
 
-**2b. Swiss dwellings: exact from vectors (30 %)**
+**2b. Swiss dwellings: exact from vectors (30 %) — built, see "Where we are"**
+- Left: floor-area totals (rooms drawn as several outlines), door/window/fitting counts from the PDF alone (today
+  they need the DXF twin), and using the reader in the app's own plan and chat.
 - Read room labels and outlines straight from the vector PDF or DXF (no model): counts by label ("Zimmer", "Réduit", …),
   apartments, fittings and net area of numbered rooms.
 - **Done when:** ≥ 95 % exact counts and ≥ 95 % of areas within 2 % on dev.
