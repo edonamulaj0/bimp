@@ -49,7 +49,7 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
   host.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.add(new THREE.HemisphereLight(0xffffff, 0xb8c0cc, 2.1));
+  scene.add(new THREE.HemisphereLight(0xffffff, 0xcfc8ba, 2.1));
   const sun = new THREE.DirectionalLight(0xffffff, 1.5);
   const ext = Math.max(plan.width, plan.height);
   sun.position.set(plan.width / 2 - ext * 0.6, ext * 1.4, plan.height / 2 - ext * 0.35);
@@ -90,7 +90,7 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
     bin.push(geo, mat);
     if (edgesOpacity > 0) {
       const eg = new THREE.EdgesGeometry(geo, 30);
-      const lm = new THREE.LineBasicMaterial({ color: 0x2b2f36, transparent: true, opacity: edgesOpacity });
+      const lm = new THREE.LineBasicMaterial({ color: 0x2a2927, transparent: true, opacity: edgesOpacity });
       to.add(new THREE.LineSegments(eg, lm));
       bin.push(eg, lm);
     }
@@ -138,7 +138,7 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
       g.translate(0, z1, 0);
       const n = g.toNonIndexed(); g.dispose();
       const nm = n.getAttribute('normal'), pos = n.getAttribute('position'), c = new Float32Array(nm.count * 3);
-      const side = new THREE.Color(0xfbfaf7), topC = new THREE.Color(z1 >= HF - 1e-6 ? 0x6b7078 : 0x30343b), tmp = new THREE.Color();
+      const side = new THREE.Color(0xfbfaf7), topC = new THREE.Color(z1 >= HF - 1e-6 ? 0x6b665d : 0x2e2c29), tmp = new THREE.Color();
       for (let i = 0; i < nm.count; i++) {
         if (nm.getY(i) > 0.9) topC.toArray(c, i * 3);
         else tmp.copy(side).multiplyScalar(0.66 + 0.34 * Math.min(1, pos.getY(i) / 1.4)).toArray(c, i * 3);
@@ -148,7 +148,7 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
     });
     addMerged(envelope, envBin, wallGeos, new THREE.MeshLambertMaterial({ vertexColors: true, polygonOffset: true, polygonOffsetFactor: 1, polygonOffsetUnits: 1 }), 0);
     const olGeo = new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(wallOutline(pieces), 3));
-    const olMat = new THREE.LineBasicMaterial({ color: 0x23262b, transparent: true, opacity: 0.6 });
+    const olMat = new THREE.LineBasicMaterial({ color: 0x1e1d1b, transparent: true, opacity: 0.6 });
     envelope.add(new THREE.LineSegments(olGeo, olMat));
     envBin.push(olGeo, olMat);
 
@@ -183,7 +183,7 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
     }
     addMerged(envelope, envBin, leaves, new THREE.MeshLambertMaterial({ vertexColors: true }), 0.35);
     addMerged(envelope, envBin, openingFrames(plan, heightAt), new THREE.MeshLambertMaterial({ vertexColors: true }), 0.3);
-    addMerged(envelope, envBin, glass, new THREE.MeshLambertMaterial({ color: 0x9cc4e4, transparent: true, opacity: 0.32, depthWrite: false }), 0, false);
+    addMerged(envelope, envBin, glass, new THREE.MeshLambertMaterial({ color: 0xe8e2d6, transparent: true, opacity: 0.32, depthWrite: false }), 0, false);
     scene.add(envelope);
   };
 
@@ -468,18 +468,18 @@ function fixtureParts(f: Fixture, H: number): THREE.BufferGeometry[] {
     g.translate(x, Math.min(h, H) / 2, z);
     out.push(colour(g, color));
   };
-  const white = 0xf6f5f2, wood = 0xc9a882, fabric = 0x9aa6b2, dark = 0x3b3f45;
+  const white = 0xf6f5f2, wood = 0xc9a882, fabric = 0xe6a37c, dark = 0x3a3835;
   const back = -d / 2;
   switch (f.kind) {
     case 'wc': box(w, 0.75, 0.18, 0, 0, back + 0.09, white); cyl(Math.min(w, d) * 0.38, 0.4, 0, back + 0.18 + (d - 0.18) / 2, white); break;
-    case 'sink': box(w, 0.85, d, 0, 0, 0, white, 0xdfe5ea); break;
-    case 'bathtub': box(w, 0.55, d, 0, 0, 0, white, 0xd6e6f2); break;
+    case 'sink': box(w, 0.85, d, 0, 0, 0, white, 0xe6e1d7); break;
+    case 'bathtub': box(w, 0.55, d, 0, 0, 0, white, 0xe9e4da); break;
     case 'shower': box(w, 0.06, d, 0, 0, 0, white); break;
     case 'sauna_stove': box(w, 0.75, d, 0, 0, 0, dark, 0x6b5b4b); break;
     case 'stove': box(w, 0.9, d, 0, 0, 0, white, dark); break;
-    case 'fridge': box(w, 1.8, d, 0, 0, 0, 0xe9ecef); break;
+    case 'fridge': box(w, 1.8, d, 0, 0, 0, 0xeceae4); break;
     case 'washer': box(w, 0.85, d, 0, 0, 0, white); break;
-    case 'bed': box(w, 0.45, d, 0, 0, 0, white, 0xeef1f4); box(w * 0.9, 0.12, 0.3, 0, 0.45, back + 0.22, 0xffffff); box(w, 0.8, 0.06, 0, 0, back + 0.03, wood); break;
+    case 'bed': box(w, 0.45, d, 0, 0, 0, white, 0xf1eee8); box(w * 0.9, 0.12, 0.3, 0, 0.45, back + 0.22, 0xffffff); box(w, 0.8, 0.06, 0, 0, back + 0.03, wood); break;
     case 'sofa': box(w, 0.42, d, 0, 0, 0, fabric); box(w, 0.4, Math.min(0.22, d * 0.3), 0, 0.42, back + 0.11, fabric); break;
     case 'table': case 'desk': box(w, 0.04, d, 0, 0.71, 0, wood);
       for (const [a, b] of [[-1, -1], [1, -1], [-1, 1], [1, 1]]) box(0.05, 0.71, 0.05, a * (w / 2 - 0.05), 0, b * (d / 2 - 0.05), wood); break;

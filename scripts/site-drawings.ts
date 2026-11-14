@@ -1,20 +1,19 @@
-// Writes the marketing site's line drawings of the show apartment (furnished plan and isometric wireframe) to
-// apps/web/partials/. The plan is apps/shared/apartment-plan.ts; rugs, side tables, plants and the like are drawn here
+// Writes the marketing site's furnished line drawing of the pilot house to apps/web/partials/plan-drawing.html. The plan is apps/shared/house-plan.ts, the same one every account opens with; rugs, side tables, plants and the like are drawn here
 // only (they are not fixture kinds bimp reads from drawings).
 // Run: npx esbuild scripts/site-drawings.ts --bundle --platform=node --format=esm --outfile=node_modules/.cache/bimp/sd.mjs && node node_modules/.cache/bimp/sd.mjs
 import { writeFileSync } from 'node:fs';
-import { apartmentPlan } from '../apps/shared/apartment-plan';
+import { housePlan, houseTerrace } from '../apps/shared/house-plan';
 import { wallFootprints, clipHalf } from '../apps/shared/walls';
 import { dist, wallPieces, area, type Pt, type Room } from '../apps/shared/plan';
 import { roomDims } from '../apps/shared/rooms';
 
-const p = apartmentPlan(), S = 50, M = 70; // px per metre, margin
-const indoor = p.rooms.filter((r) => r.type !== 'outdoor'), terrace = p.rooms.filter((r) => r.type === 'outdoor');
+const p = housePlan(), S = 50, M = 70; // px per metre, margin
+const indoor = p.rooms, terrace = [houseTerrace], allRooms = [...indoor, ...terrace];
 const bw = Math.max(...indoor.flatMap((r) => r.polygon.map((q) => q[0]))), bh = Math.max(...indoor.flatMap((r) => r.polygon.map((q) => q[1])));
 const f = (n: number) => Math.round(n * 10) / 10;
 const X = (x: number) => f(M + x * S), Y = (y: number) => f(M + y * S);
 const poly = (q: Pt[]) => 'M' + q.map(([x, y]) => `${X(x)},${Y(y)}`).join('L') + 'Z';
-const W = M * 2 + p.width * S, H = M + p.height * S + 36;
+const W = M * 2 + p.width * S, H = M + Math.max(...allRooms.map((r) => r.polygon[2][1])) * S + 36;
 const box = (r: Room) => ({ x0: r.polygon[0][0], y0: r.polygon[0][1], x1: r.polygon[2][0], y1: r.polygon[2][1] });
 
 // each group of strokes is drawn in turn: floors, then walls, openings, furniture, dimensions
@@ -22,15 +21,15 @@ type El = { d: string; cls: string; tf?: string };
 const floors: El[] = [], rugs: El[] = [], furn: El[] = [], wallEls: El[] = [], openEls: El[] = [], dims: El[] = [];
 
 // floor finishes: boards in dry rooms, tiles in wet rooms and the kitchen, decking outside. One path per room.
-for (const r of p.rooms) {
+for (const r of allRooms) {
   const { x0, y0, x1, y1 } = box(r), t = r.type;
   let d = '';
   const hl = (step: number) => { for (let y = y0 + step; y < y1 - 0.01; y += step) d += `M${X(x0)},${Y(y)}H${X(x1)}`; };
   const vl = (step: number) => { for (let x = x0 + step; x < x1 - 0.01; x += step) d += `M${X(x)},${Y(y0)}V${Y(y1)}`; };
   if (t === 'bathroom' || t === 'wc') { hl(0.3); vl(0.3); }
-  else if (t === 'kitchen' || t === 'storage') { hl(0.6); vl(0.6); }
+  else if (t === 'kitchen' || t === 'utility') { hl(0.6); vl(0.6); }
   else if (t === 'outdoor') vl(0.2);
-  else if (r.name === 'Entrance' || r.name === 'Hall') { hl(0.6); vl(0.6); }
+  else if (r.name === 'Entrance hall') { hl(0.6); vl(0.6); }
   else hl(0.25);
   floors.push({ d, cls: 'g' });
 }
@@ -73,6 +72,7 @@ function shape(k: string, w: number, d: number): [string, string] {
     case 'bedside': return [base, E(0, 0, Math.min(w, d) * 0.28)];
     case 'shelf': { const c = Math.max(2, Math.round(w / 0.45)); return [base, Array.from({ length: c - 1 }, (_, i) => L(x0 + (w / c) * (i + 1), y0, x0 + (w / c) * (i + 1), -y0)).join('')]; }
     case 'counter': return [base, ''];
+    case 'stool': return [E(0, 0, w / 2), ''];
     case 'plant': { const r = w / 2; return [E(0, 0, r), E(0, 0, r * 0.45) + [0, 1, 2, 3, 4, 5].map((i) => L(0, 0, Math.cos(i * 1.047) * r * 0.9, Math.sin(i * 1.047) * r * 0.9)).join('')]; }
     case 'rug': return ['', R(x0, y0, w, d) + R(x0 + 0.1, y0 + 0.1, w - 0.2, d - 0.2)];
   }
@@ -85,12 +85,12 @@ const place = (k: string, x: number, y: number, w: number, d: number, deg: numbe
 };
 // drawn here only: [kind, centre x, centre y, width, depth, quarter turns]
 const decor: [string, number, number, number, number, number][] = [
-  ['rug', 2.3, 6.6, 3.0, 2.3, 0], ['rug', 1.6, 2.9, 2.8, 2.2, 0], ['rug', 10.9, 7.6, 3.0, 2.2, 1], ['rug', 6.3, 3.55, 3.0, 0.8, 0], ['rug', 9.8, 1.75, 3.0, 2.1, 1], ['rug', 5.35, 1.0, 0.9, 0.5, 0],
-  ['counter', 8.74, 7.38, 4.34, 0.6, 1],
-  ['lowtable', 2.3, 6.5, 1.1, 0.6, 0], ['armchair', 3.95, 6.9, 0.85, 0.85, 1], ['shelf', 5.365, 7.5, 2.2, 0.35, 1], ['plant', 0.55, 9.15, 0.6, 0.6, 0], ['plant', 5.2, 5.85, 0.5, 0.5, 0],
-  ['bedside', 0.5, 4.22, 0.45, 0.4, 2], ['bedside', 2.7, 4.22, 0.45, 0.4, 2], ['bedside', 9.4, 6.4, 0.45, 0.45, 3], ['bedside', 9.4, 8.8, 0.45, 0.45, 3],
-  ['shelf', 10.94, 1.4, 1.6, 0.4, 1], ['plant', 8.82, 0.5, 0.5, 0.5, 0], ['shelf', 11.41, 1.55, 1.2, 0.3, 3],
-  ['armchair', 15.0, 4.25, 0.8, 0.8, 2], ['armchair', 16.1, 4.25, 0.8, 0.8, 2], ['plant', 13.75, 0.55, 0.6, 0.6, 0], ['plant', 16.5, 0.55, 0.5, 0.5, 0],
+  ['rug', 9.6, 6.4, 3.6, 2.8, 0], ['rug', 5.0, 7.3, 3.2, 2.4, 1], ['rug', 14.3, 1.6, 2.6, 2.4, 0], ['rug', 15.3, 7.9, 3.0, 2.4, 0], ['rug', 7.2, 2.4, 2.6, 1.1, 1], ['rug', 11.0, 1.05, 0.9, 0.5, 0],
+  ['counter', 4.275, 4.56, 2.85, 0.6, 0], ['counter', 0.45, 6.6, 3.2, 0.6, 3], ['counter', 2.75, 6.7, 2.2, 0.9, 1], ['stool', 3.5, 6.0, 0.36, 0.36, 0], ['stool', 3.5, 6.7, 0.36, 0.36, 0], ['stool', 3.5, 7.4, 0.36, 0.36, 0],
+  ['shelf', 9.9, 4.44, 2.6, 0.35, 0], ['lowtable', 9.5, 6.3, 1.2, 0.65, 0], ['armchair', 8.3, 6.3, 0.85, 0.85, 3], ['plant', 11.0, 9.0, 0.55, 0.55, 0], ['plant', 8.2, 4.75, 0.5, 0.5, 0], ['plant', 0.6, 8.95, 0.6, 0.6, 0],
+  ['bedside', 3.0, 2.25, 0.45, 0.4, 3], ['bedside', 12.9, 0.45, 0.45, 0.4, 3], ['bedside', 12.9, 2.55, 0.45, 0.4, 3],
+  ['lowtable', 15.7, 8.35, 1.6, 0.4, 0], ['armchair', 13.4, 8.75, 0.85, 0.85, 2], ['shelf', 8.14, 0.8, 1.0, 0.35, 1], ['shelf', 10.0, 3.24, 1.4, 0.3, 0],
+  ['table', 5.4, 11.1, 1.8, 0.9, 0], ['armchair', 9.2, 11.4, 0.8, 0.8, 2], ['armchair', 10.2, 11.4, 0.8, 0.8, 2], ['plant', 3.5, 12.1, 0.6, 0.6, 0], ['plant', 10.9, 10.1, 0.5, 0.5, 0],
 ];
 for (const [k, x, y, w, d, q] of decor) place(k, x, y, w, d, q * 90, k === 'rug' ? rugs : furn);
 for (const fx of p.fixtures ?? []) place(fx.kind, fx.center[0], fx.center[1], fx.size[0], fx.size[1], (fx.angle * 180) / Math.PI);
@@ -121,8 +121,8 @@ for (const o of p.openings) {
 // the terrace edge: a slab line and a rail just inside it
 for (const r of terrace) {
   const { x0, y0, x1, y1 } = box(r), e = 0.1;
-  openEls.push({ d: `M${X(x0)},${Y(y0)}H${X(x1)}V${Y(y1)}H${X(x0)}`, cls: 'o' });
-  openEls.push({ d: `M${X(x0 + 0.15)},${Y(y0 + e)}H${X(x1 - e)}V${Y(y1 - e)}H${X(x0 + 0.15)}`, cls: 'sw' });
+  openEls.push({ d: `M${X(x0)},${Y(y0)}V${Y(y1)}H${X(x1)}V${Y(y0)}`, cls: 'o' });
+  openEls.push({ d: `M${X(x0 + e)},${Y(y0 + 0.15)}V${Y(y1 - e)}H${X(x1 - e)}V${Y(y0 + 0.15)}`, cls: 'sw' });
 }
 // dimensions: overall over the outer faces of the house, top and left
 const texts: string[] = [];
@@ -136,8 +136,8 @@ dim(X(-0.15), Y(-0.15) - 34, X(bw + 0.15), Y(-0.15) - 34, mm(bw + 0.3));
 dim(X(-0.15) - 34, Y(-0.15), X(-0.15) - 34, Y(bh + 0.15), mm(bh + 0.3), true);
 
 // room labels with net areas, placed clear of the furniture
-const at: Record<string, Pt> = { 'Bedroom 1': [1.9, 1.55], Bathroom: [7.6, 1.5], Hall: [7.35, 2.7], Dining: [9.8, 3.75], 'Living room': [3.3, 8.45], Kitchen: [7.35, 5.75], 'Bedroom 2': [12.0, 6.15], Terrace: [15.2, 3.1] };
-const labels = p.rooms.filter((r) => at[r.name]).map((r) => {
+const at: Record<string, Pt> = { Utility: [1.1, 2.6], 'Bedroom 3': [4.6, 1.6], 'Entrance hall': [7.3, 3.0], Bathroom: [11.0, 1.7], 'Bedroom 2': [14.9, 2.9], 'Kitchen / dining / living': [7.25, 5.7], Dressing: [12.5, 5.55], 'En-suite': [15.7, 5.5], 'Main bedroom': [13.1, 7.6], Terrace: [7.2, 11.95] };
+const labels = allRooms.filter((r) => at[r.name]).map((r) => {
   const [x, y] = at[r.name];
   return `<text class="rl" x="${X(x)}" y="${Y(y)}" text-anchor="middle">${r.name}</text><text class="ra" x="${X(x)}" y="${f(Y(y) + 14)}" text-anchor="middle">${area(r.polygon).toFixed(1)} m²</text>`;
 });
@@ -147,9 +147,9 @@ const seq = [...wallEls, ...openEls, ...rugs, ...furn, ...dims];
 const order = new Map(seq.map((e, i) => [e, Math.round((i / seq.length) * 150)]));
 const path = (e: El, i: number) => `<path class="${e.cls}" d="${e.d}" pathLength="1" style="--i:${i}"${e.tf ? ` transform="${e.tf}"` : ''}/>`;
 // room hit areas: hovering or focusing one reports its name, net area and clear size in the plate's title block
-const hits = p.rooms.map((r) => { const a = area(r.polygon), s = roomDims(r.polygon); return `<path class="room" tabindex="0" role="button" aria-label="${r.name}, ${a.toFixed(1)} square metres" data-name="${r.name}" data-area="${a.toFixed(1)} m²" data-size="${s.length.toFixed(2)} × ${s.width.toFixed(2)} m" d="${poly(r.polygon)}"/>`; });
+const hits = allRooms.map((r) => { const a = area(r.polygon), s = roomDims(r.polygon); return `<path class="room" tabindex="0" role="button" aria-label="${r.name}, ${a.toFixed(1)} square metres" data-name="${r.name}" data-m2="${a.toFixed(2)}" data-area="${a.toFixed(1)} m²" data-size="${s.length.toFixed(2)} × ${s.width.toFixed(2)} m" d="${poly(r.polygon)}"/>`; });
 const net = indoor.reduce((s, r) => s + area(r.polygon), 0);
-const plan = `<svg class="drawing plan-drawing" viewBox="0 0 ${f(W)} ${f(H)}" role="img" aria-label="Furnished floor plan of a two-bedroom apartment with a terrace, drawn line by line: walls, doors with their swings, windows, furniture and overall dimensions of ${f(bw + 0.3)} by ${f(bh + 0.3)} metres.">
+const plan = `<svg class="drawing plan-drawing" viewBox="0 0 ${f(W)} ${f(H)}" role="img" aria-label="Furnished floor plan of the three-bedroom pilot house with a terrace, drawn line by line: walls, doors with their swings, windows, furniture and overall dimensions of ${f(bw + 0.3)} by ${f(bh + 0.3)} metres.">
 <g class="grid" aria-hidden="true">${floors.map((e, i) => path(e, i)).join('')}</g>
 <g class="lines" aria-hidden="true">${[...rugs, ...furn, ...wallEls, ...openEls, ...dims].map((e) => path(e, order.get(e)!)).join('')}${texts.join('')}</g>
 <g class="labels" aria-hidden="true">${labels.join('')}</g>
@@ -157,28 +157,4 @@ const plan = `<svg class="drawing plan-drawing" viewBox="0 0 ${f(W)} ${f(H)}" ro
 </svg>`;
 writeFileSync('apps/web/partials/plan-drawing.html', plan + '\n');
 
-// isometric wireframe of the house: floor outlines, then wall verticals, then wall tops, then a roof outline
-const iso = (x: number, y: number, z: number): [number, number] => {
-  const c = Math.cos(Math.PI / 6), s = Math.sin(Math.PI / 6), k = 34;
-  return [f((x - y) * c * k), f(((x + y) * s - z) * k)];
-};
-const seg = (a: [number, number, number], b: [number, number, number]) => { const [x1, y1] = iso(...a), [x2, y2] = iso(...b); return `M${x1},${y1}L${x2},${y2}`; };
-const layers: Record<string, string[]> = { floor: [], up: [], top: [], roof: [] };
-for (const r of p.rooms) layers.floor.push(r.polygon.map((q, j) => seg([q[0], q[1], 0], [r.polygon[(j + 1) % r.polygon.length][0], r.polygon[(j + 1) % r.polygon.length][1], 0])).join(''));
-const corners = new Map<string, Pt>();
-for (const r of indoor) for (const q of r.polygon) corners.set(q.join(','), q);
-const HT = 2.7;
-for (const q of corners.values()) layers.up.push(seg([q[0], q[1], 0], [q[0], q[1], HT]));
-for (const w of p.walls) layers.top.push(seg([w.a[0], w.a[1], HT], [w.b[0], w.b[1], HT]));
-const RH = 1.6, ridgeY = bh / 2; // a simple gabled roof along x
-const e: [number, number, number][] = [[0, 0, HT], [bw, 0, HT], [bw, bh, HT], [0, bh, HT]];
-layers.roof.push(seg([0, ridgeY, HT + RH], [bw, ridgeY, HT + RH]), seg(e[0], [0, ridgeY, HT + RH]), seg(e[3], [0, ridgeY, HT + RH]), seg(e[1], [bw, ridgeY, HT + RH]), seg(e[2], [bw, ridgeY, HT + RH]));
-for (let x = 1.2; x < bw; x += 1.2) layers.roof.push(seg([x, 0, HT], [x, ridgeY, HT + RH]), seg([x, bh, HT], [x, ridgeY, HT + RH]));
-const all = Object.values(layers).flat().join('').match(/-?\d+(\.\d+)?,-?\d+(\.\d+)?/g)!.map((v) => v.split(',').map(Number));
-const minX = Math.min(...all.map((v) => v[0])) - 20, maxX = Math.max(...all.map((v) => v[0])) + 20, minY = Math.min(...all.map((v) => v[1])) - 20, maxY = Math.max(...all.map((v) => v[1])) + 20;
-let c = 0;
-const wire = `<svg class="drawing wire-drawing" viewBox="${f(minX)} ${f(minY)} ${f(maxX - minX)} ${f(maxY - minY)}" role="img" aria-label="Isometric wireframe of the apartment assembling: floor outlines, wall edges, wall heads, then the roof.">
-${Object.entries(layers).map(([k, ds]) => `<g class="layer ${k}" aria-hidden="true">${ds.map((d) => `<path d="${d}" pathLength="1" style="--i:${c++ % 40}"/>`).join('')}</g>`).join('\n')}
-</svg>`;
-writeFileSync('apps/web/partials/wire-drawing.html', wire + '\n');
-console.log('ok', plan.length, wire.length, 'net', net.toFixed(1), 'terrace', terrace.map((r) => area(r.polygon).toFixed(1)).join());
+console.log('ok', plan.length, 'net', net.toFixed(1), 'terrace', terrace.map((r) => area(r.polygon).toFixed(1)).join());

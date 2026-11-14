@@ -1,6 +1,8 @@
 /* bimp design tokens: shared by the marketing site and the app.
-   Paper and ink like a drawing sheet; orange #FF682B is a marker (rules, targets, buttons), never body text on paper
-   (2.56:1). Charcoal on orange 5.83:1, muted on paper 5.05:1, control borders 3.08:1. */
+   Three colours only: charcoal, off-white and orange, with tints of them. Orange #FF682B is a marker (rules, targets,
+   buttons), never body text on paper (2.56:1). Charcoal on orange 5.83:1, muted on paper 5.05:1, control borders 3.08:1.
+   Light is paper with charcoal ink; dark is the same sheet inverted. The theme is html[data-theme], set before paint
+   by /js.js from the reader's choice or their system setting. */
 @import '@fontsource-variable/jost';
 @import '@fontsource/ibm-plex-mono/400.css';
 @import '@fontsource/ibm-plex-mono/500.css';
@@ -17,9 +19,13 @@
   --accent: #ff682b;
   --on-accent: #1e1d1b;
   --focus: #1e1d1b;
-  --danger: #b42318;
-  --ok: #2f6b3f;
+  --danger: #a33a12;     /* a burnt orange, for errors and removals */
+  --ok: #1e1d1b;
   --warn: #8a4b08;
+  --tint: #fff4ec;       /* orange wash: notices, marked text */
+  --tint-line: #f3c8b0;
+  --sheet: #ffffff;      /* the drawing sheet and raised panels */
+  --shade: 30 29 27;     /* rgb triplet for scrims, shadows and hover washes */
 
   --font: 'Jost Variable', 'Jost', 'Futura', 'Century Gothic', system-ui, sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, 'SFMono-Regular', Menlo, monospace;
@@ -34,9 +40,56 @@
   color-scheme: light;
 }
 
+:root[data-theme="dark"] {
+  --paper: #171614;
+  --paper-2: #1e1d1b;
+  --paper-3: #22201d;
+  --ink: #f4f1ea;
+  --ink-2: #d2ccc0;
+  --muted: #a39d92;
+  --line: #36332f;
+  --line-strong: #6f6a60;
+  --accent: #ff682b;
+  --on-accent: #1e1d1b;
+  --focus: #f4f1ea;
+  --danger: #ff9466;
+  --ok: #f4f1ea;
+  --warn: #ffb48f;
+  --tint: #2e231c;
+  --tint-line: #6b3a22;
+  --sheet: #1e1d1b;
+  --shade: 0 0 0;
+  --shadow: 0 1px 0 rgb(0 0 0 / .2), 0 8px 24px -12px rgb(0 0 0 / .6);
+  color-scheme: dark;
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme]) {
+    --paper: #171614;
+    --paper-2: #1e1d1b;
+    --paper-3: #22201d;
+    --ink: #f4f1ea;
+    --ink-2: #d2ccc0;
+    --muted: #a39d92;
+    --line: #36332f;
+    --line-strong: #6f6a60;
+    --accent: #ff682b;
+    --on-accent: #1e1d1b;
+    --focus: #f4f1ea;
+    --danger: #ff9466;
+    --ok: #f4f1ea;
+    --warn: #ffb48f;
+    --tint: #2e231c;
+    --tint-line: #6b3a22;
+    --sheet: #1e1d1b;
+    --shade: 0 0 0;
+    --shadow: 0 1px 0 rgb(0 0 0 / .2), 0 8px 24px -12px rgb(0 0 0 / .6);
+    color-scheme: dark;
+  }
+}
+
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }
-body { margin: 0; background: var(--paper); color: var(--ink); font: 400 var(--t-base)/1.5 var(--font); font-feature-settings: 'ss01'; -webkit-font-smoothing: antialiased; }
+body { margin: 0; background: var(--paper); color: var(--ink); transition: background-color .4s ease, color .4s ease; font: 400 var(--t-base)/1.5 var(--font); font-feature-settings: 'ss01'; -webkit-font-smoothing: antialiased; }
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; border-radius: 2px; }
 ::selection { background: var(--accent); color: var(--on-accent); }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; transition-duration: .01ms !important; scroll-behavior: auto !important; } }
@@ -53,12 +106,14 @@ body { margin: 0; background: var(--paper); color: var(--ink); font: 400 var(--t
 .btn { display: inline-flex; align-items: center; justify-content: center; gap: var(--s2); min-height: 44px; padding: 0 var(--s5); border: 1px solid transparent; border-radius: var(--radius);
   background: var(--accent); color: var(--on-accent); font: 500 var(--t-base)/1 var(--font); text-decoration: none; cursor: pointer; transition: background .15s, border-color .15s, transform .15s; }
 .btn:hover { background: #ff7a44; }
+.btn, .btn:hover { color: var(--on-accent); }
 .btn:active { transform: translateY(1px); }
 .btn:disabled { opacity: .45; cursor: not-allowed; }
-.btn.ghost { background: transparent; color: var(--ink); border-color: var(--line-strong); }
+.btn.ghost, .btn.ghost:hover { color: var(--ink); }
+.btn.ghost { background: transparent; border-color: var(--line-strong); }
 .btn.ghost:hover { border-color: var(--ink); background: var(--paper-3); }
 .btn.ghost[aria-pressed="true"] { background: var(--ink); color: var(--paper); border-color: var(--ink); }
-.btn.dark { background: var(--ink); color: var(--paper); }
+.btn.dark, .btn.dark:hover { background: var(--ink); color: var(--paper); }
 .btn.dark:hover { background: var(--ink-2); }
 .btn.sm { min-height: 36px; padding: 0 var(--s4); font-size: var(--t-sm); }
 .link { color: inherit; text-decoration: underline; text-decoration-color: var(--accent); text-decoration-thickness: 2px; text-underline-offset: 3px; }

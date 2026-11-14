@@ -12,7 +12,7 @@ import type { Projection, ViewPreset } from './canvas/scene';
 import { ROOM_COLORS } from './canvas/colors';
 import { signal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
-import { chatPrompt, hoverRoom, projectsVersion, queueFiles, region, say, selectedRooms, tourStep, tutorialOpen } from './state';
+import { chatPrompt, hoverRoom, projectsVersion, queueFiles, region, say, selectedRooms, tourStep, tutorialOpen, toggleTheme } from './state';
 import { InfoPanel } from './InfoPanel';
 import { PageHeader } from './Shell';
 import { Spinner } from './brand';
@@ -225,6 +225,7 @@ export function ProjectPage({ id }: { id: string }) {
             { label: 'Welcome tour', onSelect: () => (tourStep.value = 0) },
             { label: tutorialOpen.value ? 'Hide the first-project guide' : 'First-project guide', onSelect: () => { tutorialOpen.value = !tutorialOpen.value; store('bimp.tutorial', tutorialOpen.value ? 'open' : 'closed'); } },
             { label: 'Keyboard shortcuts', hint: '?', onSelect: () => setShowKeys(true) },
+            { label: 'Light / dark', onSelect: toggleTheme },
           ]} />
           <button class="btn ghost sm hide-sm" onClick={upload}><Icon name="upload" size={16} />Add drawings</button>
           <span class="tb-sep hide-sm" aria-hidden="true" />
