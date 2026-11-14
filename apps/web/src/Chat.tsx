@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'preact/hooks';
 import type { Plan } from '../../shared/plan';
 import { api } from './api';
-import { AI_OFF, ACCEPT, ai, chatPrompt, queueFiles, region, say, uploadQueue } from './state';
+import { AI_OFF, ACCEPT, ai, chatPrompt, pendingDrawing, queueFiles, region, say, uploadQueue } from './state';
 import { regionSize } from '../../shared/region';
 import { BimpMark, Spinner } from './brand';
 import { Icon } from './icons';
@@ -15,8 +15,8 @@ const shortText = (t: string) => { const m = t.match(/^Give me an overview of (.
 const isError = (c: Content) => c.kind === 'error' || (c.kind === 'system' && !c.claims);
 
 /** bimp AI, docked under the file tree: questions about the plan, or about the marked region only. Also runs uploads. */
-export function Chat({ projectId, messages, hasPlan, shared, resumeJob, hidden, onMessages, onPlan, onRefused }: {
-  projectId: string; messages: Msg[]; hasPlan: boolean; shared: boolean; resumeJob?: string; hidden?: boolean;
+export function Chat({ projectId, planId, messages, hasPlan, shared, resumeJob, hidden, onMessages, onPlan, onRefused }: {
+  projectId: string; /** the revision on the canvas: questions are about it */ planId?: string | null; messages: Msg[]; hasPlan: boolean; shared: boolean; resumeJob?: string; hidden?: boolean;
   onMessages(m: Msg[]): void; onPlan(p: Plan): void; onRefused?(why: string[]): void;
 }) {
   const [text, setText] = useState('');
@@ -40,14 +40,20 @@ export function Chat({ projectId, messages, hasPlan, shared, resumeJob, hidden, 
   const canAsk = ai.value && hasPlan;
   const push = (...m: Msg[]) => { if (!alive.current) return; messages = [...messages, ...m]; onMessages(messages); };
   const fail = (e: unknown) => push({ role: 'assistant', content: { text: (e as Error).message, kind: 'error' } });
-  const done = () => { if (alive.current) setJob(''); if (file.current) file.current.value = ''; };
+  const local = useRef<string | null>(null); // object URL of the image being uploaded, shown on the canvas at once
+  const pending = (url: string | null, name: string, stage: string) => { if (alive.current) pendingDrawing.value = url ? { url, name, stage } : null; };
+  const done = () => {
+    if (alive.current) { setJob(''); pendingDrawing.value = null; }
+    if (local.current) { URL.revokeObjectURL(local.current); local.current = null; }
+    if (file.current) file.current.value = '';
+  };
   useEffect(() => {
     if (resumeJob) { setT0(Date.now()); setJob('Reading the drawing…'); follow(resumeJob).catch(fail).finally(done); }
-    return () => { alive.current = false; };
+    return () => { alive.current = false; pendingDrawing.value = null; if (local.current) URL.revokeObjectURL(local.current); };
   }, []);
 
   /** Polls an ingestion job (a Cloudflare Workflow) until it finishes, showing its stage. Stops on unmount; rides out brief network errors. */
-  async function follow(jobId: string) {
+  async function follow(jobId: string, name = 'the drawing') {
     for (let i = 0, errors = 0; i < 400 && alive.current; i++) {
       let d: { job: Job; plan?: Plan; message?: Msg };
       try { d = await api(`/projects/${projectId}/jobs/${jobId}`); errors = 0; }
@@ -60,6 +66,8 @@ export function Chat({ projectId, messages, hasPlan, shared, resumeJob, hidden, 
       if (d.job.status === 'done') { if (d.message) push(d.message); if (d.plan) onPlan(d.plan); return; }
       if (d.job.status === 'failed') throw new Error(`Couldn't read the drawing: ${d.job.error ?? 'unknown error'}`);
       setJob(d.job.stage);
+      // the sheet as rendered for reading once it exists (any page of a PDF, a DXF), else the uploaded image itself
+      pending(d.job.render_sha ? `/api/projects/${projectId}/render/${d.job.render_sha}` : local.current ?? (d.job.file_id ? `/api/projects/${projectId}/files/${d.job.file_id}/preview` : null), name, d.job.stage);
       await new Promise((r) => setTimeout(r, 1500));
     }
     if (alive.current) throw new Error('Still working on the drawing. Reload the page later to see the result.');
@@ -83,7 +91,7 @@ export function Chat({ projectId, messages, hasPlan, shared, resumeJob, hidden, 
     setAsking(true);
     const r = region.peek();
     push({ role: 'user', content: r ? { text: q, region: r } : { text: q } });
-    try { const d = await api(`/projects/${projectId}/chat`, { json: r ? { message: q, region: r } : { message: q } }); push(d.message); }
+    try { const d = await api(`/projects/${projectId}/chat`, { json: { message: q, ...(r ? { region: r } : {}), ...(planId ? { plan_id: planId } : {}) } }); push(d.message); }
     catch (e) { fail(e); }
     finally { if (alive.current) setAsking(false); }
   }
@@ -93,16 +101,22 @@ export function Chat({ projectId, messages, hasPlan, shared, resumeJob, hidden, 
     push({ role: 'user', content: { text: `Uploaded ${f.name}` } });
     setT0(Date.now()); setJob('Uploading…');
     try {
+      // Only real raster images are measured and shown at once; a browser may call a .dxf "image/vnd.dxf".
+      const raster = /^image\/(png|jpeg|webp)$/.test(f.type) && !/\.(dxf|pdf)$/i.test(f.name);
       const headers: Record<string, string> = { 'x-filename': encodeURIComponent(f.name), 'content-type': f.type || 'application/octet-stream' };
-      if (f.type.startsWith('image/')) {
-        const bmp = await createImageBitmap(f);
-        headers['x-image-width'] = String(bmp.width); headers['x-image-height'] = String(bmp.height);
-        bmp.close();
+      if (raster) {
+        try {
+          const bmp = await createImageBitmap(f);
+          headers['x-image-width'] = String(bmp.width); headers['x-image-height'] = String(bmp.height);
+          bmp.close();
+        } catch { /* the server reads the size itself; an unreadable image is reported by the reading */ }
+        local.current = URL.createObjectURL(f);
+        pending(local.current, f.name, 'Uploading…');
       }
       const up = await api<{ duplicate?: boolean; job: { id: string } | null }>(`/projects/${projectId}/files`, { body: f, headers });
       if (!up.job) return push({ role: 'assistant', content: { text: `${f.name} is already read. Its plan is in the canvas.`, kind: 'system', claims: [] } });
       setJob('Queued…');
-      await follow(up.job.id);
+      await follow(up.job.id, f.name);
     } catch (e) { fail(e); }
     finally { done(); }
   }

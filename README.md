@@ -26,7 +26,7 @@ npm run ingest:dev               # ingestion service on :8090 (stands in for the
 npm run dev                      # http://localhost:5173 (marketing) and /app/ (app); runs both Workers
 ```
 
-`npm test` checks the drawing-convention and standards rules. Without a Gemini key, everything works except reading new drawings and chat. Every new account gets a
+`npm test` checks the drawing-convention and standards rules, the plan builder, the code-answer router and the cost figures; `npm run test:ingest` checks room tracing and PDF pages in the Python service. Without a Gemini key, everything works except reading new drawings and chat. Every new account gets a
 "Pilot house" project (a three-bedroom single-storey house, `apps/shared/house-plan.ts`). `npm run ingest:fixtures` writes test drawings (vector PDF at 1:100, a scan, a DXF) to `evals/fixtures/`.
 
 ## Deploy
@@ -67,6 +67,17 @@ Connect the repo twice in the dashboard (Workers & Pages → each Worker → Set
 Every push to a non-production branch then gives a link like `https://<version>-bimp.<your-subdomain>.workers.dev`
 (shown on the build and in the PR check). Preview versions use the **same** D1 and R2 as production.
 Version URLs are public: put Cloudflare Access in front if the data must stay private.
+
+### How a drawing is read, and what a question costs
+
+1. **Analyse** (Python service, no model): line work, text, scale, a render of the sheet; on scans, the symbol detector. Every page of a PDF, up to 8 per file; each page with a floor plan becomes its own revision ("Page 2 of 5").
+2. **Read** (Gemini, twice per page, cached by the render's hash): rooms, labels and openings, then a second reading for doors and windows only.
+3. **Trace** (Python service, no model): each room's outline is replaced by the exact outline of the enclosed space on the drawing, bounded by its wall lines. A room that matches no enclosed space keeps the outline as read; the plan's assumptions say how many were traced.
+4. **Measure and save** (code): scale, walls, openings seated in walls, and for every room, opening and fitting the page and box it was read from (`src`).
+
+The uploaded drawing is on the canvas as soon as it is rendered; the model is drawn over it when the reading is done. **Overlay** in the canvas toolbar sets how strongly the drawing and the model are drawn (in 3D the drawing lies on the floor).
+
+Questions are answered from the stored plan. Counts, room areas, the total area, the largest or smallest room and the room list are answered by code (`apps/api/src/quick.ts`): no model call, 0¢. Everything else goes to the agent, and the answer shows what it cost at the model's list price (`GEMINI_PRICE_IN` / `GEMINI_PRICE_OUT`, US dollars per million tokens, in both `wrangler.jsonc` files: update them when the model or its price changes). Each citation carries a crop of the source sheet with the cited rooms or items outlined.
 
 ### Architectural images (Cloudinary, optional)
 

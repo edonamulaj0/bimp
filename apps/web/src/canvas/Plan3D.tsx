@@ -11,21 +11,21 @@ import { Spinner } from '../brand';
 export type Plan3DApi = { view(v: ViewPreset): void; zoom(k: number): void; rotate(steps: number): void; projection(): Projection; setProjection(p: Projection): void; snapshot(): Promise<Blob> | null };
 
 type Props = {
-  plan: Plan; compact?: boolean; rotation?: number; walls?: WallMode; furniture?: boolean; labels?: boolean; projection?: Projection;
+  plan: Plan; compact?: boolean; /** the source drawing, laid on the floor */ underlayUrl?: string | null; underlayOpacity?: number; rotation?: number; walls?: WallMode; furniture?: boolean; labels?: boolean; projection?: Projection;
   tool?: CanvasTool; region?: Region | null; onRegion?(r: Region | null): void; apiRef?: { current: Plan3DApi | null }; onMenu?(m: MenuAt): void;
 };
 
 /** The camera survives scene rebuilds (wall mode, furniture), per plan. */
 const views = new WeakMap<Plan, CameraView>();
 
-export function Plan3D({ plan, compact, rotation = 0, walls = 'dollhouse', furniture = true, labels: showLabels = true, projection = 'persp', tool = 'select', region, onRegion, apiRef, onMenu }: Props) {
+export function Plan3D({ plan, compact, underlayUrl, underlayOpacity = 0.6, rotation = 0, walls = 'dollhouse', furniture = true, labels: showLabels = true, projection = 'persp', tool = 'select', region, onRegion, apiRef, onMenu }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<SceneApi | null>(null);
   const appliedRot = useRef(0);
   const latestRot = useRef(rotation);
   latestRot.current = rotation; // the scene loads lazily; apply the rotation current when it is ready, not the one captured here
-  const live = useRef({ tool, region, onRegion, onMenu, projection });
-  live.current = { tool, region, onRegion, onMenu, projection };
+  const live = useRef({ tool, region, onRegion, onMenu, projection, underlayOpacity });
+  live.current = { tool, region, onRegion, onMenu, projection, underlayOpacity };
   const [tip, setTip] = useState<{ x: number; y: number } | null>(null);
   const [err, setErr] = useState('');
   const [ready, setReady] = useState(false);
@@ -40,6 +40,7 @@ export function Plan3D({ plan, compact, rotation = 0, walls = 'dollhouse', furni
       try {
         api = createScene(host.current!, plan, {
           compact,
+          underlay: underlayUrl ? { url: underlayUrl, opacity: live.current.underlayOpacity } : null,
           walls,
           furniture,
           projection: live.current.projection,
@@ -61,7 +62,8 @@ export function Plan3D({ plan, compact, rotation = 0, walls = 'dollhouse', furni
       stop = effect(() => api!.highlight(hoverRoom.value, selectedRooms.value));
     });
     return () => { dead = true; stop(); api?.dispose(); sceneRef.current = null; };
-  }, [plan, compact, walls, furniture]);
+  }, [plan, compact, walls, furniture, underlayUrl]);
+  useEffect(() => { sceneRef.current?.setUnderlay(underlayOpacity); }, [underlayOpacity, ready]);
 
   useEffect(() => {
     if (!sceneRef.current) return;

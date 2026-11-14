@@ -12,7 +12,7 @@ import type { Projection, ViewPreset } from './canvas/scene';
 import { ROOM_COLORS } from './canvas/colors';
 import { signal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
-import { chatPrompt, hoverRoom, projectsVersion, queueFiles, region, say, selectedRooms, tourStep, tutorialOpen, toggleTheme, visualsOpen } from './state';
+import { chatPrompt, hoverRoom, pendingDrawing, projectsVersion, queueFiles, region, say, selectedRooms, tourStep, tutorialOpen, toggleTheme, visualsOpen } from './state';
 import { InfoPanel } from './InfoPanel';
 import { PageHeader } from './Shell';
 import { Spinner } from './brand';
@@ -246,7 +246,7 @@ export function ProjectPage({ id }: { id: string }) {
                   onViewRev={view} onAdd={upload} onRefused={refused} />
                 <div class="row-handle" role="separator" aria-orientation="horizontal" tabIndex={0} aria-label="Resize files and chat"
                   aria-valuenow={filesH} aria-valuemin={15} aria-valuemax={85} {...rowResize} />
-                <Chat projectId={id} messages={data.messages} hasPlan={!!data.plan} shared={!!team} resumeJob={data.jobs[0]?.id} onRefused={refused}
+                <Chat projectId={id} planId={compare ? null : shownId} messages={data.messages} hasPlan={!!data.plan} shared={!!team} resumeJob={data.jobs[0]?.id} onRefused={refused}
                   onMessages={(messages) => setData((d) => d && { ...d, messages })}
                   onPlan={(plan) => { setData((d) => d && { ...d, plan }); setViewRev(null); setCompare(null); load(); projectsVersion.value++; }} />
               </aside>
@@ -339,7 +339,12 @@ function CanvasPane({ plan: drawn, projectId, name, loading, onUpload, onRefused
   const [mode, setModeState] = useState<Mode>(() => stored('bimp.view', '2d' as Mode, (v) => ['2d', '3d', 'split'].includes(v), (v) => v as Mode));
   const setMode = (m: Mode) => { setModeState(m); store('bimp.view', m); };
   const [rot, setRot] = useState(0);
-  const [source, setSource] = useState(false);
+  // Overlay: the source drawing and the model over it, each with its own strength (percent), so one shows through the other.
+  const [drawOp, setDrawOpState] = useState(() => stored('bimp.drawOp', 60, (v) => +v >= 0 && +v <= 100, Number));
+  const [modelOp, setModelOpState] = useState(() => stored('bimp.modelOp', 85, (v) => +v >= 10 && +v <= 100, Number));
+  const setDrawOp = (v: number) => { setDrawOpState(v); store('bimp.drawOp', String(v)); };
+  const setModelOp = (v: number) => { setModelOpState(v); store('bimp.modelOp', String(v)); };
+  const [overlayOpen, setOverlayOpen] = useState(false);
   const [walls, setWalls] = useState<'dollhouse' | 'cut' | 'full'>('dollhouse');
   const [proj, setProj] = useState<Projection>('persp');
   const [layers, setLayers] = useState<Layers>(() => ({ ...ALL_LAYERS, ...stored('bimp.layers', {}, (v) => v.startsWith('{'), (v) => JSON.parse(v)) }));
@@ -375,6 +380,14 @@ function CanvasPane({ plan: drawn, projectId, name, loading, onUpload, onRefused
       <span><b>Not added:</b> {notice.join(' · ')}</span><button class="link" onClick={onNotice}>Dismiss</button>
     </div>
   );
+  // A drawing is being read: it is on the canvas at once; the model is drawn over it when the reading is done.
+  const pending = pendingDrawing.value;
+  if (pending) return (
+    <section class="canvas" id="pane-canvas" aria-label="Canvas" data-tour="canvas">
+      {noticeBar}
+      <PendingDrawing url={pending.url} name={pending.name} stage={pending.stage} />
+    </section>
+  );
   if (loading) return <section class="canvas empty-canvas" id="pane-canvas" aria-label="Canvas"><Spinner size={40} label="Loading revision" /></section>;
   if (!plan) return (
     <section class={`canvas empty-canvas${over ? ' over' : ''}`} id="pane-canvas" aria-label="Canvas" data-tour="canvas" {...dropProps}>
@@ -388,9 +401,10 @@ function CanvasPane({ plan: drawn, projectId, name, loading, onUpload, onRefused
     </section>
   );
 
-  const sourceUrl = !source || !plan.source || diff ? null
+  const drawingUrl = !plan.source || diff ? null
     : plan.source.renderSha ? `/api/projects/${projectId}/render/${plan.source.renderSha}`
     : plan.source.mime.startsWith('image/') ? `/api/projects/${projectId}/files/${plan.source.fileId}` : null;
+  const sourceUrl = drawOp > 0 ? drawingUrl : null;
   const show3d = mode !== '2d';
   const focus = plan.rooms.find((r) => r.id === (hoverRoom.value ?? selectedRooms.value[0]));
   const types = ROOM_TYPES.filter((t) => plan.rooms.some((r) => r.type === t));
@@ -427,7 +441,7 @@ function CanvasPane({ plan: drawn, projectId, name, loading, onUpload, onRefused
   ];
   const layerItems: CmSection['items'] = [
     ...LAYER_LABEL.map(([k, l]) => ({ label: l, checked: layers[k], onSelect: () => setLayer(k, !layers[k]) })),
-    ...((plan.source?.renderSha || plan.source?.mime.startsWith('image/')) && !diff ? [{ label: 'Source drawing underlay', checked: source, onSelect: () => setSource(!source) }] : []),
+    ...(drawingUrl ? [{ label: 'Source drawing under the model', checked: drawOp > 0, onSelect: () => setDrawOp(drawOp > 0 ? 0 : 60) }] : []),
   ];
   const room = menu?.roomId ? plan.rooms.find((r) => r.id === menu.roomId) : null;
   const sections: CmSection[] = !menu ? [] : menu.kind === 'layers' ? [{ title: 'Layers', items: layerItems }] : menu.kind === 'view' ? [{ title: 'View', items: viewItems }] : [
@@ -475,6 +489,23 @@ function CanvasPane({ plan: drawn, projectId, name, loading, onUpload, onRefused
           </div>
         </>)}
         <button class="tool" onClick={() => { if (mode === '2d') setMode('3d'); visualsOpen.value = true; }} title="Generate architectural images from the 3D model (Cloudinary)"><Icon name="sparkle" size={16} /><span class="tool-l">Images</span></button>
+        {drawingUrl && (
+          <div class="overlay-ctl">
+            <button class="tool" onClick={() => setOverlayOpen(!overlayOpen)} aria-expanded={overlayOpen} aria-controls="overlay-pop" title="Show the uploaded drawing under the model, and set how strongly each is drawn"><Icon name="layers" size={16} /><span class="tool-l">Overlay</span></button>
+            {overlayOpen && (
+              <div class="overlay-pop" id="overlay-pop" role="group" aria-label="Overlay">
+                <label><span>Drawing</span><input type="range" min={0} max={100} step={5} value={drawOp} onInput={(e) => setDrawOp(+e.currentTarget.value)} /><output class="mono">{drawOp}%</output></label>
+                <label><span>Model</span><input type="range" min={10} max={100} step={5} value={modelOp} onInput={(e) => setModelOp(+e.currentTarget.value)} /><output class="mono">{modelOp}%</output></label>
+                <p class="muted small">The drawing you uploaded lies under the model at the same scale. Rooms stay clickable. In 3D it lies on the floor.</p>
+                <div class="overlay-quick">
+                  <button type="button" class="link small" onClick={() => { setDrawOp(100); setModelOp(35); }}>Mostly drawing</button>
+                  <button type="button" class="link small" onClick={() => { setDrawOp(60); setModelOp(85); }}>Both</button>
+                  <button type="button" class="link small" onClick={() => { setDrawOp(0); setModelOp(100); }}>Model only</button>
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <button class="tool" onClick={btnMenu('view')} aria-haspopup="menu" aria-expanded={menu?.kind === 'view'}><Icon name="view" size={16} /><span class="tool-l">View</span></button>
         <button class="tool" onClick={btnMenu('layers')} aria-haspopup="menu" aria-expanded={menu?.kind === 'layers'}><Icon name="layers" size={16} /><span class="tool-l">Layers</span></button>
         <span class="spacer" />
@@ -493,14 +524,14 @@ function CanvasPane({ plan: drawn, projectId, name, loading, onUpload, onRefused
       <div class={`views mode-${mode}`}>
         {mode !== '3d' && (
           <div class="view">
-            <Plan2D plan={plan} sourceUrl={sourceUrl} title={name} pins={pins} activePin={activePin} onPin={onPin}
+            <Plan2D plan={plan} sourceUrl={sourceUrl} sourceOpacity={drawOp / 100} modelOpacity={sourceUrl ? modelOp / 100 : 1} title={name} pins={pins} activePin={activePin} onPin={onPin}
               placing={tool === 'comment' && canComment} onPlace={onPlace} draft={draft} popover={popover} diff={diff} focusAt={focusAt}
               tool={tool} region={reg} onRegion={onRegion} layers={layers} apiRef={p2} onMenu={openMenu} />
           </div>
         )}
         {mode !== '2d' && (
           <div class="view">
-            <Plan3D plan={plan} rotation={rot} walls={walls} furniture={layers.furniture} labels={layers.labels} projection={proj}
+            <Plan3D plan={plan} underlayUrl={drawingUrl} underlayOpacity={drawOp / 100} rotation={rot} walls={walls} furniture={layers.furniture} labels={layers.labels} projection={proj}
               tool={tool === 'region' ? 'region' : 'select'} region={reg} onRegion={onRegion} apiRef={p3} onMenu={openMenu} />
             <div class="nav-hint" aria-hidden="true">Drag to orbit · right-drag to pan · scroll to zoom</div>
           </div>
@@ -525,6 +556,34 @@ function CanvasPane({ plan: drawn, projectId, name, loading, onUpload, onRefused
         onShow3D={() => setMode('3d')} onClose={() => (visualsOpen.value = false)} />}
       {menu && <CanvasMenu x={menu.x} y={menu.y} title={menu.kind === 'canvas' ? (room ? room.name : 'Plan') : undefined} sections={sections} onClose={() => setMenu(null)} />}
     </section>
+  );
+}
+
+/** The uploaded drawing while it is being read: drag to pan, scroll or pinch-free buttons to zoom, with the reading's progress. */
+function PendingDrawing({ url, name, stage }: { url: string; name: string; stage: string }) {
+  const [v, setV] = useState({ k: 1, x: 0, y: 0 });
+  const [ok, setOk] = useState(true);
+  const drag = useRef<{ x: number; y: number; vx: number; vy: number } | null>(null);
+  useEffect(() => { setOk(true); setV({ k: 1, x: 0, y: 0 }); }, [url]);
+  const zoom = (f: number) => setV((s) => { const k = Math.min(8, Math.max(1, s.k * f)); return k === 1 ? { k, x: 0, y: 0 } : { k, x: s.x * (k / s.k), y: s.y * (k / s.k) }; });
+  return (
+    <div class="views pending" onWheel={(e) => { e.preventDefault(); zoom(e.deltaY < 0 ? 1.15 : 1 / 1.15); }}
+      onPointerDown={(e) => { drag.current = { x: e.clientX, y: e.clientY, vx: v.x, vy: v.y }; (e.currentTarget as Element).setPointerCapture(e.pointerId); }}
+      onPointerMove={(e) => { const d = drag.current; if (d) setV((s) => ({ ...s, x: d.vx + e.clientX - d.x, y: d.vy + e.clientY - d.y })); }}
+      onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }}>
+      {ok
+        ? <img src={url} alt={`${name}, the drawing being read`} draggable={false} style={{ transform: `translate(${v.x}px, ${v.y}px) scale(${v.k})` }} onError={() => setOk(false)} />
+        : <p class="muted small">The drawing appears here as soon as it has been rendered.</p>}
+      <div class="pending-card" role="status">
+        <Spinner size={18} label={null} />
+        <span><b>{stage || 'Reading the drawing…'}</b><span class="muted small">{name} · the 2D and 3D model will be drawn over it</span></span>
+      </div>
+      <div class="pending-zoom seg sm" role="group" aria-label="Zoom">
+        <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => zoom(1 / 1.3)} aria-label="Zoom out">−</button>
+        <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => setV({ k: 1, x: 0, y: 0 })}>Fit</button>
+        <button type="button" onPointerDown={(e) => e.stopPropagation()} onClick={() => zoom(1.3)} aria-label="Zoom in">+</button>
+      </div>
+    </div>
   );
 }
 

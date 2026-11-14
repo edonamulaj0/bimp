@@ -1,6 +1,6 @@
 // Drawing -> Plan. The model reads (labels, room outlines, openings); code measures (snapping, scale, areas).
-import { type Plan, type Pt, type Room, type Wall, type Opening, type Fixture, FIXTURE_KINDS, DETECTED_KINDS, type DetectedKind, placeFixture, ROOM_TYPES, bounds, dist, wallsFromFaces, wallsFromRooms, round } from '../../shared/plan';
-import { generate, textOf } from './gemini';
+import { type Plan, type Pt, type Room, type Wall, type Opening, type Fixture, type Src, FIXTURE_KINDS, DETECTED_KINDS, type DetectedKind, placeFixture, ROOM_TYPES, bounds, dist, wallsFromFaces, wallsFromRooms, round } from '../../shared/plan';
+import { type Meter, costUsd, generate, meter, textOf } from './gemini';
 import type { Analysis } from './ingest';
 import { BOOK, nearestPreferredScale, parseDimension } from '../../shared/standards';
 import { orientDoors } from '../../shared/rooms';
@@ -87,6 +87,8 @@ export type Raw = {
   fixtures?: { kind: string; box: number[] }[];
   /** Doors and windows from the second, openings-only reading; merged with `openings` when the plan is built. */
   more_openings?: { kind: 'door' | 'window'; a: number[]; b: number[] }[];
+  /** What the reading cost: model calls made (cached readings are free), tokens, and US dollars at list price. */
+  usage?: { calls: number; tokens_in: number; tokens_out: number; usd: number };
 };
 
 const LEVEL_KEY = /(?:FFL|FFB|OKFF|OKRF|NGF|SSL|RH|LH|CH|HSP|H(?:ö|oe)he|Höhe|level|niveau|kote)\s*[:=]?\s*/i;
@@ -129,7 +131,7 @@ Each opening is the segment from one jamb to the other along its wall (the full 
 points lie on the wall, also when the wall is drawn at an angle. Work systematically: go once round the outside of the building,
 then through the interior room by room. Report each opening once. Do not report furniture, stairs, dimension lines or text.`;
 
-async function ask<T>(env: Env, parts: unknown[], schema: unknown, key: string): Promise<T> {
+async function ask<T>(env: Env, parts: unknown[], schema: unknown, key: string, m: Meter): Promise<T> {
   const body = (hi: boolean) => ({
     contents: [{ role: 'user', parts }],
     generationConfig: { responseMimeType: 'application/json', responseSchema: schema, temperature: 0, ...(hi ? { mediaResolution: 'MEDIA_RESOLUTION_HIGH' } : {}) },
@@ -137,8 +139,8 @@ async function ask<T>(env: Env, parts: unknown[], schema: unknown, key: string):
   const check = (c: Parameters<typeof textOf>[0]) => void JSON.parse(textOf(c));
   // High media resolution keeps thin window lines and door arcs legible; a model that refuses the setting is asked again without it.
   let content;
-  try { content = await generate(env, body(true), `${key}:hi`, check); }
-  catch (e) { if ((e as { status?: number }).status === 503) throw e; content = await generate(env, body(false), key, check); }
+  try { content = await generate(env, body(true), `${key}:hi`, check, m); }
+  catch (e) { if ((e as { status?: number }).status === 503) throw e; content = await generate(env, body(false), key, check, m); }
   return JSON.parse(textOf(content)) as T;
 }
 
@@ -150,14 +152,16 @@ export async function readDrawing(env: Env, png: string, renderSha: string, an: 
     const list = an.texts.slice(0, 300).map((t) => `[${Math.round((t.bbox[1] / an.height) * 1000)}, ${Math.round((t.bbox[0] / an.width) * 1000)}] ${t.text}`);
     parts.push({ text: `Exact text on the drawing ([y, x] of each label):\n${list.join('\n')}` });
   }
+  const m = meter();
   const [raw, extra] = await Promise.all([
-    ask<Raw>(env, parts, SCHEMA, `${PROMPT_VERSION}:${renderSha}`),
+    ask<Raw>(env, parts, SCHEMA, `${PROMPT_VERSION}:${renderSha}`, m),
     // The plan stands without the second reading: if it fails, the first one's openings are used as they are.
-    ask<Pick<Raw, 'openings'>>(env, [image, { text: OPENINGS_PROMPT }], OPENINGS_SCHEMA, `${OPENINGS_VERSION}:${renderSha}`)
+    ask<Pick<Raw, 'openings'>>(env, [image, { text: OPENINGS_PROMPT }], OPENINGS_SCHEMA, `${OPENINGS_VERSION}:${renderSha}`, m)
       .catch((e) => { console.warn('openings pass', (e as Error).message); return { openings: [] as Raw['openings'] }; }),
   ]);
   return { scale_evidence: raw.scale_evidence ?? null, stated_scale: raw.stated_scale ?? null, rooms: raw.rooms ?? [], openings: raw.openings ?? [], fixtures: raw.fixtures ?? [], levels: raw.levels ?? null,
-    more_openings: (extra.openings ?? []).filter((o) => o?.a?.length === 2 && o?.b?.length === 2) };
+    more_openings: (extra.openings ?? []).filter((o) => o?.a?.length === 2 && o?.b?.length === 2),
+    usage: { calls: m.calls, tokens_in: m.tokens_in, tokens_out: m.tokens_out, usd: costUsd(env, m) } };
 }
 
 type Seg = [number, number, number, number];
@@ -282,6 +286,33 @@ export function regularize(poly: Pt[], tolDeg = 4, axis?: number): Pt[] {
   return q.map(([x, y]) => [x * co - y * si, x * si + y * co] as Pt);
 }
 
+/**
+ * Lines up wall faces that are one line on the drawing: outlines read or traced room by room put the same face a few
+ * centimetres apart in neighbouring rooms, which shows as a jog where their walls meet. Edges that run along the
+ * plan's axes and lie within `tol` of each other are moved onto their common (length-weighted) line.
+ */
+export function alignEdges(polys: Pt[][], axis: number, tol: number): Pt[][] {
+  const [co, si] = [Math.cos(axis), Math.sin(axis)];
+  const q = polys.map((poly) => poly.map(([x, y]) => [x * co + y * si, -x * si + y * co] as Pt));
+  for (const k of [0, 1] as const) { // k = 1: edges along x share a y; k = 0: edges along y share an x
+    const edges: { v: number; L: number; set(v: number): void }[] = [];
+    for (const poly of q) poly.forEach((a, i) => {
+      const j = (i + 1) % poly.length, b = poly[j], L = Math.abs(b[1 - k] - a[1 - k]);
+      if (L > 1e-9 && Math.abs(b[k] - a[k]) <= 1e-6 * Math.max(1, L)) edges.push({ v: a[k], L, set: (v) => { poly[i][k] = v; poly[j][k] = v; } });
+    });
+    edges.sort((a, b) => a.v - b.v);
+    for (let i = 0; i < edges.length;) {
+      let j = i + 1;
+      while (j < edges.length && edges[j].v - edges[i].v <= tol) j++; // a cluster never spans more than tol: thin walls stay two faces
+      const run = edges.slice(i, j), w = run.reduce((t, e) => t + e.L, 0);
+      const v = run.reduce((t, e) => t + e.v * e.L, 0) / w;
+      run.forEach((e) => e.set(v));
+      i = j;
+    }
+  }
+  return q.map((poly) => poly.map(([x, y]) => [x * co - y * si, x * si + y * co] as Pt));
+}
+
 type Op = { kind: 'door' | 'window'; a: Pt; b: Pt };
 /**
  * Seats openings in the walls and drops repeats. Each opening is projected onto the centre line of the nearest wall
@@ -337,7 +368,23 @@ const inside = (p: Pt, poly: Pt[]) => {
 };
 const norm = (s: string) => s.toLowerCase().normalize('NFKD').replace(/[^\p{L}\p{N}]/gu, '');
 
-export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: string, renderSha: string): Plan {
+/**
+ * What the ingestion service needs to trace exact room outlines (POST /trace): the rooms as read, and every opening
+ * known so far (both readings and the symbol detector) to draw shut, all in render pixels. Rooms keep their index.
+ */
+export function traceRequest(raw: Raw, an: Pick<Analysis, 'width' | 'height' | 'detections'>): { rooms: Pt[][]; close: Seg[] } {
+  const px = (p: number[]): Pt => [((p?.[1] ?? 0) / 1000) * an.width, ((p?.[0] ?? 0) / 1000) * an.height];
+  const close: Seg[] = [...raw.openings, ...(raw.more_openings ?? [])].filter((o) => o?.a?.length === 2 && o?.b?.length === 2).map((o) => [...px(o.a), ...px(o.b)] as Seg);
+  for (const d of an.detections ?? []) {
+    if ((d.kind !== 'door' && d.kind !== 'window') || d.bbox?.length !== 4) continue;
+    const [x0, y0, x1, y1] = d.bbox, cx = (x0 + x1) / 2, cy = (y0 + y1) / 2;
+    close.push(x1 - x0 >= y1 - y0 ? [x0, cy, x1, cy] : [cx, y0, cx, y1]); // the box lies across the wall: its long axis runs along it
+  }
+  return { rooms: raw.rooms.map((r) => (r.polygon?.length >= 3 ? r.polygon.map(px) : [])), close };
+}
+
+/** `traced[i]` is the exact outline of raw.rooms[i] from the service (render pixels), or null to use the outline as read. */
+export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: string, renderSha: string, traced?: (number[][] | null)[]): Plan {
   const { width: W, height: H } = an;
   const px = (p: number[]): Pt => [((p?.[1] ?? 0) / 1000) * W, ((p?.[0] ?? 0) / 1000) * H];
   const tol = Math.max(W, H) * 0.01;
@@ -346,21 +393,29 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
 
   // Vector line work is exact; raster lines (OpenCV on stroke faces) are not, so raster outlines are straightened too.
   const raster = an.kind === 'image' || an.kind === 'pdf-scan';
-  const read = raw.rooms.filter((r) => r.polygon?.length >= 3).map((r) => {
-    const res = snapPolygon(r.polygon.map(px), an.segments, tol);
-    corners += r.polygon.length; snapped += res.snapped;
-    return { ...r, poly: res.poly, loose: raster || res.snapped < r.polygon.length };
+  let tracedN = 0;
+  const read = raw.rooms.map((r, i) => ({ r, t: traced?.[i] })).filter(({ r }) => r.polygon?.length >= 3).map(({ r, t }) => {
+    // The outline traced from the wall lines is exact; the one the model read is the fallback.
+    const exact = t && t.length >= 3 && t.every((p) => p?.length === 2 && p.every(Number.isFinite)) ? (t as Pt[]) : null;
+    if (exact) tracedN++;
+    const start = exact ?? r.polygon.map(px);
+    const res = snapPolygon(start, an.segments, tol);
+    corners += start.length; snapped += res.snapped;
+    return { ...r, poly: res.poly, loose: raster || res.snapped < start.length };
   });
   // One set of axes for the whole plan, so neighbouring rooms stay parallel; a room that mostly runs another way
   // (a wing at an angle) is straightened along its own.
   const planAxis = dominantAxis(read.map((r) => r.poly)).axis;
-  const rooms0 = read.map(({ loose, ...r }) => {
+  const straight = read.map(({ loose, ...r }) => {
     if (!loose) return r;
     const own = dominantAxis([r.poly]);
     const followsPlan = r.poly.reduce((s, a, i) => { const b = r.poly[(i + 1) % r.poly.length]; return s + (axisGap(Math.atan2(b[1] - a[1], b[0] - a[0]), planAxis) <= 4 * DEG ? dist(a, b) : 0); }, 0);
     const perim = r.poly.reduce((s, a, i) => s + dist(a, r.poly[(i + 1) % r.poly.length]), 0) || 1;
     return { ...r, poly: regularize(r.poly, 4, followsPlan / perim >= 0.5 || own.share < 0.5 ? planAxis : own.axis) };
   });
+  // the same wall face in neighbouring rooms becomes one line; the reach is a few pixels, far less than a wall, so both faces of a wall survive
+  const aligned = alignEdges(straight.map((r) => r.poly), planAxis, Math.max(2, Math.max(W, H) * 0.001));
+  const rooms0 = straight.map((r, i) => ({ ...r, poly: read[i].loose ? aligned[i] : r.poly }));
   if (!rooms0.length) throw Object.assign(new Error('No rooms could be read from this drawing. Is it a floor plan?'), { fatal: true });
   // Both readings' openings; the first reading's come first, so a repeat from the second is the one dropped.
   const openings0 = [...raw.openings, ...(raw.more_openings ?? [])].filter((o) => o?.a?.length === 2 && o?.b?.length === 2 && (o.kind === 'door' || o.kind === 'window'))
@@ -448,6 +503,7 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     'Wall height 2.7 m (assumed)', `Wall thickness measured between neighbouring rooms where they face each other; otherwise exterior 0.30 m, interior 0.12 m (assumed, typical masonry: ${BOOK} Ch. 37)`,
   );
 
+  if (traced) assumptions.splice(1, 0, tracedN ? `${tracedN} of ${rooms0.length} room outlines traced from the drawing's own wall lines${tracedN < rooms0.length ? '; the rest as read by AI' : ''}` : 'Room outlines as read by AI: no enclosed space on the drawing matched them');
   const m = mpp!;
   const ox = ext.x0, oy = ext.y0;
   const toM = (p: Pt): Pt => [round((p[0] - ox) * m, 3), round((p[1] - oy) * m, 3)];
@@ -481,8 +537,15 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
   const seated = seatOpenings([...read0, ...fromDetector], walls);
   const readCount = seatOpenings(read0, walls).length, added = seated.length - readCount;
   if (added > 0) assumptions.push(`${added} door${added === 1 ? '' : 's'} or window${added === 1 ? '' : 's'} the language model did not report ${added === 1 ? 'was' : 'were'} added from the symbol detector`);
+  // Every item keeps where it was read from: the page and its box on the render, for citations and crops.
+  const page = an.page ?? 1;
+  const src = (pts: Pt[], pad = 0): Src => {
+    const b = bounds(pts), k = (v: number, o: number, max: number) => Math.round(Math.min(max, Math.max(0, v / m + o)));
+    return { page, box: [k(b.x0 - pad, ox, W), k(b.y0 - pad, oy, H), k(b.x1 + pad, ox, W), k(b.y1 + pad, oy, H)] };
+  };
+  for (const r of rooms) r.src = src(r.polygon, 0.15);
   const n = { door: 0, window: 0 };
-  const openings: Opening[] = seated.map((o) => ({ id: `${o.kind[0]}${++n[o.kind]}`, kind: o.kind, a: o.a, b: o.b }));
+  const openings: Opening[] = seated.map((o) => ({ id: `${o.kind[0]}${++n[o.kind]}`, kind: o.kind, a: o.a, b: o.b, src: src([o.a, o.b], 0.5) }));
   const bb = bounds([...rooms.flatMap((r) => r.polygon), ...walls.flatMap((w) => [w.a, w.b])]);
   const fixtures: Fixture[] = (raw.fixtures ?? [])
     .filter((f) => (FIXTURE_KINDS as readonly string[]).includes(f.kind) && f.box?.length === 4)
@@ -490,7 +553,7 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
       const [y0, x0, y1, x1] = f.box;
       const a = toM(px([y0, x0])), b = toM(px([y1, x1]));
       const w = Math.abs(b[0] - a[0]), h = Math.abs(b[1] - a[1]);
-      return placeFixture(f.kind as Fixture['kind'], [round((a[0] + b[0]) / 2, 3), round((a[1] + b[1]) / 2, 3)], round(w, 3), round(h, 3), walls, rooms, `f${i + 1}`);
+      return { ...placeFixture(f.kind as Fixture['kind'], [round((a[0] + b[0]) / 2, 3), round((a[1] + b[1]) / 2, 3)], round(w, 3), round(h, 3), walls, rooms, `f${i + 1}`), src: src([a, b], 0.1) };
     })
     .filter((f) => f.size[0] > 0.1 && f.size[1] > 0.1 && f.size[0] < 4 && f.size[1] < 4);
 
@@ -531,8 +594,8 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     levels: { floor, ceiling: ceilingOk,
       source: [floorText && `floor "${floorText}"`, ceilingOk && `ceiling "${ceilText}"`].filter(Boolean).join(', ') || 'not stated on the drawing' },
     scale: { metersPerPx: m, source: scaleSource, ...(ratio ? { ratio } : {}) },
-    source: { fileId, renderSha, mime: 'image/png', imageWidth: W, imageHeight: H, offset: [round(-ox * m, 3), round(-oy * m, 3)] },
-    provenance: { kind: an.kind, scaleExact: !!exact, snapped: round(snapRatio, 3), segments: an.segments.length },
+    source: { fileId, renderSha, mime: 'image/png', imageWidth: W, imageHeight: H, offset: [round(-ox * m, 3), round(-oy * m, 3)], page, ...(an.pages ? { pages: an.pages } : {}) },
+    provenance: { kind: an.kind, scaleExact: !!exact, snapped: round(snapRatio, 3), segments: an.segments.length, traced: tracedN },
     assumptions,
   };
   // Drawings rarely make the swing side machine-readable: apply the usual rules (into rooms, not corridors; hinge by a corner).

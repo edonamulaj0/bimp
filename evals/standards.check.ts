@@ -1,6 +1,9 @@
 // Run: npm test. Checks the drawing-convention and standards logic (Metric Handbook rules) on known cases.
 import { parseDimension, nearestPreferredScale, checkPlan } from '../apps/shared/standards';
-import { regularize, snapPolygon, parseLevel, parseCeiling, buildPlan, dominantAxis, seatOpenings } from '../apps/api/src/extract';
+import { regularize, snapPolygon, parseLevel, parseCeiling, buildPlan, dominantAxis, seatOpenings, alignEdges, traceRequest } from '../apps/api/src/extract';
+import { quickAnswer } from '../apps/api/src/quick';
+import { costUsd, joinStream, meter } from '../apps/api/src/gemini';
+import { evidenceFor } from '../apps/shared/plan';
 import { verify, runTool } from '../apps/api/src/agent';
 import { calculate } from '../apps/api/src/calc';
 import { diffPlans } from '../apps/shared/diff';
@@ -234,6 +237,51 @@ void doorSweep; void fixtureContains;
   const wall = [{ id: 'w1', a: [0, 0] as [number, number], b: [10, 0] as [number, number], thickness: 0.3 }];
   eq('seat: a door read as its leaf (across the wall) keeps its width along the wall', seatOpenings([{ kind: 'door', a: [5, 0], b: [5, 0.9] }], wall), [{ kind: 'door', a: [4.55, 0], b: [5.45, 0] }]);
   eq('seat: far from every wall is left as read', seatOpenings([{ kind: 'door', a: [5, 3], b: [6, 3] }], wall), [{ kind: 'door', a: [5, 3], b: [6, 3] }]);
+}
+// Traced outlines, source boxes, evidence crops, answers by code, and cost
+{
+  const sq = (x0: number, y0: number, x1: number, y1: number) => [[y0, x0], [y0, x1], [y1, x1], [y1, x0]];
+  const raw = { scale_evidence: { text: '8000', value_m: 8, a: [950, 100], b: [950, 900] }, stated_scale: null, levels: null,
+    rooms: [{ name: 'Kitchen', type: 'kitchen', polygon: sq(90, 120, 910, 480) }, { name: 'Bedroom 2', type: 'bedroom', polygon: sq(110, 520, 890, 880) }],
+    openings: [{ kind: 'door', a: [500, 300], b: [500, 390] }], more_openings: [], fixtures: [{ kind: 'bed', box: [600, 600, 800, 800] }] } as never;
+  const an = { kind: 'image' as const, width: 2000, height: 2000, segments: [], texts: [], scale: null, paper_mm_per_px: null, page: 2, pages: 3,
+    detections: [{ kind: 'window', conf: 0.9, bbox: [600, 190, 900, 210] as [number, number, number, number] }] };
+  const req = traceRequest(raw, an);
+  eq('trace request: rooms in render pixels, by index', req.rooms.map((r) => r[0]), [[180, 240], [220, 1040]]);
+  eq('trace request: openings and detector boxes to close', req.close, [[600, 1000, 780, 1000], [600, 200, 900, 200]]);
+  // the service traced exact outlines: 2 px apart where the two rooms share the left wall face
+  const traced = [[[200, 200], [1800, 200], [1800, 980], [200, 980]], [[202, 1020], [1800, 1020], [1800, 1800], [202, 1800]]];
+  const p = buildPlan(raw, an, 'f1', 'a'.repeat(64), traced);
+  eq('traced: outlines come from the wall lines, not the reading', p.provenance?.traced, 2);
+  near('traced: the room is as wide as the traced outline (1600 px = 8 m), not as read (1640 px)', p.rooms[0].polygon[1][0] - p.rooms[0].polygon[0][0], 8, 0.01);
+  eq('traced: said in the assumptions', p.assumptions.some((a) => /2 of 2 room outlines traced/.test(a)), true);
+  eq('aligned: the shared wall face is one line in both rooms', p.rooms[0].polygon[0][0] === p.rooms[1].polygon[0][0], true);
+  eq('aligned: faces a wall apart stay apart', alignEdges([[[0, 0], [10, 0], [10, 10], [0, 10]], [[0, 10.2], [10, 10.2], [10, 20], [0, 20]]], 0, 0.05).map((q) => q[2][1])[0], 10);
+  eq('source: every room, opening and fitting keeps its page and box', [p.rooms.every((r) => r.src?.page === 2 && r.src.box[2] > r.src.box[0]), p.openings.every((o) => !!o.src), p.fixtures?.every((f) => !!f.src)], [true, true, true]);
+  eq('source: a room box covers its outline on the render', p.rooms[0].src?.box.map((v, i) => Math.abs(v - [200, 200, 1800, 980][i]) <= 40), [true, true, true, true]);
+  const ev = evidenceFor(p, [p.rooms[1].id]);
+  eq('evidence: the crop holds the cited room and names the page', [ev?.page, ev?.pages, ev!.box[0] <= ev!.marks[0][0] && ev!.box[3] >= ev!.marks[0][3], ev?.render.length], [2, 3, true, 64]);
+  eq('evidence: counted items are marked, not the whole room', evidenceFor(p, [], p.openings.map((o) => o.id))?.marks.length, p.openings.length);
+  eq('evidence: none without a source drawing', evidenceFor(samplePlan(), ['r1']), null);
+
+  const wins = quickAnswer('How many windows are there?', p);
+  eq('code answer: a count, with the counted items cited', [/\*\*1 window\*\*/.test(wins?.text ?? ''), wins?.claims[0].item_ids?.length], [true, 1]);
+  eq('code answer: a count the detector and the drawn model disagree on says both', /counted by the symbol detector.*drawn model shows 1/.test(quickAnswer('How many doors are shown on the plan?', p)?.text ?? ''), true);
+  const k = quickAnswer('What is the area of the kitchen?', p);
+  eq('code answer: area of a named room', [k?.claims[0].room_ids, k?.text.includes(`${Math.round(area(p.rooms[0].polygon) * 100) / 100} m²`)], [[p.rooms[0].id], true]);
+  eq('code answer: says when the plan is a preview', k?.assumptions.length, 1);
+  eq('code answer: total area', /net floor area is \*\*/.test(quickAnswer('What is the total floor area?', p)?.text ?? ''), true);
+  eq('code answer: largest room', quickAnswer('Which is the largest room?', p)?.claims[0].room_ids.length, 1);
+  eq('code answer: list of rooms', quickAnswer('List the rooms', p)?.claims.length, 2);
+  eq('code answer: an unknown room goes to the agent', quickAnswer('What is the area of the garage?', p), null);
+  eq('code answer: open questions go to the agent', [quickAnswer('Is the kitchen big enough for a family of four?', p), quickAnswer('How many people can sleep here?', p)], [null, null]);
+  eq('verifier: a room name with a number in it is a label, not a figure', verify({ text: 'Bedroom 2 is the quietest room.', claims: [{ text: 'Bedroom 2', room_ids: [p.rooms[1].id] }], calculation: null, assumptions: [], not_found: false }, [], 'Which room is quietest?', p), []);
+
+  const sse = [{ candidates: [{ content: { parts: [{ text: 'a' }] } }], usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 10 } },
+    { candidates: [{ content: { parts: [{ text: 'b' }] }, finishReason: 'STOP' }], usageMetadata: { promptTokenCount: 1000, candidatesTokenCount: 200, thoughtsTokenCount: 300 } }].map((c) => `data: ${JSON.stringify(c)}`).join('\n\n');
+  eq('cost: tokens are the last totals of the stream, thinking counted as output', joinStream(sse).usage, { in: 1000, out: 500 });
+  const m = { ...meter(), calls: 1, tokens_in: 1_000_000, tokens_out: 1_000_000 };
+  eq('cost: list price per million tokens, overridable', [costUsd({} as never, m), costUsd({ GEMINI_PRICE_IN: '0.1', GEMINI_PRICE_OUT: '0.4' } as never, m)], [4.5, 0.5]);
 }
 // Level and ceiling strings (FN-13)
 eq('level "1.OG OKFF +3.05"', parseLevel('1.OG OKFF +3.05'), 3.05);

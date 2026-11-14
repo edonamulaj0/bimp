@@ -11,6 +11,8 @@ POST /analyze (body = file bytes, Content-Type = mime) returns, in one pixel spa
   detections [{kind, conf, bbox: [x0, y0, x1, y1]}] for scans and images: windows, doors, toilets, sinks, showers and
             bathtubs found by the symbol detector (models/fixtures-v1.onnx, trained in ml/), or null when the model or
             onnxruntime is not installed. Counting symbols is the detector's job, not the language model's.
+POST /analyze takes the page of a PDF to read in the x-page header (1-based; default 1) and returns `page` and `pages`.
+POST /trace returns exact room outlines traced from the wall lines of a render (see trace_rooms).
 The model never measures; this service and the Worker do.
 
 Every parse runs in a child process with memory, CPU and wall-clock limits, and counts entities, points, drawing items
@@ -181,9 +183,11 @@ def analyze_image(data: bytes):
             "paper_mm_per_px": 25.4 / (dpi * f) if dpi else None, "detections": detect_symbols(img)}
 
 
-def analyze_pdf(data: bytes):
+def analyze_pdf(data: bytes, page_no: int = 1):
     doc = pymupdf.open(stream=data, filetype="pdf")
-    page = doc[0]
+    if not 1 <= page_no <= doc.page_count:
+        raise ValueError("no such page")
+    page = doc[page_no - 1]
     W, H = page.rect.width, page.rect.height
     dpi = min(200.0, MAX_SIDE * 72 / max(W, H))
     pix = page.get_pixmap(matrix=pymupdf.Matrix(dpi / 72, dpi / 72), alpha=False)
@@ -221,7 +225,7 @@ def analyze_pdf(data: bytes):
 
     size = max(pix.width, pix.height)
     vector = len(segs) > 50 and len(texts) > 3
-    out = {"kind": "pdf-vector" if vector else "pdf-scan", "pages": doc.page_count, "width": pix.width, "height": pix.height,
+    out = {"kind": "pdf-vector" if vector else "pdf-scan", "pages": doc.page_count, "page": page_no, "width": pix.width, "height": pix.height,
            "render_png": png_b64(img), "texts": texts[:MAX_TEXTS], "scale": None, "paper_mm_per_px": 25.4 / 72 / k,
            "detections": None if vector else detect_symbols(img)}  # vector sheets are read exactly; the detector is for scans
     if vector:
@@ -314,14 +318,80 @@ def analyze_dxf(data: bytes):
             "texts": out_texts, "scale": scale, "units_known": bool(unit_m), "paper_mm_per_px": None}
 
 
+def trace_rooms(data: bytes):
+    """Exact room outlines from the drawing itself.
+
+    Body: JSON {png (base64 render), rooms: [[[x, y], ...], ...], close: [[x1, y1, x2, y2], ...]}, all in render pixels.
+    `rooms` are rough outlines (read by the language model); `close` are the door and window openings, drawn shut so
+    rooms do not leak into each other. Each room is answered with the outline of the enclosed space it covers, bounded
+    by the wall lines, or null when no enclosed space matches it (then the rough outline stands).
+    Two wall masks are tried: thick strokes only (filled or hatched walls; thin dimension, furniture and text lines
+    vanish), then all line work (walls drawn as thin double lines), which must match more closely to be accepted.
+    """
+    import json
+    req = json.loads(data)
+    img = cv2.imdecode(np.frombuffer(base64.b64decode(req["png"]), np.uint8), cv2.IMREAD_GRAYSCALE)
+    if img is None:
+        raise ValueError("unreadable render")
+    h, w = img.shape
+    if h * w > MAX_PIXELS:
+        raise TooLarge("the render has too many pixels")
+    rooms = [np.array(r, np.float64).reshape(-1, 2) for r in req.get("rooms", [])][:200]
+    close = [c for c in req.get("close", []) if len(c) == 4][:500]
+    _, bw = cv2.threshold(img, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    k = max(3, round(max(h, w) / 500))
+    thick = cv2.morphologyEx(bw, cv2.MORPH_OPEN, cv2.getStructuringElement(cv2.MORPH_RECT, (k, k)))
+    best = [None] * len(rooms)  # (iou, polygon)
+    for mask, need in ((thick, 0.6), (bw, 0.75)):
+        walls = mask.copy()
+        for x1, y1, x2, y2 in close:
+            L = math.hypot(x2 - x1, y2 - y1)
+            if L < 1:
+                continue
+            e = min(3.0 * k, 0.15 * L) / L  # reach into the jambs at both ends
+            a = (round(x1 - (x2 - x1) * e), round(y1 - (y2 - y1) * e))
+            b = (round(x2 + (x2 - x1) * e), round(y2 + (y2 - y1) * e))
+            cv2.line(walls, a, b, 255, max(3, k))
+        n, labels, stats, _ = cv2.connectedComponentsWithStats((walls == 0).astype(np.uint8), connectivity=4)
+        for i, poly in enumerate(rooms):
+            if len(poly) < 3 or (best[i] and best[i][0] >= need):
+                continue
+            x0, y0 = np.floor(poly.min(0)).astype(int)
+            x1, y1 = np.ceil(poly.max(0)).astype(int)
+            x0, y0, x1, y1 = max(0, x0), max(0, y0), min(w, x1 + 1), min(h, y1 + 1)
+            if x1 - x0 < 4 or y1 - y0 < 4:
+                continue
+            pm = np.zeros((y1 - y0, x1 - x0), np.uint8)
+            cv2.fillPoly(pm, [np.round(poly - [x0, y0]).astype(np.int32)], 1)
+            counts = np.bincount(labels[y0:y1, x0:x1][pm > 0], minlength=n)
+            counts[0] = 0  # label 0 is the walls themselves
+            c = int(counts.argmax())
+            if not counts[c]:
+                continue
+            cx, cy, cw, ch, area = stats[c]
+            if cx <= 0 or cy <= 0 or cx + cw >= w or cy + ch >= h:
+                continue  # reaches the edge of the sheet: the outside, not a room
+            iou = counts[c] / (int(pm.sum()) + int(area) - counts[c])
+            if iou < need or (best[i] and best[i][0] >= iou):
+                continue
+            comp = (labels[cy:cy + ch, cx:cx + cw] == c).astype(np.uint8)
+            cs, _ = cv2.findContours(comp, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+            if not cs:
+                continue
+            out = cv2.approxPolyDP(max(cs, key=cv2.contourArea), max(2.0, 0.75 * k), True).reshape(-1, 2)
+            if len(out) >= 3:
+                best[i] = (float(iou), [[float(px + cx), float(py + cy)] for px, py in out])
+    return {"rooms": [b and b[1] for b in best], "match": [b and round(b[0], 3) for b in best]}
+
+
 PARSERS = {"application/pdf": "analyze_pdf", "application/dxf": "analyze_dxf"}
 
 
-def _child(name: str, data: bytes, conn):
+def _child(name: str, data: bytes, conn, *args):
     try:
         resource.setrlimit(resource.RLIMIT_AS, (MEM_LIMIT, MEM_LIMIT))
         resource.setrlimit(resource.RLIMIT_CPU, (CPU_S, CPU_S + 5))
-        conn.send(("ok", globals()[name](data)))
+        conn.send(("ok", globals()[name](data, *args)))
     except TooLarge as e:
         conn.send(("err", f"This drawing is too large to read: {e}."))
     except MemoryError:
@@ -333,10 +403,10 @@ def _child(name: str, data: bytes, conn):
         conn.close()
 
 
-def run_limited(name: str, data: bytes):
+def run_limited(name: str, data: bytes, *args):
     """Runs one parser in a fresh child process; kills it on the wall-clock limit."""
     recv, send = CTX.Pipe(duplex=False)
-    p = CTX.Process(target=_child, args=(name, data, send), daemon=True)
+    p = CTX.Process(target=_child, args=(name, data, send, *args), daemon=True)
     p.start()
     send.close()
     try:
@@ -362,9 +432,26 @@ async def analyze(request: Request):
     name = PARSERS.get(mime) or ("analyze_image" if mime.startswith("image/") else None)
     if not name:
         return JSONResponse({"error": "Upload a PDF, DXF, PNG, JPG or WebP drawing."}, 415)
+    args = ()
+    if name == "analyze_pdf":
+        try:
+            args = (max(1, int(request.headers.get("x-page") or 1)),)
+        except ValueError:
+            return JSONResponse({"error": "Bad page number."}, 400)
     async with PARSE:  # one parse per instance: its memory limit is most of the instance's 4 GiB
-        kind, out = await asyncio.to_thread(run_limited, name, data)
+        kind, out = await asyncio.to_thread(run_limited, name, data, *args)
     if kind == "err":  # one broken file never takes the service down
+        return JSONResponse({"error": out}, 422)
+    return JSONResponse(out)
+
+
+async def trace(request: Request):
+    if int(request.headers.get("content-length") or 0) > MAX_BODY:
+        return JSONResponse({"error": "Files up to 50 MB."}, 413)
+    data = await request.body()
+    async with PARSE:
+        kind, out = await asyncio.to_thread(run_limited, "trace_rooms", data)
+    if kind == "err":
         return JSONResponse({"error": out}, 422)
     return JSONResponse(out)
 
@@ -378,4 +465,4 @@ PARSE = asyncio.Semaphore(1)
 CTX = mp.get_context("forkserver")
 if __name__ != "__mp_main__":
     CTX.set_forkserver_preload([__name__])
-app = Starlette(routes=[Route("/analyze", analyze, methods=["POST"]), Route("/health", health), Route("/ping", health)])
+app = Starlette(routes=[Route("/analyze", analyze, methods=["POST"]), Route("/trace", trace, methods=["POST"]), Route("/health", health), Route("/ping", health)])

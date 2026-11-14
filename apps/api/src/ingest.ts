@@ -9,6 +9,9 @@ export class IngestContainer extends Container {
 
 export type Analysis = {
   kind: 'pdf-vector' | 'pdf-scan' | 'image' | 'dxf';
+  /** PDFs: the page that was read (1-based) and how many the file has. */
+  page?: number;
+  pages?: number;
   width: number;
   height: number;
   render_png: string;
@@ -21,13 +24,20 @@ export type Analysis = {
   detections?: { kind: string; conf: number; bbox: [number, number, number, number] }[] | null;
 };
 
-export async function analyze(env: Env, data: ArrayBuffer, mime: string): Promise<Analysis> {
-  const init = { method: 'POST', headers: { 'content-type': mime }, body: data };
+async function call<T>(env: Env, path: string, init: RequestInit): Promise<T> {
   // Local dev without Docker: run `npm run ingest:dev` and set INGEST_URL in .dev.vars.
   const res = env.INGEST_URL
-    ? await fetch(`${env.INGEST_URL.replace(/\/$/, '')}/analyze`, init)
-    : await (await getRandom(env.INGEST, 3)).fetch(new Request('http://ingest/analyze', init));
-  const json = (await res.json().catch(() => ({ error: `ingestion service returned ${res.status}` }))) as Analysis & { error?: string };
+    ? await fetch(`${env.INGEST_URL.replace(/\/$/, '')}${path}`, init)
+    : await (await getRandom(env.INGEST, 3)).fetch(new Request(`http://ingest${path}`, init));
+  const json = (await res.json().catch(() => ({ error: `ingestion service returned ${res.status}` }))) as T & { error?: string };
   if (!res.ok || json.error) throw Object.assign(new Error(json.error ?? `ingestion service returned ${res.status}`), { status: res.status });
   return json;
 }
+
+/** Exact geometry, text, scale and a render of one drawing; `page` picks the page of a PDF (1-based). */
+export const analyze = (env: Env, data: ArrayBuffer, mime: string, page = 1) =>
+  call<Analysis>(env, '/analyze', { method: 'POST', headers: { 'content-type': mime, 'x-page': String(page) }, body: data });
+
+/** Exact room outlines traced from the wall lines of a render: one per room asked for, null where none matched. */
+export const trace = (env: Env, png: string, rooms: number[][][], close: number[][]) =>
+  call<{ rooms: (number[][] | null)[] }>(env, '/trace', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ png, rooms, close }) });
