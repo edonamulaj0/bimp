@@ -2,7 +2,7 @@ import type { ComponentChildren } from 'preact';
 import { useMemo, useRef, useState } from 'preact/hooks';
 import { type Plan, type RoomType, area, round } from '../../shared/plan';
 import { ROOM_COLORS } from './canvas/colors';
-import { hoverRoom, queueFiles, selectedRooms, uploadQueue } from './state';
+import { hoverRoom, queueFiles, selectedRooms, uploadQueue, visualsOn, visualsOpen } from './state';
 import { Icon } from './icons';
 import { when } from './ui';
 import type { Revision } from './types';
@@ -67,6 +67,7 @@ export function FileTree({ name, files, revisions, plan, latestId, viewedId, onV
           children: revisions.length ? revisions.map((r): Node => ({ id: `v-${r.id}`, text: `r${r.rev}`, label: <><span class="mono">r{r.rev}</span>{r.note ? ` · ${r.note}` : r.filename ? ` · ${r.filename}` : ''}</>,
             meta: r.id === latestId ? 'latest' : when(r.created_at), current: (viewedId ?? latestId) === r.id, onOpen: () => onViewRev(r.id === latestId ? null : r.id) }))
             : [{ id: 'nrev', text: 'No revisions', label: 'No revisions yet', muted: true }] },
+        ...(plan && visualsOn.value ? [{ id: 'images', label: 'Architectural images', text: 'Architectural images', icon: 'sparkle', onOpen: () => (visualsOpen.value = true) } as Node] : []),
         ...(plan ? [{ id: 'model', label: 'Model', text: 'Model', icon: 'cube', children: [
           { id: 'rooms', label: 'Rooms', text: 'Rooms', icon: 'folder', meta: rooms.length, children: groups },
           { id: 'openings', label: 'Doors and windows', text: 'Doors and windows', icon: 'door', meta: <>{plan.openings.filter((o) => o.kind === 'door').length} · {plan.openings.filter((o) => o.kind === 'window').length}</> },
@@ -75,7 +76,7 @@ export function FileTree({ name, files, revisions, plan, latestId, viewedId, onV
         ] } as Node] : []),
       ],
     };
-  }, [name, files, revisions, plan, latestId, viewedId, uploadQueue.value, selectedRooms.value]);
+  }, [name, files, revisions, plan, latestId, viewedId, uploadQueue.value, selectedRooms.value, visualsOn.value]);
 
   // visible nodes in order, for the keyboard
   const flat: { n: Node; level: number; parent: string | null }[] = [];

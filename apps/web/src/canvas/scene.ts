@@ -17,7 +17,9 @@ export type SceneApi = {
   highlight(hover: string | null, selected: string[]): void; rotate(steps: number): void; orbit(dAz: number, dEl: number): void;
   pan(dx: number, dy: number): void; zoom(k: number): void; view(v: ViewPreset): void;
   projection(): Projection; setProjection(p: Projection): void; getView(): CameraView;
-  planPoint(clientX: number, clientY: number): Pt | null; setControls(on: boolean): void; setRegion(r: Region | null): void; dispose(): void;
+  planPoint(clientX: number, clientY: number): Pt | null; setControls(on: boolean): void; setRegion(r: Region | null): void;
+  /** The current view as a PNG with a transparent background (no region box), for image generation. */
+  snapshot(): Promise<Blob>; dispose(): void;
 };
 type Opts = { compact?: boolean; walls?: WallMode; furniture?: boolean; projection?: Projection; view?: CameraView | null;
   onHover(id: string | null, x: number, y: number): void; onClick(id: string | null): void;
@@ -411,6 +413,17 @@ export function createScene(host: HTMLElement, plan: Plan, opts: Opts): SceneApi
       controls = new OrbitControls(camera, el);
       setupControls(); controls.target.copy(tgt);
       fit();
+    },
+    async snapshot() {
+      const hidden = regionObj?.visible;
+      if (regionObj) regionObj.visible = false;
+      renderer.render(scene, camera); // read back in the same task, before the drawing buffer is cleared
+      const url = el.toDataURL('image/png');
+      if (regionObj) regionObj.visible = hidden ?? true;
+      render();
+      const bin = atob(url.slice(url.indexOf(',') + 1)), bytes = new Uint8Array(bin.length); // not fetch(): CSP allows no data: connections
+      for (let i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      return new Blob([bytes], { type: 'image/png' });
     },
     getView() { return { pos: camera.position.toArray() as [number, number, number], target: controls.target.toArray() as [number, number, number], zoom: camera.zoom }; },
     planPoint,
