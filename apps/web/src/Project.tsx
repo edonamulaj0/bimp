@@ -242,7 +242,7 @@ export function ProjectPage({ id }: { id: string }) {
               style={{ '--left-w': `${leftW}px`, '--right-w': `${rightW}px`, '--files-h': `${filesH}%` }}>
               <aside ref={leftCol} class={`col col-left${sheet && (mPane === 'files' || mPane === 'chat') ? ' is-sheet' : ''}`} id="ws-left" aria-label="Files and bimp AI">
                 {phone && <SheetGrip full={sheetFull} onFull={setSheetFull} onClose={() => setMPane('plan')} label={mPane === 'files' ? 'Files' : 'bimp AI'} />}
-                <FileTree name={data.project.name} files={data.files as FileRow[]} revisions={data.revisions} plan={shownPlan} latestId={latestId} viewedId={compare ? null : shownId}
+                <FileTree projectId={id} name={data.project.name} files={data.files as FileRow[]} revisions={data.revisions} plan={shownPlan} latestId={latestId} viewedId={compare ? null : shownId}
                   onViewRev={view} onAdd={upload} onRefused={refused} />
                 <div class="row-handle" role="separator" aria-orientation="horizontal" tabIndex={0} aria-label="Resize files and chat"
                   aria-valuenow={filesH} aria-valuemin={15} aria-valuemax={85} {...rowResize} />

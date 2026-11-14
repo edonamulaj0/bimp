@@ -1,5 +1,6 @@
 import { hoverRoom, selectedRooms } from './state';
 import type { Content } from './types';
+import { Markdown } from './Markdown';
 
 /** Room citations: choosing one selects the rooms on the plan, hovering highlights them. */
 export function Citations({ claims }: { claims?: Content['claims'] }) {
@@ -27,7 +28,7 @@ export function AnswerBody({ c, badge }: { c: Content; badge?: boolean }) {
           {c.verified ? 'Verified' : 'Unverified'}
         </span>
       )}
-      <p>{c.text}</p>
+      <Markdown text={c.text} />
       <Citations claims={c.claims} />
       {c.calculation && <pre class="calc">{c.calculation}</pre>}
       {!!c.assumptions?.length && (
