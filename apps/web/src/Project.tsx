@@ -172,7 +172,6 @@ type Mode = '2d' | '3d' | 'split';
 function CanvasPane({ plan, projectId, name }: { plan: Plan | null; projectId: string; name: string }) {
   const [mode, setMode] = useState<Mode>('2d');
   const [rot, setRot] = useState(0);
-  const [inset, setInset] = useState(true);
   const [source, setSource] = useState(false);
   const [cut, setCut] = useState(true);
   const [showChecks, setShowChecks] = useState(false);
@@ -181,7 +180,7 @@ function CanvasPane({ plan, projectId, name }: { plan: Plan | null; projectId: s
   const sourceUrl = !source || !plan.source ? null
     : plan.source.renderSha ? `/api/projects/${projectId}/render/${plan.source.renderSha}`
     : plan.source.mime.startsWith('image/') ? `/api/projects/${projectId}/files/${plan.source.fileId}` : null;
-  const show3d = mode !== '2d' || inset;
+  const show3d = mode !== '2d';
   const focus = plan.rooms.find((r) => r.id === (hoverRoom.value ?? selectedRooms.value[0]));
   const types = ROOM_TYPES.filter((t) => plan.rooms.some((r) => r.type === t));
   const checks = checkPlan(plan);
@@ -214,15 +213,6 @@ function CanvasPane({ plan, projectId, name }: { plan: Plan | null; projectId: s
       <div class={`views mode-${mode}`}>
         {mode !== '3d' && <div class="view"><Plan2D plan={plan} sourceUrl={sourceUrl} title={name} /></div>}
         {mode !== '2d' && <div class="view"><Plan3D plan={plan} rotation={rot} cutaway={cut} /></div>}
-        {mode !== 'split' && (
-          <div class={`inset${inset ? '' : ' closed'} inset-${mode}`}>
-            <div class="inset-bar">
-              <button class="link small" onClick={() => setMode(mode === '2d' ? '3d' : '2d')}>{mode === '2d' ? '3D' : '2D'} ⤢</button>
-              <button class="link small" onClick={() => setInset(!inset)} aria-label={inset ? 'Minimise' : 'Show'}>{inset ? '–' : '+'}</button>
-            </div>
-            {inset && (mode === '2d' ? <Plan3D plan={plan} compact rotation={rot} cutaway={cut} /> : <Plan2D plan={plan} compact />)}
-          </div>
-        )}
         {showChecks && (
           <div class="checks" role="dialog" aria-label="Plan checks">
             <div class="checks-head"><b>Checks against design standards</b><button class="link" onClick={() => setShowChecks(false)} aria-label="Close">✕</button></div>
