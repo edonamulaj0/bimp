@@ -173,7 +173,7 @@ function CanvasPane({ plan, projectId, name }: { plan: Plan | null; projectId: s
   const [mode, setMode] = useState<Mode>('2d');
   const [rot, setRot] = useState(0);
   const [source, setSource] = useState(false);
-  const [cut, setCut] = useState(true);
+  const [walls, setWalls] = useState<'dollhouse' | 'cut' | 'full'>('dollhouse');
   const [showChecks, setShowChecks] = useState(false);
   if (!plan) return <section class="canvas empty-canvas"><p class="muted">No plan yet. Upload a floor plan in the chat to see it here in 2D and 3D.</p></section>;
 
@@ -194,13 +194,17 @@ function CanvasPane({ plan, projectId, name }: { plan: Plan | null; projectId: s
             <button key={m} aria-pressed={mode === m} onClick={() => setMode(m)}>{m === 'split' ? 'Split' : m.toUpperCase()}</button>
           ))}
         </div>
-        {show3d && (
+        {show3d && (<>
           <div class="seg" role="group" aria-label="Rotate 3D">
             <button onClick={() => setRot((r) => r - 1)} title="Rotate left">⟲</button>
             <button onClick={() => setRot((r) => r + 1)} title="Rotate right">⟳</button>
-            <button aria-pressed={cut} onClick={() => setCut(!cut)} title="Cut walls at 1.2 m to see the rooms">Cutaway</button>
           </div>
-        )}
+          <div class="seg" role="group" aria-label="Walls">
+            {([['dollhouse', 'Dollhouse', 'Front walls lowered, back walls full height'], ['cut', 'Cut 1.2 m', 'All walls cut at 1.2 m, like a plan section'], ['full', 'Full', 'All walls full height']] as const).map(([m, label, title]) => (
+              <button key={m} aria-pressed={walls === m} title={title} onClick={() => setWalls(m)}>{label}</button>
+            ))}
+          </div>
+        </>)}
         {(plan.source?.renderSha || plan.source?.mime.startsWith('image/')) && mode !== '3d' && (
           <label class="small toggle"><input type="checkbox" checked={source} onChange={(e) => setSource(e.currentTarget.checked)} /> Show source drawing</label>
         )}
@@ -212,7 +216,7 @@ function CanvasPane({ plan, projectId, name }: { plan: Plan | null; projectId: s
 
       <div class={`views mode-${mode}`}>
         {mode !== '3d' && <div class="view"><Plan2D plan={plan} sourceUrl={sourceUrl} title={name} /></div>}
-        {mode !== '2d' && <div class="view"><Plan3D plan={plan} rotation={rot} cutaway={cut} /></div>}
+        {mode !== '2d' && <div class="view"><Plan3D plan={plan} rotation={rot} walls={walls} /></div>}
         {showChecks && (
           <div class="checks" role="dialog" aria-label="Plan checks">
             <div class="checks-head"><b>Checks against design standards</b><button class="link" onClick={() => setShowChecks(false)} aria-label="Close">✕</button></div>

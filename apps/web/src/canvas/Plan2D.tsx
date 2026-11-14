@@ -6,6 +6,7 @@ import { hoverRoom, selectedRooms } from '../state';
 import { ROOM_COLORS } from './colors';
 import { printPlan } from './print';
 import { FixtureSymbol } from './symbols';
+import { FLOOR_OF } from './floors-kind';
 
 /** CSS pixels per metre of screen (96 px per inch). Screens vary, so on-screen 1:x is nominal; print is exact. */
 const SCREEN_PX_PER_M = 96 / 0.0254;
@@ -107,6 +108,20 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
       role="img"
       aria-label="2D floor plan"
     >
+      <defs>
+        <pattern id="fl-wood" patternUnits="userSpaceOnUse" width="1.2" height="0.15">
+          <path d="M0,0H1.2M0.45,0V0.15" stroke="var(--wall)" stroke-width="0.008" opacity="0.18" />
+        </pattern>
+        <pattern id="fl-tiles" patternUnits="userSpaceOnUse" width="0.3" height="0.3">
+          <path d="M0,0H0.3M0,0V0.3" stroke="var(--wall)" stroke-width="0.008" opacity="0.22" />
+        </pattern>
+        <pattern id="fl-concrete" patternUnits="userSpaceOnUse" width="0.5" height="0.5">
+          <circle cx="0.12" cy="0.18" r="0.012" fill="var(--wall)" opacity="0.15" /><circle cx="0.37" cy="0.41" r="0.009" fill="var(--wall)" opacity="0.15" />
+        </pattern>
+        <pattern id="fl-deck" patternUnits="userSpaceOnUse" width="1" height="0.12">
+          <path d="M0,0H1" stroke="var(--wall)" stroke-width="0.012" opacity="0.25" />
+        </pattern>
+      </defs>
       {sourceUrl && plan.source && (
         <image href={sourceUrl} x={plan.source.offset[0]} y={plan.source.offset[1]}
           width={plan.source.imageWidth * (plan.scale.metersPerPx ?? 1)} height={plan.source.imageHeight * (plan.scale.metersPerPx ?? 1)}
@@ -122,6 +137,13 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan' }: Props) {
             onClick={() => { if (!drag.current?.moved) selectedRooms.value = selected.includes(r.id) ? [] : [r.id]; }} />
         );
       })}
+      {!compact && !sourceUrl && (
+        <g pointer-events="none" class="floor-patterns">
+          {plan.rooms.filter((r) => FLOOR_OF[r.type] !== 'plain').map((r) => (
+            <polygon key={r.id} points={r.polygon.map((p) => p.join(',')).join(' ')} fill={`url(#fl-${FLOOR_OF[r.type]})`} />
+          ))}
+        </g>
+      )}
       <g pointer-events="none" class="fixtures">{(plan.fixtures ?? []).map((f) => <FixtureSymbol key={f.id} f={f} />)}</g>
       <g fill="var(--wall)" pointer-events="none">
         {footprints.map((f) => <polygon key={f.wall.id} points={f.poly.map((p) => p.join(',')).join(' ')} />)}

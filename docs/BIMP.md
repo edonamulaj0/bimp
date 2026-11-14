@@ -257,6 +257,10 @@ Examples: "How many tiles do I need for the bathroom on level 2?", "How many win
   fill-only in 2D and extruded in 3D after cutting at opening edges; outline from shared-edge cancellation; baked
   occlusion (wall-base gradient, floor contact strips skipping doorways); door/window frames and sills; room labels
   at the pole of inaccessibility. Techniques after neonplan3d (MIT, © 2026 Mastershort), reimplemented.
+- 3D wall modes: **Dollhouse** (default; exterior walls whose indoor side faces away from the camera drop to 0.3 m,
+  back walls stay full height with windows, partitions cut at 1.2 m; recomputed on rotation), **Cut 1.2 m**, **Full**.
+- Floor materials: procedural canvas textures (wood planks, 300 mm tiles, concrete, decking; 1 texture = 1 m²) chosen by
+  room type and tinted by the room colour; matching light patterns in 2D. A visual convention, not drawing data.
 - VespeneLabs/floor-view was reviewed: its code is UNLICENSED (private), so only its CC0 Kenney assets were reused.
 
 ## 5.5 Ingestion: Workflows + Containers (built)
@@ -509,6 +513,7 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 | 2026-11-13 | Metric Handbook (4th ed.) adopted as the design-knowledge reference; rules encoded with citations in `apps/shared/standards.ts` |
 | 2026-11-13 | Fire escape distances and wall thickness from facing room edges added from Metric Handbook Ch. 31–42 |
 | 2026-11-13 | Fixtures read from drawings and rendered in 2D/3D; 3D uses the architectural cutaway convention |
+| 2026-11-14 | Dollhouse cutaway is the default 3D mode; procedural floor materials by room type |
 | 2026-11-14 | Mitered wall footprints + baked occlusion (after neonplan3d, MIT); minimised inset views removed |
 | 2026-11-14 | 3D fixtures use the CC0 Kenney Furniture Kit; VespeneLabs floor-view code not reused (UNLICENSED) |
 | 2026-11-13 | Marketing page v1: plain static HTML + one CSS file in `apps/web/`, system fonts, no build step, default styling; focus stays on functionality. Results section is a placeholder until evals run. Demo CTA points to `/app` |

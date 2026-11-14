@@ -2,12 +2,11 @@ import { effect } from '@preact/signals';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { type Plan, area, round } from '../../../shared/plan';
 import { hoverRoom, selectedRooms } from '../state';
-import type { SceneApi } from './scene';
+import type { SceneApi, WallMode } from './scene';
 
-type Props = { plan: Plan; compact?: boolean; rotation?: number; cutaway?: boolean };
-const CUT_HEIGHT = 1.2;
+type Props = { plan: Plan; compact?: boolean; rotation?: number; walls?: WallMode };
 
-export function Plan3D({ plan, compact, rotation = 0, cutaway = true }: Props) {
+export function Plan3D({ plan, compact, rotation = 0, walls = 'dollhouse' }: Props) {
   const host = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<SceneApi | null>(null);
   const appliedRot = useRef(0);
@@ -22,7 +21,7 @@ export function Plan3D({ plan, compact, rotation = 0, cutaway = true }: Props) {
       try {
         api = createScene(host.current!, plan, {
           compact,
-          wallHeight: cutaway ? Math.min(CUT_HEIGHT, plan.wallHeight) : plan.wallHeight,
+          walls,
           onHover: (id, x, y) => { hoverRoom.value = id; setTip(id ? { x, y } : null); },
           onLabels: compact ? undefined : setLabels,
           onClick: (id) => { selectedRooms.value = id && !selectedRooms.peek().includes(id) ? [id] : []; },
@@ -36,7 +35,7 @@ export function Plan3D({ plan, compact, rotation = 0, cutaway = true }: Props) {
       stop = effect(() => api!.highlight(hoverRoom.value, selectedRooms.value));
     });
     return () => { dead = true; stop(); api?.dispose(); sceneRef.current = null; };
-  }, [plan, compact, cutaway]);
+  }, [plan, compact, walls]);
 
   useEffect(() => {
     if (!sceneRef.current) return;
