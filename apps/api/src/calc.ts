@@ -8,9 +8,10 @@ export function calculate(expr: string): number {
   const peek = () => toks[i];
   const eat = (t?: string) => { const v = toks[i++]; if (t && v !== t) throw new Error(`Expected ${t}`); return v; };
   const expr0 = (): number => { let v = term(); while (peek() === '+' || peek() === '-') v = eat() === '+' ? v + term() : v - term(); return v; };
-  const term = (): number => { let v = power(); while (peek() === '*' || peek() === '/') v = eat() === '*' ? v * power() : v / power(); return v; };
-  const power = (): number => { const b = unary(); return peek() === '^' ? (eat(), b ** power()) : b; };
-  const unary = (): number => (peek() === '-' ? (eat(), -unary()) : peek() === '+' ? (eat(), unary()) : atom());
+  const term = (): number => { let v = unary(); while (peek() === '*' || peek() === '/') v = eat() === '*' ? v * unary() : v / unary(); return v; };
+  // -2^2 = -(2^2) = -4: the power binds tighter than a leading minus; 2^-1 still works through unary on the right.
+  const unary = (): number => (peek() === '-' ? (eat(), -unary()) : peek() === '+' ? (eat(), unary()) : power());
+  const power = (): number => { const b = atom(); return peek() === '^' ? (eat(), b ** unary()) : b; };
   const atom = (): number => {
     const t = eat();
     if (t === undefined) throw new Error('Unexpected end');

@@ -21,6 +21,7 @@ export function printPlan(svg: SVGSVGElement, plan: Plan, ratio: number, pad: nu
   clone.setAttribute('width', `${sheet.w}mm`);
   clone.setAttribute('height', `${sheet.h}mm`);
   clone.removeAttribute('class');
+  clone.querySelectorAll('.pins, .diff').forEach((n) => n.remove()); // screen-only: comment pins, revision overlay
   // Scale bar in plan units (metres), drawn under the plan.
   const L = [1, 2, 5, 10, 20, 50].find((m) => (m * 1000) / ratio >= 30) ?? 50;
   const y = plan.height + pad * 0.55, t = Math.max(plan.width, plan.height) / 400;

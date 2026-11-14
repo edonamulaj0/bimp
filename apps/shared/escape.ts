@@ -57,11 +57,20 @@ export function escapeRoutes(plan: Plan): Escape | null {
     const own = doors.filter((d) => d.rooms.includes(r.id) && Number.isFinite(D.get(d.id)!));
     if (!own.length) { unreachable.push(r.id); continue; }
     let best: Route | null = null;
-    for (const v of r.polygon) {
-      // From this corner, the cheapest way out of the room...
+    // Candidate start points: corners, points every 0.25 m along each edge, and a 0.5 m interior grid. With two or more
+    // doors the worst point is often mid-edge or inside the room (where the ways out are equally long), not a corner.
+    const pts: Pt[] = [];
+    r.polygon.forEach((a, i) => {
+      const b = r.polygon[(i + 1) % r.polygon.length], n = Math.max(1, Math.ceil(dist(a, b) / 0.25));
+      for (let k = 0; k < n; k++) pts.push([a[0] + ((b[0] - a[0]) * k) / n, a[1] + ((b[1] - a[1]) * k) / n]);
+    });
+    const xs = r.polygon.map((p) => p[0]), ys = r.polygon.map((p) => p[1]);
+    for (let x = Math.min(...xs) + 0.25; x < Math.max(...xs); x += 0.5) for (let y = Math.min(...ys) + 0.25; y < Math.max(...ys); y += 0.5) if (inside([x, y], r.polygon)) pts.push([x, y]);
+    for (const v of pts) {
+      // From this point, the cheapest way out of the room...
       let cand: { d: number; door: (typeof own)[number] } | null = null;
       for (const d of own) { const t = dist(v, d.mid) + D.get(d.id)!; if (!cand || t < cand.d) cand = { d: t, door: d }; }
-      // ...and the room's worst corner is the one whose cheapest way out is longest.
+      // ...and the room's worst point is the one whose cheapest way out is longest.
       if (cand && (!best || cand.d > best.distance_m)) {
         const path: Pt[] = [v], via: string[] = [];
         for (let id: string | null = cand.door.id; id; id = prev.get(id) ?? null) { const d = doors.find((x) => x.id === id)!; path.push(d.mid); via.push(id); }

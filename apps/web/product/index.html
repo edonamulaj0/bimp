@@ -8,100 +8,179 @@
   <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
   <meta name="theme-color" content="#f4f1ea">
   <title>Product · bimp</title>
-  <meta name="description" content="How bimp reads drawings, answers questions with their source, and draws the plan in 2D and isometric 3D with checks against design standards.">
+  <meta name="description" content="A tour of bimp: how it reads drawings, answers with sources, draws plans in 2D and 3D, compares revisions, pins comments to the plan, shares projects with a team and checks against design standards.">
   <link rel="stylesheet" href="/site.css">
 </head>
 <body data-page="product">
   <!-- @include header.html -->
   <main id="main">
-    <section class="page-hero">
+    <section class="page-head">
       <div class="wrap">
-        <p class="label accent">Product</p>
-        <h1>A chat that answers. A sheet that proves it.</h1>
-        <p class="lead lg">Two panes, side by side: ask on the left, check on the right. Everything on the right is drawn from the plan bimp read, not from a picture of it.</p>
-      </div>
-      <div class="wrap" style="margin-top:var(--s7)">
-        <figure class="sheet" style="margin:0"><img src="/shots/workspace.webp" width="2400" height="1500" alt="The bimp workspace: chat on the left, a 2D floor plan on the right with Bedroom 2 selected and its details in a panel."><figcaption class="tb"><span><b>S-001</b> Workspace · chat and canvas</span><span>Sample house</span></figcaption></figure>
+        <h1>One place for a project's drawings</h1>
+        <p class="lead">A chat that answers on the left, the plan that proves it on the right, and the history, comments and people around it. Here is everything bimp does today, and how sure each part is.</p>
+        <div class="cta-row">
+          <a class="btn" href="/app/#signup">Start a project</a>
+          <a class="btn ghost" href="/docs/">Read the docs</a>
+        </div>
       </div>
     </section>
 
-    <section class="rule-top" aria-labelledby="read-h">
+    <section class="section tight" aria-label="Workspace">
+      <div class="wrap">
+        <figure class="frame"><img src="/shots/workspace.webp" width="1440" height="900" alt="The bimp workspace: projects sidebar on the left, the sample house plan comparing revision r1 to r2 with the added study in green, the removed storage dashed red and the enlarged kitchen marked +3.3 m², and the revisions panel on the right listing the changes."></figure>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="read-h">
       <div class="wrap">
         <div class="sec-head">
-          <div><p class="label accent">Reading a drawing</p><h2 id="read-h">Read once, carefully. Answer from that.</h2></div>
-          <p class="lead">Each file goes through the same steps, and each step is retried on its own. The model reads labels and outlines; code does every measurement.</p>
+          <h2 id="read-h">Read once, carefully. Answer from that.</h2>
+          <p class="lead">Each upload goes through the same steps, each retried on its own. The AI model reads labels and outlines; code does every measurement.</p>
         </div>
-        <div class="pipeline" role="list">
-          <div role="listitem"><span class="sec-num">01</span><b>Upload</b><p>PDF, DXF or image, stored privately. Duplicates are recognised by content.</p></div>
-          <div role="listitem"><span class="sec-num">02</span><b>Analyse</b><p>Vector lines, text and the sheet scale from PDFs; wall strokes from scans; exact units from DXF.</p></div>
-          <div role="listitem"><span class="sec-num">03</span><b>Read</b><p>An AI model names rooms, outlines them, finds doors, windows and fittings, copies dimensions as written.</p></div>
-          <div role="listitem"><span class="sec-num">04</span><b>Measure</b><p>Outlines snapped to the drawing's own lines; scale chosen from the sheet; door swings set by rule.</p></div>
-          <div role="listitem"><span class="sec-num">05</span><b>Plan</b><p>Rooms, walls, openings, fittings and levels, marked measured or preview, ready to ask.</p></div>
+        <div class="grid3">
+          <div class="tile"><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 16V4M7 9l5-5 5 5"/><path d="M4 16v4h16v-4"/></svg></span><h3>Analyse</h3><p>Vector lines, text with positions and the sheet's 1:N scale from PDFs; wall strokes from scans; exact units from DXF.</p></div>
+          <div class="tile"><span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.6-7 10-7 10 7 10 7-3.6 7-10 7S2 12 2 12z"/><circle cx="12" cy="12" r="3"/></svg></span><h3>Read</h3><p>An AI model names rooms, outlines them, finds doors, windows and fittings, and copies level marks and dimensions as written.</p></div>
+          <div class="tile"><span class="ico o" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M3 17L17 3l4 4L7 21H3z"/><path d="M7 13l2 2M10 10l2 2M13 7l2 2"/></svg></span><h3>Measure</h3><p>Outlines snapped edge by edge to the drawing's own lines; scale chosen in a fixed order; areas and counts computed in code.</p></div>
         </div>
       </div>
     </section>
 
-    <section class="rule-top">
-      <div class="wrap steps">
-        <div class="step">
-          <div class="step-text">
-            <span class="sec-num">2D</span>
-            <h3>The plan, to scale</h3>
-            <p>Walls meet with mitered corners, doors swing into the rooms they serve, fittings sit against their walls. Every room shows its name, area and dimensions.</p>
-            <ul><li>Type 1:50, 1:100 or any ratio; a scale bar is always correct</li><li>Print at an exact 1:x on the smallest sheet from A4 to A0</li><li>Overlay the source drawing to check the reading</li></ul>
+    <section class="section" aria-labelledby="ask-h">
+      <div class="wrap">
+        <div class="feature-row">
+          <div class="ft">
+            <h2 id="ask-h">Answers with their sources</h2>
+            <p>The chat agent works through plan tools: room info, areas, counts, escape routes, space standards and a calculator. Before you see an answer, a verifier checks that every number in it appears in a tool result, your question or a stated assumption, and that every cited room exists.</p>
+            <ul class="checks">
+              <li>Room chips under each answer open the room on the plan</li>
+              <li>Fails the check? The answer is shown as Unverified</li>
+              <li>Answers in your language; drawing text quoted as written</li>
+              <li>Up to 200 questions per person per day during the pilot</li>
+            </ul>
           </div>
-          <figure class="sheet" style="margin:0"><img src="/shots/plan-2d.webp" width="2068" height="1484" loading="lazy" alt="Floor plan with room names, areas, dimensions, door swings and furniture symbols."><figcaption class="tb"><span><b>P-201</b> Plan</span><span>12.30 × 9.30 m</span></figcaption></figure>
-        </div>
-        <div class="step">
-          <div class="step-text">
-            <span class="sec-num">3D</span>
-            <h3>An isometric model you can turn</h3>
-            <p>In dollhouse view the walls between you and the rooms drop away, and come back up as you rotate. Cut at 1.2 m like a plan section, or show the closed building.</p>
-            <ul><li>True isometric, no perspective distortion</li><li>Floors in wood, tile, concrete or decking by room type</li><li>Hover a room in 2D or 3D and it lights up in both</li></ul>
+          <div class="card" role="group" aria-label="Example answer">
+            <div class="card-b chat">
+              <p class="q">What's the net floor area?</p>
+              <div class="a">
+                <p><b>108.0 m²</b>: the eight rooms measured to the inside of the walls. Gross area adds the walls.</p>
+                <div class="src"><span class="chip">Plan areas</span><span class="chip" style="--c:#e8c9a0">calculate</span></div>
+                <p class="meta"><span class="pill ok dot">Verified</span> Every number traced to the plan</p>
+              </div>
+              <p class="q">What's the fire rating of the entrance door?</p>
+              <div class="a">
+                <p>Not found in the drawings. This plan has no door schedule or fire ratings; I looked at the doors and the room list.</p>
+                <p class="meta"><span class="pill">Not found</span> bimp abstains instead of guessing</p>
+              </div>
+            </div>
           </div>
-          <figure class="sheet" style="margin:0"><img src="/shots/iso-full.webp" width="1838" height="1372" loading="lazy" alt="The sample house as a closed isometric model with windows, frames and sills."><figcaption class="tb"><span><b>P-301</b> Isometric · full height</span><span>Ceiling 2.70 m</span></figcaption></figure>
-        </div>
-        <div class="step">
-          <div class="step-text">
-            <span class="sec-num">Info</span>
-            <h3>Rooms and the whole plan, in numbers</h3>
-            <p>Click a room for its net area, length and width, perimeter, ceiling height, volume, doors, windows and glazing. With nothing selected you get the plan: net, walls, gross, floor level.</p>
-            <ul><li>Net to the inside of walls; gross adds the walls</li><li>Heights read from level marks and ceiling notes</li><li>"Ask AI for an overview" for a written summary</li></ul>
-          </div>
-          <figure class="sheet" style="margin:0"><img src="/shots/plan-info.webp" width="2068" height="1484" loading="lazy" alt="Info panel for Bedroom 2: 11.40 square metres, 3.80 by 3.00 metres, perimeter 13.60 metres."><figcaption class="tb"><span><b>P-401</b> Room info</span><span>Bedroom 2</span></figcaption></figure>
-        </div>
-        <div class="step">
-          <div class="step-text">
-            <span class="sec-num">Layout</span>
-            <h3>Furnish an empty plan</h3>
-            <p>For a bare plan, bimp can place furniture by feng shui rules: bed with a solid wall behind it and the door in view, sofa facing the way in, cooker clear of the sink. Suggestions are dashed and never mixed with what the drawing shows.</p>
-          </div>
-          <figure class="sheet" style="margin:0"><img src="/shots/fengshui.webp" width="2068" height="1484" loading="lazy" alt="Empty plan furnished with dashed suggested furniture, with feng shui notes in a side panel."><figcaption class="tb"><span><b>P-501</b> Suggested layout</span><span>Dashed = suggestion</span></figcaption></figure>
         </div>
       </div>
     </section>
 
-    <section class="rule-top" aria-labelledby="fmt-h">
-      <div class="wrap twocol">
-        <div><p class="label accent">Formats</p><h2 id="fmt-h">What goes in, and how sure the answer is.</h2></div>
-        <table class="table">
-          <thead><tr><th>Input</th><th>Read as</th><th>Plan is</th></tr></thead>
-          <tbody>
-            <tr><td>Vector PDF</td><td>Lines, text with positions, sheet scale from its 1:N</td><td>Measured, when the scale is stated and outlines match</td></tr>
-            <tr><td>Scanned PDF</td><td>Wall strokes; title-block scale checked against a dimension</td><td>Preview</td></tr>
-            <tr><td>PNG / JPG / WebP</td><td>As a scan; scale from DPI where the file records it</td><td>Preview</td></tr>
-            <tr><td>DXF</td><td>Geometry and text; scale from the file's units</td><td>Measured, when outlines match</td></tr>
-            <tr><td>DWG</td><td>Export to DXF or PDF first</td><td>—</td></tr>
-            <tr><td>IFC</td><td>Next: model data and real 3D</td><td>—</td></tr>
-          </tbody>
-        </table>
+    <section class="section" aria-labelledby="plan-h">
+      <div class="wrap">
+        <div class="sec-head">
+          <h2 id="plan-h">The plan, drawn the way you'd draw it</h2>
+          <p class="lead">2D, 3D or both side by side. Hover a room in one and it lights up in the other and in the chat.</p>
+        </div>
+        <div class="grid2">
+          <div class="tile">
+            <figure class="frame flat shot"><img src="/shots/plan-dimensioned.webp" width="2000" height="1624" loading="lazy" alt="Plan in Dimensioned mode with hatched walls and dimension strings in millimetres on every side."></figure>
+            <h3>Plan and Dimensioned modes</h3>
+            <p>Cut at 1.2 m with walls hatched by type and ISO 128-2 line weights. Dimensioned adds facade, structure and overall strings on every side, room clear sizes and door widths, in millimetres.</p>
+          </div>
+          <div class="tile">
+            <figure class="frame flat shot"><img src="/shots/iso-full.webp" width="1838" height="1372" loading="lazy" alt="The sample house as a closed isometric model with windows, frames and sills."></figure>
+            <h3>Isometric 3D</h3>
+            <p>True isometric, turned in 90° steps. Dollhouse drops the walls in front of you, Cut 1.2 m shows a plan section, Full shows the closed building. Floors by room type are a visual convention, not drawing data.</p>
+          </div>
+          <div class="tile">
+            <figure class="frame flat shot"><img src="/shots/plan-info.webp" width="2068" height="1484" loading="lazy" alt="Info panel for Bedroom 2: net area, dimensions, perimeter, ceiling height and volume."></figure>
+            <h3>Rooms in numbers</h3>
+            <p>Net area, length and width, perimeter, ceiling height, volume, doors, windows and glazing ratio. With nothing selected: net, walls, gross and floor level for the whole plan.</p>
+          </div>
+          <div class="tile">
+            <figure class="frame flat shot"><img src="/shots/fengshui.webp" width="2068" height="1484" loading="lazy" alt="Empty plan furnished with dashed suggested furniture, with layout notes in a side panel."></figure>
+            <h3>Suggested layouts</h3>
+            <p>An empty plan can be furnished by traditional feng shui rules. Suggestions are dashed and never mixed with what the drawing shows.</p>
+          </div>
+        </div>
+        <p class="muted after">Scale: type 1:50, 1:100 or any ratio; the scale bar is always correct. On-screen scale is nominal because screens differ; <b>Print</b> is exact, on the smallest sheet from A4 to A0 that fits.</p>
       </div>
     </section>
 
-    <section class="closing">
-      <div class="wrap closing-grid">
-        <h2>See it on the sample house.</h2>
-        <div><a class="btn" href="/app/">Try the sample</a></div>
+    <section class="section" aria-labelledby="team-h">
+      <div class="wrap">
+        <div class="sec-head">
+          <h2 id="team-h">Work on it together</h2>
+          <p class="lead">Projects belong to you or to a team. Everyone with access can upload, ask, comment and label revisions.</p>
+        </div>
+        <div class="grid3">
+          <div class="tile">
+            <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="6" cy="6" r="2.5"/><circle cx="6" cy="18" r="2.5"/><circle cx="18" cy="12" r="2.5"/><path d="M6 8.5v7M8.3 7.2c4 .8 7.4 2 7.4 4.8"/></svg></span>
+            <h3>Revisions</h3>
+            <p>Every reading of a drawing is a revision, numbered from 1. Give each a short label. Compare any two: rooms added, removed or resized, walls added or removed, doors, windows, net and gross area.</p>
+          </div>
+          <div class="tile">
+            <span class="ico o" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><path d="M12 21s-6-5.6-6-11a6 6 0 0 1 12 0c0 5.4-6 11-6 11z"/><circle cx="12" cy="10" r="2.2"/></svg></span>
+            <h3>Pinned comments</h3>
+            <p>Pin a comment to a point on the plan; bimp records the room under it. Ask bimp in the thread and it answers from the source sheet with your pin marked, the elements around it and the plan tools.</p>
+          </div>
+          <div class="tile">
+            <span class="ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="9" cy="8" r="3"/><path d="M3.5 19c.6-3.2 2.8-5 5.5-5s4.9 1.8 5.5 5"/><circle cx="17" cy="9" r="2.4"/><path d="M15.5 14.2c2.6-.4 4.6 1.2 5 4.3"/></svg></span>
+            <h3>Teams</h3>
+            <p>Create a team, add colleagues by the email they signed up with. Owners add and remove members and move projects in or out; deleting a team returns its projects to their creators.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="chk-h">
+      <div class="wrap">
+        <div class="feature-row flip">
+          <div class="ft">
+            <h2 id="chk-h">Checks that name their source</h2>
+            <p>Room sizes, bedroom widths, corridor and stair widths, door widths, wall thickness, garages, daylight and escape distances, from the Metric Handbook (4th ed.). They're shown on the plan and available to the chat. They point at misreadings and problems worth a look; they aren't a compliance verdict.</p>
+            <a class="more" href="/docs/#standards">See every check</a>
+          </div>
+          <figure class="frame flat"><img src="/shots/escape.webp" width="2068" height="1484" loading="lazy" alt="Escape route overlay: a dashed line from the far corner of the living room through the hall to the exit door, labelled 13.42 m to exit."></figure>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="fmt-h">
+      <div class="wrap">
+        <div class="sec-head">
+          <h2 id="fmt-h">Measured or preview</h2>
+          <p class="lead">A plan is <b>measured</b> only when the drawing states its scale exactly and at least 90 % of room corners land on the drawing's own lines. Everything else is a <b>preview</b>, and the canvas says so.</p>
+        </div>
+        <div class="table-wrap">
+          <table class="table">
+            <thead><tr><th scope="col">Input</th><th scope="col">Read as</th><th scope="col">Plan is</th></tr></thead>
+            <tbody>
+              <tr><td>Vector PDF</td><td>Lines, text with positions, sheet scale from its 1:N</td><td>Measured, when the scale is stated and outlines match</td></tr>
+              <tr><td>DXF</td><td>Geometry and text; blocks expanded; scale from the file's units</td><td>Measured, when outlines match</td></tr>
+              <tr><td>Scanned PDF</td><td>Wall strokes; title-block scale checked against a dimension</td><td>Preview</td></tr>
+              <tr><td>PNG, JPG, WebP</td><td>As a scan; scale from DPI where the file records it</td><td>Preview</td></tr>
+              <tr><td>DWG</td><td>Not read: export to DXF or PDF first</td><td>—</td></tr>
+              <tr><td>IFC</td><td>Not yet</td><td>—</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <p class="muted after">Files up to 50 MB; the first page of a PDF is read. Re-uploading the same file reuses its earlier reading.</p>
+      </div>
+    </section>
+
+    <section class="band" aria-labelledby="cta-h">
+      <div class="wrap band-row">
+        <div>
+          <h2 id="cta-h">Try it on the sample house.</h2>
+          <p>Every account starts with one, so you can use every tool before uploading.</p>
+        </div>
+        <div class="cta-row">
+          <a class="btn" href="/app/#signup">Start a project</a>
+          <a class="btn ghost" href="/pricing/">See pricing</a>
+        </div>
       </div>
     </section>
   </main>

@@ -19,7 +19,7 @@ export function cleanWalls(input: Wall[]): Wall[] {
   // 1. cluster end points (tolerance grows with wall thickness: face-derived walls may stop short of each other)
   const nodes: { p: Pt; t: number }[] = [];
   const snap = (p: Pt, t: number): Pt => {
-    for (const n of nodes) if (dist(p, n.p) < Math.max(0.05, 0.6 * Math.max(t, n.t))) return n.p;
+    for (const n of nodes) if (dist(p, n.p) < Math.max(0.05, 0.5 * Math.min(t, n.t))) return n.p;
     nodes.push({ p, t }); return p;
   };
   walls.forEach((w) => { w.a = snap(w.a, w.thickness); w.b = snap(w.b, w.thickness); });

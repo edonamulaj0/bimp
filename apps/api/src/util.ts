@@ -29,3 +29,10 @@ export function toBase64(buf: ArrayBuffer): string {
   for (let i = 0; i < bytes.length; i += 0x8000) s += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
   return btoa(s);
 }
+
+/** Marks a job failed once, and leaves a note in the chat so the outcome survives a reload. */
+export async function failJob(env: Env, jobId: string, projectId: string, error: string) {
+  const r = await env.DB.prepare("UPDATE jobs SET status = 'failed', stage = 'Failed', error = ?, updated_at = ? WHERE id = ? AND status IN ('queued', 'running')").bind(error, now(), jobId).run();
+  if (r.meta.changes) await env.DB.prepare('INSERT INTO messages (project_id, role, content, created_at) VALUES (?,?,?,?)')
+    .bind(projectId, 'assistant', JSON.stringify({ kind: 'system', text: `Could not read the drawing: ${error}` }), now()).run().catch(() => {});
+}

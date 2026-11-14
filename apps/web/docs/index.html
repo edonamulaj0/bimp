@@ -1,0 +1,251 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/brand/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+  <meta name="theme-color" content="#f4f1ea">
+  <title>Docs · bimp</title>
+  <meta name="description" content="How to use bimp: uploading drawings, asking questions, plans and dimensions, revisions, pinned comments, teams, and the method behind measured and preview plans.">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body data-page="docs">
+  <!-- @include header.html -->
+  <main id="main">
+    <div class="wrap docs">
+      <nav class="docs-nav" aria-label="Docs">
+        <h2>Using bimp</h2>
+        <ul>
+          <li><a href="#getting-started">Getting started</a></li>
+          <li><a href="#uploading">Uploading drawings</a></li>
+          <li><a href="#asking">Asking questions</a></li>
+          <li><a href="#plans">Plans and dimensions</a></li>
+          <li><a href="#revisions">Revisions and comparison</a></li>
+          <li><a href="#comments">Comments and pins</a></li>
+          <li><a href="#teams">Teams</a></li>
+        </ul>
+        <h2>How it works</h2>
+        <ul>
+          <li><a href="#method">Method</a></li>
+          <li><a href="#standards">Design standards</a></li>
+          <li><a href="#about">About bimp</a></li>
+          <li><a href="#credits">Credits</a></li>
+        </ul>
+      </nav>
+
+      <article class="doc">
+        <details class="docs-menu">
+          <summary>On this page</summary>
+          <ul>
+            <li><a href="#getting-started">Getting started</a></li>
+            <li><a href="#uploading">Uploading drawings</a></li>
+            <li><a href="#asking">Asking questions</a></li>
+            <li><a href="#plans">Plans and dimensions</a></li>
+            <li><a href="#revisions">Revisions and comparison</a></li>
+            <li><a href="#comments">Comments and pins</a></li>
+            <li><a href="#teams">Teams</a></li>
+            <li><a href="#method">Method</a></li>
+            <li><a href="#standards">Design standards</a></li>
+            <li><a href="#about">About bimp</a></li>
+            <li><a href="#credits">Credits</a></li>
+          </ul>
+        </details>
+
+        <section id="getting-started" aria-labelledby="gs-h">
+          <h1 id="gs-h">Getting started</h1>
+          <p>bimp reads construction drawings, answers questions about them with the source of every answer, and keeps a project's revisions, comments and people in one place.</p>
+          <ol>
+            <li><a href="/app/#signup">Create an account</a> with your email and a password. Your account starts with a <b>Sample house</b> so you can try every tool before uploading.</li>
+            <li>Create a project, personal or in a <a href="#teams">team</a>, and <a href="#uploading">upload a drawing</a>. bimp reads it in the background and the plan appears when it's ready.</li>
+            <li>When the plan appears, <a href="#asking">ask a question</a> in the chat on the left, or click a room on the plan for its numbers.</li>
+          </ol>
+          <div class="callout"><b>Pilot limits.</b> One drawing being read at a time per person, 200 questions per person per day, files up to 50 MB. See <a href="/pricing/">Pricing</a>.</div>
+          <figure class="frame"><img src="/shots/workspace.webp" width="2400" height="1500" loading="lazy" alt="The bimp workspace: chat on the left, the plan on the right with a room selected and its details in a panel."></figure>
+        </section>
+
+        <section id="uploading" aria-labelledby="up-h">
+          <h2 id="up-h">Uploading drawings</h2>
+          <p>Drop a file into a project. It's stored privately and identified by its content, so uploading the same file again reuses the earlier reading. Each reading becomes a new <a href="#revisions">revision</a> of the project's plan.</p>
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th scope="col">Format</th><th scope="col">How bimp reads it</th><th scope="col">Plan is</th></tr></thead>
+              <tbody>
+                <tr><td>Vector PDF</td><td>Line work, text with positions, sheet scale from its 1:N</td><td>Measured, when the scale is stated and outlines match</td></tr>
+                <tr><td>DXF</td><td>Blocks expanded, curves flattened; scale exact from the file's units</td><td>Measured, when outlines match</td></tr>
+                <tr><td>Scanned PDF</td><td>Rendered; wall strokes found in the image</td><td>Preview</td></tr>
+                <tr><td>PNG, JPG, WebP</td><td>As a scan; scale from the image's DPI where recorded</td><td>Preview</td></tr>
+                <tr><td>DWG</td><td>Not read. Export to DXF or PDF</td><td>—</td></tr>
+                <tr><td>IFC</td><td>Not yet</td><td>—</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>Reading happens in three steps, each retried on its own:</p>
+          <ol>
+            <li><b>Analyse.</b> The file is rendered and its vector lines, text and stated scale are extracted (or wall strokes, for scans).</li>
+            <li><b>Read.</b> An AI model names the rooms and their types, outlines them, and finds doors, windows, fittings, level marks and one dimension string.</li>
+            <li><b>Measure.</b> Code snaps each room outline edge by edge to the drawing's line work, replaces labels with the exact text inside the room, chooses the scale (see <a href="#method">Method</a>) and computes areas.</li>
+          </ol>
+          <p>Only the first page of a PDF is read. Files larger than 50 MB are refused.</p>
+        </section>
+
+        <section id="asking" aria-labelledby="ask-h">
+          <h2 id="ask-h">Asking questions</h2>
+          <p>Type a question in the chat in plain words, in any language. bimp answers in your language and quotes drawing text as it's written. It's good at:</p>
+          <ul>
+            <li>Areas, length × width, perimeters, ceiling heights, volumes, net and gross floor area</li>
+            <li>Counts of rooms, doors, windows and fittings ("how many WCs?")</li>
+            <li>Escape distances, space standards and occupancy</li>
+            <li>Arithmetic on any of those, done in code</li>
+          </ul>
+          <h3>Sources</h3>
+          <p>Under each answer are chips for the rooms it used. Click one and the plan selects and zooms to that room. Hovering a room on the plan highlights it in the chat, and the other way round.</p>
+          <h3>Verified answers</h3>
+          <p>Before an answer is shown, a verifier checks it: every number must appear in a tool result, in your question or in an assumption the plan itself lists; counts must equal the counted value; cited rooms must exist. Room names and labels on the drawing never count as evidence for a number. An answer that fails is shown as <b>Unverified</b>, with what didn't check out.</p>
+          <p>If the plan doesn't hold the answer, bimp says it wasn't found in the drawings and what it looked at, rather than guessing.</p>
+        </section>
+
+        <section id="plans" aria-labelledby="pl-h">
+          <h2 id="pl-h">Plans and dimensions</h2>
+          <p>The canvas shows the plan in <b>2D</b>, <b>3D</b> or <b>Split</b>. Rooms are coloured by type, and selection is linked between the views and the chat.</p>
+          <h3>Plan and Dimensioned modes</h3>
+          <p>The 2D plan follows drafting convention: the plan is cut at 1.2 m, cut walls are filled and hatched by type, and anything above the cut is dashed.</p>
+          <ul>
+            <li><b>Plan</b> shows walls, openings, fittings, room names, areas and overall dimensions.</li>
+            <li><b>Dimensioned</b> adds facade, structure and overall dimension strings on all sides, room clear sizes and door widths, in millimetres.</li>
+          </ul>
+          <div class="pair"><figure class="frame"><img src="/shots/plan-drafted.webp" width="2000" height="1559" loading="lazy" alt="Plan mode: walls, doors, fittings, room names, areas and the overall dimensions."></figure><figure class="frame"><img src="/shots/plan-dimensioned.webp" width="2000" height="1624" loading="lazy" alt="Dimensioned mode: dimension strings on all sides, room clear sizes and door widths in millimetres."></figure></div>
+          <p>Walls are classed by measured thickness: 250 mm and over are envelope walls with a 45° masonry hatch, 150–250 mm load-bearing walls with a cross-hatch, thinner ones open partitions. Line weights follow the ISO 128-2 hierarchy and print at true pen widths:</p>
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th scope="col">Line</th><th scope="col">Weight</th><th scope="col">Used for</th></tr></thead>
+              <tbody>
+                <tr><td><span class="swatch" style="--w:2.6px" aria-hidden="true"></span>Extra heavy</td><td class="num">0.70 mm</td><td>Cut exterior and envelope walls</td></tr>
+                <tr><td><span class="swatch" style="--w:1.9px" aria-hidden="true"></span>Heavy</td><td class="num">0.50 mm</td><td>Cut load-bearing interior walls</td></tr>
+                <tr><td><span class="swatch" style="--w:1.3px" aria-hidden="true"></span>Medium</td><td class="num">0.35 mm</td><td>Doors, windows, stairs</td></tr>
+                <tr><td><span class="swatch" style="--w:1.2px" aria-hidden="true"></span>Medium</td><td class="num">0.32 mm</td><td>Cut partitions</td></tr>
+                <tr><td><span class="swatch" style="--w:1px" aria-hidden="true"></span>Light</td><td class="num">0.25 mm</td><td>Fittings, built-ins, furniture</td></tr>
+                <tr><td><span class="swatch" style="--w:1px" aria-hidden="true"></span>Fine</td><td class="num">0.16 mm</td><td>Hatching, dimensions, leaders; above the cut, dashed</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <h3>Scale and printing</h3>
+          <p>The 2D view shows its scale as 1:x. Type any ratio or pick a standard one; "Drawing 1:N" jumps to the drawing's own scale when it's known. The graphic scale bar is always correct relative to the plan.</p>
+          <p>On-screen 1:x is nominal: it assumes 96 CSS pixels per inch, and real screens differ. <b>Print…</b> is exact: the plan is sized in millimetres at 1:x on the smallest ISO sheet from A4 to A0 that fits, with a scale bar and a title line stating the scale and whether the plan is measured or a preview.</p>
+          <h3>3D</h3>
+          <p>A true isometric view, rotated in 90° steps, in three wall modes: <b>Dollhouse</b> (default; walls between you and the rooms drop to 0.3 m, back walls stay full height), <b>Cut 1.2 m</b> and <b>Full</b>. Floor materials by room type are a visual convention, not drawing data.</p>
+          <h3>Room and plan info</h3>
+          <p>Click a room for its net area, length × width, perimeter, ceiling height, volume, doors, windows, glazed area and glazing ratio. With nothing selected, the panel shows the plan: net floor area (rooms to the inside of walls), wall area, gross area (net plus walls), and floor level. Heights not stated on the drawing are shown as "not stated" or "assumed".</p>
+        </section>
+
+        <section id="revisions" aria-labelledby="rev-h">
+          <h2 id="rev-h">Revisions and comparison</h2>
+          <p>Every reading of a drawing in a project is a revision. Revisions are numbered from 1, oldest first, and listed newest first; the latest is the project's current plan.</p>
+          <ul>
+            <li><b>Label</b> a revision with a short note (up to 120 characters), such as "Issued for planning" or "Kitchen moved".</li>
+            <li><b>Compare</b> any two revisions. bimp matches rooms by name and type, then by overlap, and walls by their centre lines, and lists rooms added, removed or resized with their area change, walls added and removed, door and window counts, and net and gross area.</li>
+          </ul>
+          <p>Anyone with access to the project can label revisions.</p>
+        </section>
+
+        <section id="comments" aria-labelledby="com-h">
+          <h2 id="com-h">Comments and pins</h2>
+          <p>Click a spot on the plan to pin a comment there. bimp records the room under the pin, so the thread stays attached to the right place across views.</p>
+          <ul>
+            <li><b>Reply</b> to start a thread. Threads are listed oldest first.</li>
+            <li><b>Ask bimp</b> on a new comment or on any thread. bimp reads the original drawing sheet with your pin marked, the room and elements around the pin, and uses the same plan tools as the chat. Its reply appears in the thread with its sources and verification, like a chat answer.</li>
+            <li><b>Resolve</b> a thread when it's done; anyone with access can resolve or reopen.</li>
+            <li>Authors can edit their own comments. A comment can be deleted by its author or the project owner; its replies go with it.</li>
+          </ul>
+        </section>
+
+        <section id="teams" aria-labelledby="team-h">
+          <h2 id="team-h">Teams</h2>
+          <p>A team shares its projects with all its members. Your personal projects stay visible only to you.</p>
+          <ul>
+            <li><b>Create a team</b> and you're its owner.</li>
+            <li><b>Add members</b> by the email address they signed up with; they need a bimp account first.</li>
+            <li><b>Members</b> can upload drawings, ask questions, comment and label revisions in every team project.</li>
+            <li><b>Owners</b> add and remove members, delete projects, and move projects between personal and team.</li>
+            <li>You can leave a team at any time, except as its last owner. Deleting a team returns its projects to the people who created them.</li>
+          </ul>
+        </section>
+
+        <section id="method" aria-labelledby="me-h">
+          <h2 id="me-h">Method</h2>
+          <p>The AI model reads; the tools measure. General-purpose AI guesses at drawings, so bimp keeps everything that must be right in geometry, rules and code, and labels anything it isn't sure of.</p>
+          <h3>No source, no answer</h3>
+          <p>Every answer cites what it came from and is checked before you see it (see <a href="#asking">Verified answers</a>). If the drawings don't contain the answer, bimp says so.</p>
+          <h3>Measured or preview</h3>
+          <p>A plan is <b>measured</b> only when both are true: the drawing states its scale exactly (a vector sheet's 1:N, or a DXF's units), and at least 90 % of room corners snap to the drawing's own line work. Everything else is a <b>preview</b>, and the canvas, the print title line and the answers say so. A conflict between the stated scale and a dimension also makes a plan a preview.</p>
+          <h3>How the scale is chosen</h3>
+          <p>For drawings without an exact stated scale, bimp uses the first of these that applies, and records which one with the plan:</p>
+          <ol>
+            <li>The sheet's 1:N, confirmed by a dimension within 5 %</li>
+            <li>A dimension, rounded to the nearest preferred scale when the paper size is known</li>
+            <li>A dimension alone</li>
+            <li>The stated scale alone</li>
+            <li>A typical door width (0.9 m)</li>
+            <li>An assumed width, always flagged</li>
+          </ol>
+          <p>When a stated scale and a dimension disagree by more than 5 %, bimp reports the conflict instead of choosing silently.</p>
+          <h3>Code does the arithmetic</h3>
+          <p>Areas, perimeters, volumes, counts and escape distances are computed from the plan's geometry. Dimension text is parsed in code following drawing convention: millimetres without decimals, metres with them, the decimal comma. Wall thickness is measured between facing room edges, so net areas stay to the inside of walls.</p>
+        </section>
+
+        <section id="standards" aria-labelledby="st-h">
+          <h2 id="st-h">Design standards</h2>
+          <p>Checks appear under <b>Checks</b> on the canvas and are available to the chat. They're plausibility flags that point at misreadings or problems worth a look, not compliance verdicts. Reference: <i>Metric Handbook: Planning and Design Data</i>, 4th ed. (UK guidance).</p>
+          <div class="table-wrap">
+            <table class="table">
+              <thead><tr><th scope="col">Check</th><th scope="col">Rule</th><th scope="col">Source</th></tr></thead>
+              <tbody>
+                <tr><td>Drawing scale</td><td>Plans at 1:50, 1:100, 1:200; other stated ratios flagged</td><td>Ch. 1 Table III</td></tr>
+                <tr><td>Room sizes</td><td>Minimum areas by room type; bedroom widths from bed sizes</td><td>Ch. 8 Tables III, IV</td></tr>
+                <tr><td>Doors</td><td>Doorsets 800–1000 mm; widths far outside suggest a wrong scale</td><td>Ch. 2 §4.6, §4.9</td></tr>
+                <tr><td>Corridors</td><td>Corridor widths; wheelchair turning 1.4 m</td><td>Ch. 2 Fig. 2.35, §4.5</td></tr>
+                <tr><td>Stairs</td><td>≥ 1000 mm between handrails, ≤ 12 steps a flight, ramps ≤ 1:12</td><td>Ch. 42 §5.2</td></tr>
+                <tr><td>Walls</td><td>Plausible thickness 75–600 mm from brick and block sizes</td><td>Ch. 37 §4</td></tr>
+                <tr><td>Escape</td><td>Flat without an alternative exit: 9 m to the entrance door; travel distances by use</td><td>Ch. 41 Figs. 41.16–41.21, Table XV</td></tr>
+                <tr><td>Garages</td><td>Single garage at least 2400 × 4900 mm</td><td>Ch. 31 Fig. 31.30</td></tr>
+                <tr><td>Daylight</td><td>Habitable rooms without a window flagged</td><td>Ch. 39</td></tr>
+              </tbody>
+            </table>
+          </div>
+          <p>The <b>Escape</b> overlay draws the worst-point travel distance from each room to an exit. Feng shui notes are offered separately, as traditional guidance rather than a standard.</p>
+        </section>
+
+        <section id="about" aria-labelledby="ab-h">
+          <h2 id="ab-h">About bimp</h2>
+          <p>bimp is short for BIM pilot: the one who knows the way. It takes you from a question to the exact spot on a drawing where the answer lives.</p>
+          <p>Site engineers, project managers and estimators spend a large part of every day searching drawing sets for one number, one note, one detail. General-purpose AI tools often misread technical drawings, and an answer you can't check is a risk on site. bimp was started for the Junction challenge on answering questions about construction drawings accurately and verifiably, with a brief to build something next year's AI models won't make obsolete. So what must stay correct lives in geometry, rules and code; a better model makes bimp better.</p>
+          <h3>The mark</h3>
+          <p>The b in the logo is a door swing in plan; the dot on the i is a survey target. The orange is a marker on a site drawing.</p>
+          <h3>How it's built</h3>
+          <ul>
+            <li>Cloudflare Workers for the app and API, D1 for projects, R2 for drawings, Workflows and Containers for reading them</li>
+            <li>Python for reading: PyMuPDF for PDFs, OpenCV for scans, ezdxf for CAD</li>
+            <li>Google Gemini to read labels and outlines and to write answers that cite their sources</li>
+            <li>Preact and three.js in the browser: the 2D plan in SVG, the isometric model in WebGL</li>
+          </ul>
+          <h3 id="contact">Contact</h3>
+          <p>For enterprise or on-premise deployments, data location or higher limits, contact the bimp team. bimp is in its pilot; we'll publish a contact address here.</p>
+        </section>
+
+        <section id="credits" aria-labelledby="cr-h">
+          <h2 id="cr-h">Credits</h2>
+          <ul>
+            <li>Design data: <i>Metric Handbook: Planning and Design Data</i>, 4th ed. (Littlefield, 2012), cited with each check. The book's text is not reproduced.</li>
+            <li>Wall joining and baked occlusion: techniques after neonplan3d (MIT licence, © 2026 Mastershort), reimplemented.</li>
+            <li>Furniture models: Kenney Furniture Kit (CC0).</li>
+            <li>Type: Jost and IBM Plex Mono (SIL Open Font License).</li>
+            <li>Test drawings: the Junction construction-drawings set, each file under its own licence.</li>
+          </ul>
+        </section>
+      </article>
+    </div>
+  </main>
+  <!-- @include footer.html -->
+</body>
+</html>

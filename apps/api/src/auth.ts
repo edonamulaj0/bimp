@@ -47,13 +47,17 @@ export async function createUser(env: Env, email: string, password: string) {
   return { id, email };
 }
 
+/**
+ * Login throttling. Failures are counted per (email, IP) and per IP, so someone who only knows an email can't lock its
+ * owner out from elsewhere; a looser per-email cap across all IPs still slows a distributed guess.
+ */
 export async function checkLogin(env: Env, email: string, password: string, ip: string) {
   const since = now() - WINDOW_MS;
-  const keys = [`e:${email}`, `ip:${ip}`];
-  const { results } = await env.DB.prepare('SELECT key, COUNT(*) AS n FROM login_failures WHERE key IN (?, ?) AND at > ? GROUP BY key')
+  const keys = [`e:${email}|ip:${ip}`, `ip:${ip}`, `e:${email}`];
+  const { results } = await env.DB.prepare('SELECT key, COUNT(*) AS n FROM login_failures WHERE key IN (?, ?, ?) AND at > ? GROUP BY key')
     .bind(...keys, since).all();
   const counts = Object.fromEntries((results as { key: string; n: number }[]).map((r) => [r.key, r.n]));
-  if ((counts[keys[0]] ?? 0) >= 8 || (counts[keys[1]] ?? 0) >= 30) throw fail(429, 'Too many attempts. Wait 15 minutes and try again.');
+  if ((counts[keys[0]] ?? 0) >= 8 || (counts[keys[1]] ?? 0) >= 30 || (counts[keys[2]] ?? 0) >= 100) throw fail(429, 'Too many attempts. Wait 15 minutes and try again.');
 
   const row = await env.DB.prepare('SELECT id, pw_hash, pw_salt, pw_iter FROM users WHERE email = ?').bind(email)
     .first<{ id: string; pw_hash: string; pw_salt: string; pw_iter: number }>();
@@ -68,10 +72,20 @@ export async function checkLogin(env: Env, email: string, password: string, ip: 
   throw fail(401, 'Email or password is incorrect.');
 }
 
+/** At most 5 new accounts per IP per hour (counted in the same table as login failures). */
+export async function signupThrottle(env: Env, ip: string) {
+  const key = `signup:${ip}`;
+  const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM login_failures WHERE key = ? AND at > ?').bind(key, now() - 3600_000).first<{ n: number }>();
+  if ((row?.n ?? 0) >= 5) throw fail(429, 'Too many new accounts from this network. Try again in an hour.');
+  await env.DB.prepare('INSERT INTO login_failures (key, at) VALUES (?, ?)').bind(key, now()).run();
+}
+
 export async function startSession(c: Context<AppEnv>, userId: string) {
   const token = b64(crypto.getRandomValues(new Uint8Array(32)));
-  await c.env.DB.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)')
-    .bind(await sha256(token), userId, now() + SESSION_MS).run();
+  await c.env.DB.batch([
+    c.env.DB.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').bind(await sha256(token), userId, now() + SESSION_MS),
+    c.env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(now()), // housekeeping on each sign-in
+  ]);
   setCookie(c, COOKIE, token, { httpOnly: true, secure: true, sameSite: 'Lax', path: '/', maxAge: SESSION_MS / 1000 });
 }
 

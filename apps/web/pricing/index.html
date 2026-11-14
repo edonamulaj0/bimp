@@ -1,0 +1,139 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <link rel="icon" href="/brand/favicon.svg" type="image/svg+xml">
+  <link rel="icon" href="/brand/favicon-32.png" sizes="32x32" type="image/png">
+  <link rel="apple-touch-icon" href="/brand/apple-touch-icon.png">
+  <meta name="theme-color" content="#f4f1ea">
+  <title>Pricing · bimp</title>
+  <meta name="description" content="bimp is free during the pilot, for individuals and teams. Enterprise and on-premise: contact us.">
+  <link rel="stylesheet" href="/site.css">
+</head>
+<body data-page="pricing">
+  <!-- @include header.html -->
+  <main id="main">
+    <section class="page-head">
+      <div class="wrap">
+        <h1>Free while we're in pilot</h1>
+        <p class="lead">bimp is in its pilot. Everything that's built is free to use, alone or with a team, within the limits below. We'll announce pricing here before it changes.</p>
+      </div>
+    </section>
+
+    <section class="section tight" aria-label="Plans">
+      <div class="wrap">
+        <div class="plans">
+          <article class="plan main" aria-labelledby="p1">
+            <span class="pill ok dot tag">Available now</span>
+            <h2 id="p1">Pilot</h2>
+            <p class="price">Free</p>
+            <p class="price-note">during the pilot, for one person</p>
+            <a class="btn" href="/app/#signup">Start a project</a>
+            <ul class="checks">
+              <li>Unlimited projects, starting with a sample house</li>
+              <li>Ask questions with sources and verification</li>
+              <li>2D plan, Dimensioned mode, isometric 3D, print to scale</li>
+              <li>Revisions and comparison</li>
+              <li>Comments pinned to the plan, answered by bimp</li>
+              <li>Checks against design standards, escape routes</li>
+            </ul>
+          </article>
+          <article class="plan" aria-labelledby="p2">
+            <span class="pill ok dot tag">Available now</span>
+            <h2 id="p2">Teams</h2>
+            <p class="price">Free</p>
+            <p class="price-note">during the pilot, for every member</p>
+            <a class="btn ghost" href="/app/#signup">Create a team</a>
+            <ul class="checks">
+              <li>Everything in Pilot</li>
+              <li>Shared projects for the whole team</li>
+              <li>Owner and member roles</li>
+              <li>Add members by email</li>
+              <li>Comment threads and revision labels from everyone</li>
+            </ul>
+          </article>
+          <article class="plan" aria-labelledby="p3">
+            <span class="pill tag">On request</span>
+            <h2 id="p3">Enterprise and on-premise</h2>
+            <p class="price">Contact us</p>
+            <p class="price-note">talk to us about your own deployment, data location or volume</p>
+            <a class="btn ghost" href="/docs/#contact">Contact us</a>
+            <ul class="checks">
+              <li>Where your drawings are stored and processed</li>
+              <li>Large drawing sets and higher limits</li>
+              <li>Access control in front of the app</li>
+            </ul>
+          </article>
+        </div>
+
+        <div class="limits">
+          <h2 class="sr-only">Pilot limits</h2>
+          <div class="table-wrap">
+            <table class="table">
+              <caption class="sr-only">Limits that apply during the pilot</caption>
+              <thead><tr><th scope="col">Limit during the pilot</th><th scope="col">Pilot and Teams</th></tr></thead>
+              <tbody>
+                <tr><td>Drawings being read at once</td><td>One per person; the next upload waits for it</td></tr>
+                <tr><td>Questions</td><td>200 per person per day</td></tr>
+                <tr><td>File size</td><td>50 MB per file</td></tr>
+                <tr><td>Pages</td><td>The first page of a PDF</td></tr>
+                <tr><td>Re-uploads</td><td>The same file is recognised and its earlier reading reused, free</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="section" aria-labelledby="faq-h">
+      <div class="wrap">
+        <div class="sec-head"><h2 id="faq-h">Questions</h2></div>
+        <div class="faq">
+          <details>
+            <summary>Where are my drawings stored, and who can see them?</summary>
+            <div>
+              <p>Uploads go to private storage, are reachable only through your signed-in session, and are visible to you and, if the project is in a team, to that team's members. Files are served back with a sandboxing content policy so a drawing can't run anything in your browser.</p>
+              <p>To read a drawing, bimp sends its rendered image to an AI model (Google Gemini). Readings are cached by file, so the same drawing isn't sent twice.</p>
+            </div>
+          </details>
+          <details>
+            <summary>Which file formats can I upload?</summary>
+            <div>
+              <p>Vector PDF and DXF (these can be measured exactly), scanned PDFs, and PNG, JPG or WebP images (always a preview). DWG isn't read yet: export it to DXF or PDF. IFC models are next. See <a class="link" href="/docs/#uploading">Uploading drawings</a>.</p>
+            </div>
+          </details>
+          <details>
+            <summary>How accurate are the answers?</summary>
+            <div>
+              <p>Every number in an answer must come from the plan, your question or a stated assumption, or the answer is marked Unverified; if the drawing doesn't hold the answer, bimp says it wasn't found. A plan is marked measured only when the drawing states its scale exactly and the room outlines match its own line work; everything else is labelled a preview.</p>
+              <p>We'll publish accuracy by question type once our evaluation has run. We don't quote figures we haven't measured. See <a class="link" href="/docs/#method">Method</a>.</p>
+            </div>
+          </details>
+          <details>
+            <summary>What happens when the pilot ends?</summary>
+            <div><p>We'll announce pricing on this page before anything changes. Your projects stay yours.</p></div>
+          </details>
+          <details>
+            <summary>Do my teammates need their own accounts?</summary>
+            <div><p>Yes. A team owner adds members by the email they signed up with. Members can upload, ask, comment and label revisions in the team's projects; only owners delete projects or move them between teams.</p></div>
+          </details>
+        </div>
+      </div>
+    </section>
+
+    <section class="band" aria-labelledby="cta-h">
+      <div class="wrap band-row">
+        <div>
+          <h2 id="cta-h">Start free. Bring your team.</h2>
+          <p>Your account starts with a sample house.</p>
+        </div>
+        <div class="cta-row">
+          <a class="btn" href="/app/#signup">Start a project</a>
+        </div>
+      </div>
+    </section>
+  </main>
+  <!-- @include footer.html -->
+</body>
+</html>

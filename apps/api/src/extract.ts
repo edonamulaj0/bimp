@@ -80,6 +80,32 @@ export type Raw = {
   fixtures?: { kind: string; box: number[] }[];
 };
 
+const LEVEL_KEY = /(?:FFL|FFB|OKFF|OKRF|NGF|SSL|RH|LH|CH|HSP|H(?:ö|oe)he|Höhe|level|niveau|kote)\s*[:=]?\s*/i;
+
+/** Floor level in metres from a level mark ("FFL +2.700", "1.OG OKFF +3,05", "±0.00"); a signed number wins over a storey number. */
+export function parseLevel(text: string | null): number | null {
+  if (!text) return null;
+  const m = text.match(/([+\-−±])\s*(\d+(?:[.,]\d+)?)/) ?? text.match(new RegExp(LEVEL_KEY.source + '()(\\d+(?:[.,]\\d+)?)', 'i'));
+  if (!m) return null;
+  let v = Number(m[2].replace(',', '.'));
+  if (!m[2].includes('.') && !m[2].includes(',') && Math.abs(v) >= 100) v /= 1000; // level in mm
+  v *= m[1] === '-' || m[1] === '−' ? -1 : 1;
+  return Number.isFinite(v) && Math.abs(v) < 1000 ? v : null;
+}
+
+/** Ceiling height in metres ("RH 2,50", "CH 2700", "RH 250 cm", "1.OG RH 2,50"): the number after the keyword, with its unit. */
+export function parseCeiling(text: string | null): number | null {
+  if (!text) return null;
+  const tok = /(\d+(?:[.,]\d+)?)\s*(mm|cm|m)?(?![\w.])/;
+  const after = text.match(LEVEL_KEY);
+  const m = (after ? text.slice(after.index! + after[0].length) : text).match(tok) ?? text.match(tok);
+  if (!m) return null;
+  const v = parseDimension(m[1] + (m[2] ? ` ${m[2]}` : ''));
+  if (v !== null) return v;
+  const n = Number(m[1].replace(',', '.'));
+  return n >= 2 && n <= 8 ? n : n >= 200 && n <= 800 ? n / 100 : null; // "2,50" (m) or "250" (cm)
+}
+
 export async function readDrawing(env: Env, png: string, renderSha: string, an: Pick<Analysis, 'kind' | 'texts' | 'width' | 'height'>): Promise<Raw> {
   const parts: { text?: string; inlineData?: { mimeType: string; data: string } }[] = [{ inlineData: { mimeType: 'image/png', data: png } }, { text: PROMPT }];
   if (an.kind === 'dxf' && an.texts.length) {
@@ -90,7 +116,7 @@ export async function readDrawing(env: Env, png: string, renderSha: string, an: 
   const content = await generate(env, {
     contents: [{ role: 'user', parts }],
     generationConfig: { responseMimeType: 'application/json', responseSchema: SCHEMA, temperature: 0 },
-  }, `${PROMPT_VERSION}:${renderSha}`);
+  }, `${PROMPT_VERSION}:${renderSha}`, (c) => void JSON.parse(textOf(c)));
   const raw = JSON.parse(textOf(content)) as Raw;
   return { scale_evidence: raw.scale_evidence ?? null, stated_scale: raw.stated_scale ?? null, rooms: raw.rooms ?? [], openings: raw.openings ?? [], fixtures: raw.fixtures ?? [], levels: raw.levels ?? null };
 }
@@ -254,13 +280,21 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
   const mppStated = statedN && paper ? (statedN * paper) / 1000 : null;
   const exact = sane(an.scale?.meters_per_px) ? an.scale!.meters_per_px : null;
 
+  let conflict = false;
   if (exact) {
     mpp = exact; scaleSource = an.scale!.source; ratio = an.scale!.ratio;
-    if ((an.scale!.all_ratios?.length ?? 0) > 1) assumptions.push(`Several scales on the sheet (${an.scale!.all_ratios!.map((n) => `1:${n}`).join(', ')}); used the most frequent, 1:${an.scale!.ratio}`);
+    const all = an.scale!.all_ratios ?? [];
+    // A sheet can carry detail scales too (1:20 next to 1:100); the dimension decides which one the plan is drawn at.
+    const pick = mppDim && ratio ? all.find((n) => Math.abs(mppDim / ((exact / ratio!) * n) - 1) <= 0.05) : undefined;
+    if (pick && pick !== ratio) {
+      mpp = (exact / ratio!) * pick; ratio = pick; scaleSource = `Sheet scale 1:${pick}`;
+      assumptions.push(`Several scales on the sheet (${all.map((n) => `1:${n}`).join(', ')}); used 1:${pick}, the one dimension "${ev!.text}" confirms`);
+    } else if (all.length > 1) assumptions.push(`Several scales on the sheet (${all.map((n) => `1:${n}`).join(', ')}); used ${mppDim ? 'the one the dimension confirms' : 'the most frequent'}, 1:${ratio}`);
     if (mppDim) {
-      const diff = mppDim / exact - 1;
-      assumptions.push(Math.abs(diff) > 0.05
-        ? `Conflict: dimension "${ev!.text}" implies a scale ${round(diff * 100, 1)}% off the stated one. Used ${scaleSource}; check the drawing`
+      const diff = mppDim / mpp - 1;
+      conflict = Math.abs(diff) > 0.05;
+      assumptions.push(conflict
+        ? `Conflict: dimension "${ev!.text}" implies a scale ${round(diff * 100, 1)}% off the stated one. Used ${scaleSource}, so this plan is a preview; check the drawing`
         : `Scale cross-checked against dimension "${ev!.text}" (within ${Math.max(0.1, round(Math.abs(diff) * 100, 1))}%)`);
     }
   } else if (sane(mppStated) && sane(mppDim) && Math.abs(mppDim / mppStated - 1) <= 0.05) {
@@ -289,11 +323,11 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     assumptions.push(scaleSource);
   }
 
-  const measured = !!exact && snapRatio >= 0.9 && (an.kind === 'pdf-vector' || an.kind === 'dxf');
+  const measured = !!exact && !conflict && snapRatio >= 0.9 && (an.kind === 'pdf-vector' || an.kind === 'dxf');
   assumptions.unshift(
     measured
       ? `Room outlines read by AI and snapped to the drawing's line work (${Math.round(snapRatio * 100)}% of corners); scale from the drawing`
-      : `Preview, not measured: ${!exact ? 'no exact scale on the drawing' : `only ${Math.round(snapRatio * 100)}% of corners matched line work`}`,
+      : `Preview, not measured: ${!exact ? 'no exact scale on the drawing' : conflict ? 'the stated scale and a dimension disagree' : `only ${Math.round(snapRatio * 100)}% of corners matched line work`}`,
     'Wall height 2.7 m (assumed)', `Wall thickness measured between neighbouring rooms where they face each other; otherwise exterior 0.30 m, interior 0.12 m (assumed, typical masonry: ${BOOK} Ch. 37)`,
   );
 
@@ -302,14 +336,14 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
   const toM = (p: Pt): Pt => [round((p[0] - ox) * m, 3), round((p[1] - oy) * m, 3)];
   const rooms: Room[] = rooms0.map((r, i) => ({
     id: `r${i + 1}`,
-    name: r.name.trim() || `Room ${i + 1}`,
+    name: r.name.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 60) || `Room ${i + 1}`, // a label, not a paragraph
     type: (ROOM_TYPES as readonly string[]).includes(r.type) ? (r.type as Room['type']) : 'other',
     polygon: r.poly.map(toM),
   }));
   const openings: Opening[] = openings0.map((o, i) => ({ id: `${o.kind[0]}${i + 1}`, kind: o.kind, a: toM(o.a), b: toM(o.b) }));
   // Vector outlines snap to wall faces (inside-face rooms); fall back to centreline merging if no wall gaps are found.
-  const faceWalls = wallsFromFaces(rooms);
-  const walls = faceWalls.some((w) => w.thickness !== 0.3 && w.thickness !== 0.12) ? faceWalls : wallsFromRooms(rooms);
+  const { walls: faceWalls, paired } = wallsFromFaces(rooms);
+  const walls = paired ? faceWalls : wallsFromRooms(rooms);
   const bb = bounds([...rooms.flatMap((r) => r.polygon), ...walls.flatMap((w) => [w.a, w.b])]);
   const fixtures: Fixture[] = (raw.fixtures ?? [])
     .filter((f) => (FIXTURE_KINDS as readonly string[]).includes(f.kind) && f.box?.length === 4)
@@ -323,11 +357,9 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
 
   // Levels: code parses the strings the model copied. Ceiling heights in mm or m (Metric Handbook Ch. 1 §2).
   const ceilText = raw.levels?.ceiling_height_text ?? null, floorText = raw.levels?.floor_level_text ?? null;
-  const ceilNum = ceilText?.match(/\d+(?:[.,]\d+)?/)?.[0];
-  const ceiling = ceilNum ? parseDimension(ceilNum) : null;
+  const ceiling = parseCeiling(ceilText);
   const ceilingOk = ceiling !== null && ceiling >= 2 && ceiling <= 8 ? ceiling : null;
-  const fl = floorText?.match(/([+\-−±]?)\s*(\d+(?:[.,]\d+)?)/);
-  const floor = fl ? (fl[1] === '-' || fl[1] === '−' ? -1 : 1) * Number(fl[2].replace(',', '.')) : null;
+  const floor = parseLevel(floorText);
   if (ceilingOk) assumptions[1] = `Ceiling height ${ceilingOk} m from "${ceilText}" on the drawing`;
   const plan: Plan = {
     version: 1,
@@ -340,7 +372,7 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     walls,
     openings,
     fixtures,
-    levels: { floor: floor !== null && Number.isFinite(floor) ? floor : null, ceiling: ceilingOk,
+    levels: { floor, ceiling: ceilingOk,
       source: [floorText && `floor "${floorText}"`, ceilingOk && `ceiling "${ceilText}"`].filter(Boolean).join(', ') || 'not stated on the drawing' },
     scale: { metersPerPx: m, source: scaleSource, ...(ratio ? { ratio } : {}) },
     source: { fileId, renderSha, mime: 'image/png', imageWidth: W, imageHeight: H, offset: [round(-ox * m, 3), round(-oy * m, 3)] },

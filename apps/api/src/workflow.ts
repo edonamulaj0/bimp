@@ -3,7 +3,7 @@ import { NonRetryableError } from 'cloudflare:workflows';
 import { buildPlan, readDrawing, type Raw } from './extract';
 import { analyze, type Analysis } from './ingest';
 import { checkPlan } from '../../shared/standards';
-import { type Env, now, sha256, toBase64 } from './util';
+import { type Env, failJob, now, sha256, toBase64 } from './util';
 
 export type IngestParams = { jobId: string; projectId: string; fileId: string };
 type Summary = Omit<Analysis, 'render_png' | 'segments' | 'texts'> & { renderSha: string; analysisKey: string; renderKey: string };
@@ -19,7 +19,11 @@ export class IngestWorkflow extends WorkflowEntrypoint<Env, IngestParams> {
   async run(event: WorkflowEvent<IngestParams>, step: WorkflowStep) {
     const { jobId, projectId, fileId } = event.payload;
     const db = this.env.DB;
-    const stage = (s: string) => db.prepare("UPDATE jobs SET status = 'running', stage = ?, updated_at = ? WHERE id = ? AND status != 'done'").bind(s, now(), jobId).run();
+    // Each step first checks the project still exists: a deleted project stops its reading instead of retrying.
+    const stage = async (s: string) => {
+      if (!(await db.prepare('SELECT 1 FROM projects WHERE id = ?').bind(projectId).first())) throw new NonRetryableError('The project was deleted.');
+      await db.prepare("UPDATE jobs SET status = 'running', stage = ?, updated_at = ? WHERE id = ? AND status != 'done'").bind(s, now(), jobId).run();
+    };
 
     try {
       const sum = await step.do('analyze drawing', RETRY, async (): Promise<Summary> => {
@@ -64,7 +68,9 @@ export class IngestWorkflow extends WorkflowEntrypoint<Env, IngestParams> {
           text: `Read ${f?.filename ?? 'the drawing'}: ${plan.rooms.length} rooms, ${doors} doors, ${windows} windows. Scale: ${plan.scale.source}. ${plan.measured ? 'Measured from the drawing.' : 'Preview, not measured.'}${warns ? ` ${warns} check${warns > 1 ? 's' : ''} to review in the canvas.` : ''}`,
         };
         // Idempotent: the plan id is the job id, and the message is written only by the run that flips the job to done.
-        await db.prepare('INSERT OR REPLACE INTO plans (id, project_id, file_id, data, created_at) VALUES (?,?,?,?,?)').bind(jobId, projectId, fileId, JSON.stringify(plan), now()).run();
+        // The plan is dated by its upload, so a slow older reading never replaces a newer drawing's plan.
+        const job = await db.prepare('SELECT created_at FROM jobs WHERE id = ?').bind(jobId).first<{ created_at: number }>();
+        await db.prepare('INSERT OR REPLACE INTO plans (id, project_id, file_id, data, created_at) VALUES (?,?,?,?,?)').bind(jobId, projectId, fileId, JSON.stringify(plan), job?.created_at ?? now()).run();
         const done = await db.prepare("UPDATE jobs SET status = 'done', stage = 'Done', updated_at = ? WHERE id = ? AND status != 'done'").bind(now(), jobId).run();
         if (done.meta.changes) await db.batch([
           db.prepare('INSERT INTO messages (project_id, role, content, created_at) VALUES (?,?,?,?)').bind(projectId, 'assistant', JSON.stringify(note), now()),
@@ -72,8 +78,11 @@ export class IngestWorkflow extends WorkflowEntrypoint<Env, IngestParams> {
         ]);
       });
     } catch (e) {
-      const msg = (e as Error).message || 'Ingestion failed';
-      await db.prepare("UPDATE jobs SET status = 'failed', stage = 'Failed', error = ?, updated_at = ? WHERE id = ?").bind(msg.slice(0, 500), now(), jobId).run();
+      const msg = (e as Error).message || '';
+      console.error('ingest', jobId, msg);
+      // Only messages written for users reach the chat; library and infrastructure errors get a fixed text.
+      const safe = /^(This |The |No rooms|Files up to|Upload a |The AI )/.test(msg) && msg.length < 300 ? msg : 'the reading failed. Try again, or upload a clearer PDF or image.';
+      if (!/project was deleted/.test(msg)) await failJob(this.env, jobId, projectId, safe).catch(() => {});
       throw e;
     }
   }
