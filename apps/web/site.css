@@ -17,7 +17,6 @@ p { margin: 0; }
 
 /* header */
 .site-head { position: sticky; top: 0; z-index: 20; background: rgb(244 241 234 / .92); backdrop-filter: saturate(1.2) blur(8px); border-bottom: 1px solid var(--line); }
-@media (prefers-color-scheme: dark) { .site-head { background: rgb(30 29 27 / .92); } }
 .head-row { display: flex; align-items: center; gap: var(--s6); min-height: 68px; }
 .mk-logo { display: inline-flex; height: 32px; line-height: 0; color: var(--ink); }
 .mk-logo svg { height: 100%; width: auto; }
@@ -95,7 +94,6 @@ section { padding: var(--s9) 0; }
 .dark .label.accent { color: #ff682b; }
 .dark p { color: #d9d4c9; }
 .dark .rule-top, .dark.rule-top { border-color: #f4f1ea; }
-@media (prefers-color-scheme: dark) { .dark { background: #141312; border-block: 1px solid var(--line); } }
 .dark .btn.ghost { color: #f4f1ea; border-color: #7d786e; }
 .dark .btn.ghost:hover { border-color: #f4f1ea; background: transparent; }
 .trust { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 0; border-top: 1px solid #f4f1ea; }

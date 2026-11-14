@@ -1,4 +1,4 @@
-// Brand marks as inline SVG, so they take the surrounding text colour (dark on light, light in dark mode).
+// Brand marks as inline SVG, so they take the surrounding text colour (the app is light only).
 import logoSvg from './brand/logo.svg?raw';
 import spinSvg from './brand/loading.svg?raw';
 

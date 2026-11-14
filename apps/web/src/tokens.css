@@ -33,14 +33,6 @@
   --shadow: 0 1px 0 rgb(30 29 27 / .04), 0 8px 24px -12px rgb(30 29 27 / .18);
   color-scheme: light;
 }
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #1e1d1b; --paper-2: #262522; --paper-3: #2c2a27; --ink: #f4f1ea; --ink-2: #d9d4c9; --muted: #a39e93;
-    --line: #3a3833; --line-strong: #7d786e; --focus: #f4f1ea; --ok: #7fbf8f; --warn: #f0a868; --danger: #ff8a7a;
-    --shadow: 0 1px 0 rgb(0 0 0 / .2), 0 8px 24px -12px rgb(0 0 0 / .6);
-    color-scheme: dark;
-  }
-}
 
 *, *::before, *::after { box-sizing: border-box; }
 html { -webkit-text-size-adjust: 100%; }

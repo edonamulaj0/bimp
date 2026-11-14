@@ -1,7 +1,7 @@
 @import './tokens.css';
 
-/* Aliases used by the drawing code (2D symbols, 3D labels). The plan is drawn on a slightly lighter sheet. */
-:root { --fg: var(--ink); --wall: var(--ink); --sheet: var(--paper-3); }
+/* Aliases used by the drawing code (2D symbols, 3D labels). The plan is drawn on a white sheet. */
+:root { --fg: var(--ink); --wall: #141414; --sheet: #fff; } /* the drawing sheet is white, like paper */
 html, body, #root { height: 100%; }
 a { color: inherit; }
 h1, h2, h3, h4 { font-weight: 400; letter-spacing: -.01em; margin: 0; }
@@ -155,7 +155,7 @@ details { margin-top: var(--s2); } details summary { cursor: pointer; } details 
 .plan2d .room:focus { outline: none; }
 .plan2d .focus-ring { fill: none; stroke: var(--accent); stroke-width: 3px; vector-effect: non-scaling-stroke; pointer-events: none; } /* a CSS outline would scale with the viewBox */
 .plan2d .labels { fill: var(--ink); font-family: var(--font); }
-.plan2d .dims { font-family: var(--mono); }
+.plan2d .dims { font-family: var(--font); }
 .plan2d.compact { cursor: default; }
 .plan2d-wrap { position: relative; width: 100%; height: 100%; }
 .plan3d { position: relative; width: 100%; height: 100%; overflow: hidden; touch-action: none; }
@@ -214,7 +214,7 @@ details { margin-top: var(--s2); } details summary { cursor: pointer; } details 
 .ip-rooms button:hover, .ip-rooms button:focus-visible { background: var(--paper-2); }
 .ip-rooms .mono { color: var(--muted); }
 .ip-actions { display: flex; flex-wrap: wrap; gap: var(--s2); margin-top: var(--s4); }
-.fixtures .suggested * { stroke-dasharray: 0.06 0.04; opacity: .85; }
+.fixtures .suggested * { stroke-dasharray: 5 3; opacity: .85; } /* px: symbols use non-scaling strokes */
 
 @media (max-width: 760px) {
   .login { grid-template-columns: 1fr; }

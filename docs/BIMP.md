@@ -557,6 +557,7 @@ wrangler.toml        Worker, R2, Queues, Hyperdrive, AI Gateway, Containers bind
 | 2026-11-13 | Fire escape distances and wall thickness from facing room edges added from Metric Handbook Ch. 31–42 |
 | 2026-11-13 | Fixtures read from drawings and rendered in 2D/3D; 3D uses the architectural cutaway convention |
 | 2026-11-14 | Design system: #FF682B / #F4F1EA / #1E1D1B, Jost + IBM Plex Mono; multi-page marketing site; redesigned dashboard |
+| 2026-11-14 | Light theme only; drawing sheet white. 2D plan follows drafting convention: cut plane 1.2 m, poché by wall type (45° masonry hatch ≥ 250 mm, cross-hatch load-bearing 150–250, open partitions), ISO 128-2 line weights (0.70 / 0.50 / 0.32 / 0.35 / 0.25 / 0.16 mm, non-scaling), above-cut dashed. Plan and Dimensioned modes: Dimensioned adds facade, structure and overall strings on all sides, room clear sizes and door widths, in mm |
 | 2026-11-14 | Review fixes (security, UI/UX, functionality): wall builder closes corners and pairs faces of any thickness; detail scales no longer win over the plan scale; scale/dimension conflicts make a plan a preview; escape distance sampled along edges and inside rooms; verifier hardened; per-user quotas; ingest parse limits; keyboard access to rooms, live chat regions, info panel docking |
 | 2026-11-14 | Room/plan info panel (net/gross, heights), door swing rules, feng shui checks and suggested layout |
 | 2026-11-14 | Dollhouse cutaway is the default 3D mode; procedural floor materials by room type |
