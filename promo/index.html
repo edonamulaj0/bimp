@@ -1,0 +1,458 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>bimp promo</title>
+<style>
+@font-face { font-family: 'Jost'; src: url('/node_modules/@fontsource-variable/jost/files/jost-latin-wght-normal.woff2') format('woff2'); font-weight: 100 900; }
+@font-face { font-family: 'Plex'; src: url('/node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2') format('woff2'); font-weight: 400; }
+@font-face { font-family: 'Plex'; src: url('/node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2') format('woff2'); font-weight: 500; }
+:root { --paper: #f4f1ea; --paper-2: #ebe6dc; --ink: #1e1d1b; --ink-2: #4a4843; --muted: #6b665d; --line: #d6cfc2; --line-strong: #8f897d; --accent: #ff682b; --surface: #fff; --font: 'Jost', sans-serif; --mono: 'Plex', monospace; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 1920px; height: 1080px; overflow: hidden; background: #000; }
+body { font-family: var(--font); color: var(--ink); -webkit-font-smoothing: antialiased; font-feature-settings: 'ss01'; }
+#stage { position: relative; width: 1920px; height: 1080px; overflow: hidden; background: var(--paper); }
+.scene { position: absolute; inset: 0; display: none; overflow: hidden; background: var(--paper); }
+.scene.dark { background: var(--ink); color: var(--paper); }
+.drift { position: absolute; inset: 0; transform-origin: 50% 50%; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.wo { display: inline-block; overflow: hidden; vertical-align: top; padding: 0 .02em .16em; margin-bottom: -.16em; }
+.wi { display: inline-block; will-change: transform; }
+.abs { position: absolute; }
+.center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; text-align: center; }
+h1, h2 { font-weight: 400; letter-spacing: -.035em; line-height: 1; }
+.muted { color: var(--muted); }
+.dark .muted { color: #a39d92; }
+
+/* 1 opening */
+#s1 .photo { position: absolute; inset: -40px; background: url('/apps/web/public/photos/frame.webp') center/cover; filter: grayscale(1) contrast(1.05); opacity: .34; }
+#s1 .scrim { position: absolute; inset: 0; background: linear-gradient(90deg, rgb(30 29 27 / .92) 0%, rgb(30 29 27 / .55) 60%, rgb(30 29 27 / .3) 100%); }
+#s1 h1 { position: absolute; left: 140px; top: 330px; font-size: 132px; width: 1500px; line-height: 1.04; }
+#s1 .rule { position: absolute; left: 146px; top: 668px; height: 8px; width: 520px; background: var(--accent); transform-origin: 0 50%; }
+#s1 .tag { position: absolute; left: 146px; top: 240px; font-size: 24px; letter-spacing: .04em; color: #a39d92; }
+
+/* 2 the grind */
+#s2a h1 { position: absolute; left: 140px; top: 250px; font-size: 136px; width: 1640px; line-height: 1.04; }
+.ruler { position: absolute; left: 0; top: 760px; width: 6000px; height: 150px; border-top: 3px solid var(--ink);
+  background: repeating-linear-gradient(90deg, var(--ink) 0 3px, transparent 3px 200px) 0 0 / 100% 70px no-repeat,
+              repeating-linear-gradient(90deg, var(--ink) 0 2px, transparent 2px 100px) 0 0 / 100% 46px no-repeat,
+              repeating-linear-gradient(90deg, var(--ink-2) 0 1.5px, transparent 1.5px 20px) 0 0 / 100% 24px no-repeat; }
+.ruler span { position: absolute; top: 84px; font: 500 26px var(--mono); transform: translateX(-50%); }
+.flash { position: absolute; inset: 0; display: none; align-items: center; padding-left: 140px; }
+.flash h1 { font-size: 330px; letter-spacing: -.05em; transform-origin: 0 50%; }
+.flash .fig { position: absolute; right: 140px; bottom: 120px; font: 500 44px var(--mono); }
+.flash .idx { position: absolute; left: 146px; top: 120px; font: 500 28px var(--mono); }
+.flash.inv { background: var(--ink); color: var(--paper); }
+#s2c h1 { font-size: 150px; }
+#s2c h2 { font-size: 64px; margin-top: 44px; color: #a39d92; letter-spacing: -.02em; }
+#s2c .rev { position: absolute; right: 190px; top: 150px; border: 5px solid var(--accent); color: var(--accent); font: 500 54px var(--mono); padding: 14px 34px; border-radius: 8px; transform-origin: 50% 50%; }
+
+/* 3 logo */
+#s3 { background: #1d1d1d; }
+#s3 .wm { width: 900px; height: 554px; margin-top: -60px; }
+#s3 h2 { font-size: 84px; margin-top: 26px; }
+#s3 p { font: 400 26px var(--mono); margin-top: 34px; letter-spacing: .02em; }
+
+/* 4 ask */
+#s4 .big { position: absolute; left: 0; right: 0; top: 400px; text-align: center; font-size: 230px; letter-spacing: -.05em; transform-origin: 50% 50%; white-space: nowrap; }
+.pill { position: absolute; left: 240px; top: 500px; width: 1440px; height: 136px; border-radius: 68px; background: var(--surface); border: 2.5px solid var(--ink); box-shadow: 0 30px 70px -30px rgb(30 29 27 / .35); display: flex; align-items: center; padding: 0 22px 0 40px; gap: 26px; }
+.pill svg.mk { width: 60px; height: 60px; flex: none; }
+.pill .txt { flex: 1; font-size: 43px; letter-spacing: -.01em; white-space: nowrap; overflow: hidden; }
+.caret { display: inline-block; width: 3px; height: 50px; background: var(--accent); vertical-align: -9px; margin-left: 4px; }
+.pill .go { flex: none; width: 94px; height: 94px; border-radius: 50%; background: var(--accent); display: grid; place-items: center; font-size: 48px; color: var(--ink); }
+#s4 .sub { position: absolute; left: 0; right: 0; top: 700px; text-align: center; font-size: 40px; }
+
+/* 5 answer stage */
+.plate { position: absolute; left: 90px; top: 84px; width: 1050px; background: var(--surface); border: 2px solid var(--ink); }
+.plate svg { display: block; width: 100%; height: auto; }
+.titleblock { display: grid; grid-template-columns: 1.2fr 1.8fr 1.2fr; border-top: 2px solid var(--ink); }
+.titleblock > div { padding: 12px 18px 14px; border-left: 1px solid var(--line); }
+.titleblock > div:first-child { border-left: 0; }
+.titleblock span { display: block; color: var(--muted); font-size: 17px; }
+.titleblock b { display: block; font-weight: 500; font-size: 23px; white-space: nowrap; }
+.drawing path { fill: none; stroke: var(--ink); stroke-linecap: square; vector-effect: non-scaling-stroke; }
+.drawing .g { stroke: var(--line); stroke-width: .7; }
+.drawing .w { stroke-width: 1.2; fill: var(--ink-2); }
+.drawing .w.ext { stroke-width: 1.6; fill: var(--ink); }
+.drawing .o { stroke-width: 1.2; }
+.drawing .o.win { fill: var(--surface); }
+.drawing .sw { stroke: var(--line-strong); stroke-width: .9; }
+.drawing .f { stroke: var(--ink-2); stroke-width: 1; fill: var(--surface); stroke-linejoin: round; }
+.drawing .ft { stroke: var(--line-strong); stroke-width: .7; stroke-linejoin: round; }
+.drawing .d { stroke: var(--ink-2); stroke-width: .9; }
+.drawing .dt { font: 500 11px var(--mono); fill: var(--ink-2); }
+.drawing .rl, .drawing .ra { paint-order: stroke; stroke: var(--surface); stroke-width: 4px; stroke-linejoin: round; }
+.drawing .rl { font: 500 12.5px var(--font); fill: var(--ink); }
+.drawing .ra { font: 400 10px var(--mono); fill: var(--muted); }
+.drawing path.room { fill: var(--accent); fill-opacity: 0; stroke: var(--accent); stroke-width: 3; stroke-opacity: 0; }
+.col { position: absolute; left: 1210px; top: 84px; width: 620px; }
+.bubble { margin-left: auto; width: fit-content; max-width: 600px; background: var(--ink); color: var(--paper); font-size: 31px; line-height: 1.25; padding: 20px 28px; border-radius: 26px 26px 6px 26px; }
+.who { display: flex; align-items: center; gap: 14px; margin-top: 24px; font-size: 26px; font-weight: 500; }
+.who svg { width: 38px; height: 38px; }
+.who .st { font-weight: 400; color: var(--muted); margin-left: 6px; }
+.card { margin-top: 18px; background: var(--surface); border: 1.5px solid var(--line-strong); border-radius: 10px; padding: 4px 30px 22px; }
+.row { display: flex; justify-content: space-between; align-items: baseline; padding: 11px 0 10px; border-bottom: 1px solid var(--line); font-size: 27px; }
+.row span { color: var(--muted); }
+.row b { font: 500 27px var(--mono); }
+.bigrow { display: flex; align-items: baseline; gap: 22px; margin-top: 16px; }
+.bignum { font-size: 150px; line-height: .95; letter-spacing: -.05em; font-variant-numeric: tabular-nums; }
+.unit { font-size: 44px; letter-spacing: -.02em; white-space: nowrap; }
+.subl { font-size: 26px; color: var(--muted); margin-top: 4px; }
+.calc { margin-top: 14px; border: 1.5px dashed var(--line-strong); border-radius: 6px; padding: 13px 16px; font: 400 20.5px/1.45 var(--mono); color: var(--ink-2); white-space: nowrap; }
+.chip { display: inline-flex; align-items: center; gap: 12px; margin-top: 14px; border: 1.5px solid var(--ink); border-radius: 30px; padding: 9px 20px 9px 16px; font-size: 23px; background: var(--paper); }
+.chip i { width: 13px; height: 13px; border-radius: 50%; background: var(--accent); }
+.caption { position: absolute; left: 1210px; top: 992px; width: 700px; font-size: 42px; letter-spacing: -.03em; line-height: 1.05; }
+
+/* 7 workspace */
+#s7 { background: var(--paper-2); }
+#s7 h1 { position: absolute; left: 0; right: 0; top: 62px; text-align: center; font-size: 76px; }
+.persp { position: absolute; inset: 0; perspective: 2400px; }
+.browser { position: absolute; left: 130px; top: 200px; width: 1660px; border-radius: 16px; overflow: hidden; border: 2px solid var(--ink); box-shadow: 0 60px 120px -40px rgb(30 29 27 / .5); background: var(--paper); transform-origin: 9% 88%; }
+.browser .bar { height: 44px; background: var(--ink); display: flex; align-items: center; gap: 9px; padding: 0 18px; }
+.browser .bar i { width: 13px; height: 13px; border-radius: 50%; background: #5a5852; }
+.browser .bar span { margin-left: 22px; font: 400 17px var(--mono); color: #a39d92; }
+.browser img { display: block; width: 100%; }
+.note { position: absolute; right: 110px; bottom: 96px; background: var(--ink); color: var(--paper); font-size: 46px; letter-spacing: -.02em; padding: 26px 40px; border-radius: 12px; display: flex; align-items: center; gap: 20px; }
+.note i { width: 18px; height: 18px; border-radius: 50%; background: var(--accent); }
+
+/* 9 features */
+.beat { position: absolute; inset: 0; display: none; }
+.beat .idx { position: absolute; left: 110px; top: 300px; font: 500 28px var(--mono); color: var(--muted); }
+.beat h1 { position: absolute; left: 106px; top: 360px; width: 640px; font-size: 100px; line-height: 1; }
+.beat p { position: absolute; left: 110px; top: 720px; width: 560px; font-size: 34px; line-height: 1.3; color: var(--ink-2); }
+.beat .shot { position: absolute; left: 790px; top: 110px; width: 1040px; height: 860px; border: 2px solid var(--ink); border-radius: 12px; overflow: hidden; background: #fff; box-shadow: 0 40px 90px -40px rgb(30 29 27 / .45); }
+.beat .shot img { position: absolute; transform-origin: 0 0; }
+.beat.list h1 { position: static; width: auto; font-size: 170px; letter-spacing: -.045em; line-height: 1.08; }
+.beat.list .wrap { position: absolute; left: 140px; top: 190px; }
+.beat.list h1.dim { color: var(--line-strong); }
+
+/* 10 formats */
+#s10 h1 { position: absolute; left: 0; right: 0; top: 190px; text-align: center; font-size: 104px; line-height: 1.05; }
+.fmts { position: absolute; left: 150px; right: 150px; top: 560px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 30px; }
+.fmt { background: var(--surface); border: 2px solid var(--ink); border-radius: 12px; padding: 38px 40px 40px; }
+.fmt b { display: block; font-weight: 400; font-size: 62px; letter-spacing: -.03em; }
+.fmt span { display: inline-block; margin-top: 26px; font: 500 24px var(--mono); padding: 8px 18px; border-radius: 30px; background: var(--ink); color: var(--paper); }
+.fmt span.pv { background: transparent; color: var(--ink); border: 1.5px solid var(--ink); }
+
+/* 11 end */
+#s11 .wm { width: 640px; height: 394px; margin-top: -40px; }
+#s11 h2 { font-size: 92px; margin-top: 30px; }
+#s11 .cta { display: flex; align-items: center; gap: 28px; margin-top: 56px; }
+#s11 .btn { background: var(--accent); color: var(--ink); font-size: 36px; font-weight: 500; padding: 22px 44px; border-radius: 6px; }
+#s11 .url { font: 400 32px var(--mono); }
+#s11 p { font-size: 30px; margin-top: 34px; }
+</style>
+</head>
+<body>
+<svg width="0" height="0" style="position:absolute"><defs>
+  <symbol id="mark" viewBox="-47 -47 94 94">
+    <circle r="34" fill="var(--mk-bg, #fff)"/><path d="M 0 0 L 0 -34 A 34 34 0 0 1 34 0 Z" fill="#ff682b"/><path d="M 0 0 L 0 34 A 34 34 0 0 1 -34 0 Z" fill="#ff682b"/>
+    <circle r="34" fill="none" stroke="currentColor" stroke-width="6.5"/><line x1="0" y1="-45" x2="0" y2="45" stroke="currentColor" stroke-width="6.5" stroke-linecap="round"/><line x1="-45" y1="0" x2="45" y2="0" stroke="currentColor" stroke-width="6.5" stroke-linecap="round"/>
+  </symbol>
+</defs></svg>
+
+<div id="stage">
+
+<!-- 1 -->
+<section class="scene dark" id="s1" data-scene="0,6.25">
+  <div class="photo" id="s1photo"></div><div class="scrim"></div>
+  <div class="tag mono" data-in="0.5,1,fade">From the sheet to the site</div>
+  <h1><span data-words="0.7,0.11">Someone has to turn</span><br><span data-words="1.6,0.11">the drawing into a building.</span></h1>
+  <div class="rule" id="s1rule"></div>
+</section>
+
+<!-- 2a -->
+<section class="scene" id="s2a" data-scene="6.25,9.375">
+  <h1><span data-words="6.35,0.08">Hours with a scale rule</span><br><span class="muted" data-words="7.0,0.08">and a calculator.</span></h1>
+  <div class="ruler" id="ruler"></div>
+</section>
+
+<!-- 2b -->
+<section class="scene" id="s2b" data-scene="9.375,11.875">
+  <div class="flash" data-t="9.375"><div class="idx mono">01</div><h1>Areas.</h1><div class="fig">61.56 m²</div></div>
+  <div class="flash inv" data-t="10"><div class="idx mono">02</div><h1>Lengths.</h1><div class="fig">16.35 m</div></div>
+  <div class="flash" data-t="10.625"><div class="idx mono">03</div><h1>Counts.</h1><div class="fig">13 doors · 13 windows</div></div>
+  <div class="flash inv" data-t="11.25"><div class="idx mono">04</div><h1>Quantities.</h1><div class="fig">0.45 m³</div></div>
+</section>
+
+<!-- 2c -->
+<section class="scene dark" id="s2c" data-scene="11.875,13.75">
+  <div class="rev" id="rev">REV B</div>
+  <div class="center"><h1 data-words="11.95,0.07">Then the revision lands.</h1><h2 data-in="12.7,0.6,up">And you start again.</h2></div>
+</section>
+
+<!-- 3 logo -->
+<section class="scene dark" id="s3" data-scene="13.75,20">
+  <div class="drift" data-drift="1,1.05"><div class="center">
+    <div class="wm" id="wm1"></div>
+    <h2 data-words="16.55,0.1">Your BIM partner.</h2>
+    <p class="muted" data-in="17.3,0.8,fade">Building Information Modeling Pilot</p>
+  </div></div>
+</section>
+
+<!-- 4 ask -->
+<section class="scene" id="s4" data-scene="20,25">
+  <h1 class="big" id="askbig"><span data-words="20.1,0.09">Ask the drawing.</span></h1>
+  <div class="pill" id="pill"><svg class="mk"><use href="#mark"/></svg><div class="txt"><span id="typed"></span><span class="caret" id="caret"></span></div><div class="go" id="go">→</div></div>
+  <div class="sub muted" data-in="22.4,0.8,up">Plain questions, in your language.</div>
+</section>
+
+<!-- 5/6 answers -->
+<section class="scene" id="s5" data-scene="25,46.25">
+  <div class="drift" data-drift="1,1.025">
+    <div class="plate" data-in="25,0.8,fade">
+      <div id="plan"></div>
+      <div class="titleblock"><div><span>Project</span><b>Pilot house · <span class="mono" style="display:inline;color:inherit;font-size:.92em">1:100</span></b></div><div><span>Room</span><b id="tbroom">Whole house</b></div><div><span>Net floor area</span><b class="mono" id="tbarea">161.3 m²</b></div></div>
+    </div>
+    <div id="rounds"></div>
+    <div class="caption" data-out="45.9,0.3"><span data-words="33.4,0.07">Every answer shows its working.</span></div>
+  </div>
+</section>
+
+<!-- 7 workspace -->
+<section class="scene" id="s7" data-scene="46.25,52.5">
+  <h1 data-out="49.4,0.4"><span data-words="46.4,0.06">The drawing on one side.</span> <span class="muted" data-words="47.3,0.06">The answer on the other.</span></h1>
+  <div class="persp"><div class="browser" id="browser"><div class="bar"><i></i><i></i><i></i><span>bimp · Pilot house</span></div><img src="assets/ws-2d-chip.jpg"></div></div>
+  <div class="note" data-in="50.4,0.6,up"><i></i>Unverified numbers are marked.</div>
+</section>
+
+<!-- 9 features -->
+<section class="scene" id="s9" data-scene="52.5,61.25">
+  <div class="beat" data-t="52.5" data-focus="1445,1040,1.8"><div class="idx">01</div><h1>Plans and dimensions.</h1><p>Switch any plan to its dimensioned view, at the drawing's scale.</p><div class="shot"><img src="assets/ws-dim.jpg"></div></div>
+  <div class="beat" data-t="54.6875" data-focus="1445,1040,1.8"><div class="idx">02</div><h1>Checked against standards.</h1><p>Escape distances measured on the plan, with the source cited.</p><div class="shot"><img src="assets/ws-escape.jpg"></div></div>
+  <div class="beat" data-t="56.875" data-focus="1575,990,1.72"><div class="idx">03</div><h1>And a 3D view.</h1><p>The same plan as a model, beside the sheet when you want it.</p><div class="shot"><img src="assets/ws-split.jpg"></div></div>
+  <div class="beat list" data-t="59.0625"><div class="wrap"><h1 class="l">Comments.</h1><h1 class="l">Revisions.</h1><h1 class="l">Print to scale.</h1></div></div>
+</section>
+
+<!-- 10 formats -->
+<section class="scene" id="s10" data-scene="61.25,65.625">
+  <h1><span data-words="61.35,0.06">Works with the drawings</span><br><span class="muted" data-words="61.75,0.06">you already have.</span></h1>
+  <div class="fmts">
+    <div class="fmt" data-in="62.45,0.7,up"><b>Vector PDF</b><span>Measured</span></div>
+    <div class="fmt" data-in="62.65,0.7,up"><b>DXF</b><span>Measured</span></div>
+    <div class="fmt" data-in="62.85,0.7,up"><b>Scans and photos</b><span class="pv">Preview</span></div>
+  </div>
+</section>
+
+<!-- 11 end -->
+<section class="scene" id="s11" data-scene="65.625,99">
+  <div class="drift" data-drift="1,1.04"><div class="center">
+    <div class="wm" id="wm2"></div>
+    <h2><span data-words="67.95,0.08">Ask the drawing.</span> <span class="muted" data-words="68.55,0.08">Skip the math.</span></h2>
+    <div class="cta"><div class="btn" data-in="69.45,0.6,pop">Start a project</div><div class="url" data-in="69.65,0.7,fade">bimp.edonaamulaj.workers.dev</div></div>
+    <p class="muted" data-in="70.15,0.8,fade">Free during the pilot.</p>
+  </div></div>
+</section>
+
+</div>
+
+<script src="wordmark.js"></script>
+<script>
+const DUR = 73.4, FPS = 30;
+const clamp = (v) => Math.max(0, Math.min(1, v));
+const pr = (t, a, d) => clamp((t - a) / d);
+const expo = (p) => (p >= 1 ? 1 : 1 - Math.pow(2, -10 * p));
+const out3 = (p) => 1 - Math.pow(1 - p, 3);
+const io = (p) => (p < 0.5 ? 4 * p * p * p : 1 - Math.pow(-2 * p + 2, 3) / 2);
+const back = (p) => { const c1 = 1.70158, c3 = c1 + 1; return 1 + c3 * Math.pow(p - 1, 3) + c1 * Math.pow(p - 1, 2); };
+const lerp = (a, b, p) => a + (b - a) * p;
+const $ = (s, r = document) => r.querySelector(s), $$ = (s, r = document) => [...r.querySelectorAll(s)];
+
+// ---- the three worked questions (numbers from the live app and the marketing page, all on the pilot house)
+const ROUNDS = [
+  { t: 25, long: true, q: 'How many 600 × 600 tiles for the kitchen, dining and living floor?', room: 'Kitchen / dining / living', area: '61.56 m²',
+    rows: [['Floor area', '61.56 m²'], ['One tile', '0.36 m²'], ['To cover', '171'], ['Waste', '+10 %']], big: 189, dec: 0, unit: 'tiles', sub: '171 to cover, 18 spare', calc: '61.56 / (0.6 × 0.6) = 171\nceil(171 × 1.10) = 189 tiles', end: 37.5 },
+  { t: 37.5, q: 'How much skirting for the main bedroom, in 2.4 m lengths?', room: 'Main bedroom', area: '19.44 m²',
+    rows: [['Perimeter', '18.00 m'], ['Less 2 doors', '− 1.65 m'], ['To fix', '16.35 m'], ['Length', '2.4 m']], big: 7, dec: 0, unit: 'lengths', sub: '0.45 m left over', calc: '18.00 − 1.65 = 16.35 m\nceil(16.35 / 2.4) = 7 lengths', end: 41.875 },
+  { t: 41.875, q: 'How much screed for the bathroom at 50 mm?', room: 'Bathroom', area: '9.00 m²',
+    rows: [['Floor area', '9.00 m²'], ['Depth', '0.05 m'], ['Source', 'Bathroom']], big: 0.45, dec: 2, unit: 'm³ of screed', sub: 'measured to wall centre lines', calc: '9.00 × 0.05 = 0.45 m³', end: 46.25 },
+];
+const counters = [];
+function buildRounds() {
+  const host = $('#rounds');
+  for (const r of ROUNDS) {
+    const L = r.long, o = r.end - 0.35;
+    const rowT = (i) => (L ? r.t + 3.2 + i * 0.45 : r.t + 0.7 + i * 0.2);
+    const bigT = L ? r.t + 5.2 : r.t + 1.5, bigD = L ? 1.2 : 0.7;
+    const el = document.createElement('div');
+    el.className = 'col';
+    el.innerHTML = `
+      <div class="bubble" data-in="${r.t + (L ? 0.2 : 0.05)},0.6,up" data-out="${o},0.3">${r.q}</div>
+      <div class="who" data-in="${r.t + (L ? 0.7 : 0.3)},0.5,fade" data-out="${o},0.3"><svg><use href="#mark"/></svg>bimp AI<span class="st"></span></div>
+      <div class="card" data-in="${L ? r.t + 3.0 : r.t + 0.55},0.6,up" data-out="${o},0.3">
+        ${r.rows.map(([k, v], i) => `<div class="row" data-in="${rowT(i)},0.5,fade"><span>${k}</span><b>${v}</b></div>`).join('')}
+        <div class="bigrow" data-in="${bigT},0.5,up"><div class="bignum">0</div><div class="unit">${r.unit}</div></div>
+        <div class="subl" data-in="${bigT + bigD + 0.1},0.5,fade">${r.sub}</div>
+        <div class="calc" data-in="${bigT + bigD + (L ? 0.6 : 0.3)},0.5,fade">${r.calc.replace('\n', '<br>')}</div>
+      </div>
+      <div class="chip" data-in="${bigT + bigD + (L ? 1.2 : 0.5)},0.5,pop" data-out="${o},0.3"><i></i>${r.room} · <span class="mono">${r.area}</span></div>`;
+    host.appendChild(el);
+    counters.push({ el: $('.bignum', el), st: $('.st', el), r, t: bigT, d: bigD });
+  }
+}
+
+// ---- declarative in/out animation
+const A = [];
+function initAnim() {
+  $$('[data-words]').forEach((el) => {
+    const [t0, st = 0.07] = el.dataset.words.split(',').map(Number);
+    const words = el.textContent.trim().split(/\s+/);
+    el.textContent = '';
+    words.forEach((w, i) => {
+      const o = document.createElement('span'); o.className = 'wo';
+      const s = document.createElement('span'); s.className = 'wi'; s.textContent = w;
+      o.appendChild(s); el.appendChild(o); if (i < words.length - 1) el.appendChild(document.createTextNode(' '));
+      A.push({ el: s, t: t0 + i * st, d: 0.9, type: 'word' });
+    });
+  });
+  $$('[data-in], [data-out]').forEach((el) => {
+    const [t = -1, d = 0.7, type = 'up'] = (el.dataset.in || '-1,0.1,none').split(',');
+    A.push({ el, t: +t, d: +d, type, out: el.dataset.out ? el.dataset.out.split(',').map(Number) : null });
+  });
+}
+function applyAnim(t) {
+  for (const a of A) {
+    const p = pr(t, a.t, a.d), e = expo(p);
+    let tr = '', op = 1, clip = '';
+    switch (a.type) {
+      case 'word': tr = `translateY(${(1 - e) * 112}%)`; break;
+      case 'up': tr = `translateY(${(1 - e) * 46}px)`; op = Math.min(1, p * 3); break;
+      case 'fade': op = out3(p); break;
+      case 'pop': tr = `scale(${p <= 0 ? 0.8 : 0.8 + 0.2 * back(Math.min(1, p))})`; op = Math.min(1, p * 4); break;
+      case 'zoom': tr = `scale(${1.1 - 0.1 * e})`; op = Math.min(1, p * 2.5); break;
+    }
+    if (a.out) { const q = pr(t, a.out[0], a.out[1] || 0.4); op *= 1 - q; tr += ` translateY(${-26 * io(q)}px)`; }
+    a.el.style.transform = tr; a.el.style.opacity = op;
+  }
+}
+
+// ---- scenes
+const scenes = $$('.scene').map((el) => { const [a, b] = el.dataset.scene.split(',').map(Number); return { el, a, b, drift: $('[data-drift]', el) }; });
+let planEls = null, rooms = {};
+const wm = {};
+const flashes = $$('.flash').map((el) => ({ el, t: +el.dataset.t, h: $('h1', el), fig: $('.fig', el) }));
+const beats = $$('.beat').map((el) => ({ el, t: +el.dataset.t, img: $('.shot img', el), shot: $('.shot', el), h: $('h1', el), p: $('p', el), idx: $('.idx', el), focus: el.dataset.focus ? el.dataset.focus.split(',').map(Number) : null, lines: $$('.l', el) }));
+const ASK = ROUNDS[0].q;
+
+function render(t) {
+  for (const s of scenes) {
+    const on = t >= s.a && t < s.b;
+    s.el.style.display = on ? 'block' : 'none';
+    if (on && s.drift) { const [f, to] = s.drift.dataset.drift.split(',').map(Number); s.drift.style.transform = `scale(${lerp(f, to, (t - s.a) / (s.b - s.a))})`; }
+  }
+  applyAnim(t);
+
+  // 1 opening
+  $('#s1photo').style.transform = `scale(${1.02 + t * 0.012})`;
+  $('#s1rule').style.transform = `scaleX(${expo(pr(t, 2.9, 1.1))})`;
+  // 2a ruler slides
+  $('#ruler').style.transform = `translateX(${-200 - (t - 6.25) * 420}px)`;
+  $('#ruler').style.opacity = out3(pr(t, 6.4, 0.6));
+  // 2b flashes
+  for (const f of flashes) {
+    const on = t >= f.t && t < f.t + 0.625;
+    f.el.style.display = on ? 'flex' : 'none';
+    if (on) { const p = (t - f.t) / 0.625; f.h.style.transform = `scale(${1.12 - 0.12 * expo(p * 1.6)})`; f.fig.style.opacity = out3(pr(p, 0.12, 0.3)); }
+  }
+  // 2c stamp
+  { const p = pr(t, 12.2, 0.35); $('#rev').style.transform = `rotate(${lerp(-22, -8, expo(p))}deg) scale(${lerp(2.2, 1, expo(p))})`; $('#rev').style.opacity = Math.min(1, p * 4); }
+  // 3 + 11 wordmarks (the brand's own timeline)
+  wm.a(t - 14.05); wm.b((t - 65.85) * 1.15);
+  // 4 ask
+  { const p = io(pr(t, 21.25, 0.8));
+    $('#askbig').style.transform = `translateY(${-250 * p}px) scale(${1 - 0.62 * p})`;
+    const pp = pr(t, 21.55, 0.7), pill = $('#pill');
+    pill.style.opacity = Math.min(1, pp * 3); pill.style.transform = `translateY(${(1 - expo(pp)) * 70}px) scale(${0.94 + 0.06 * expo(pp)})`;
+    const n = Math.floor(pr(t, 22.05, 1.95) * ASK.length);
+    $('#typed').textContent = ASK.slice(0, n);
+    $('#caret').style.opacity = t < 24.05 ? 1 : (Math.floor((t - 24.05) * 3) % 2 ? 0 : 1);
+    const g = pr(t, 24.35, 0.5); $('#go').style.transform = `scale(${g > 0 && g < 1 ? 1 - 0.16 * Math.sin(g * Math.PI) : 1})`;
+    const ex = io(pr(t, 24.6, 0.4)); if (ex > 0) { pill.style.transform = `translateY(${-60 * ex}px) scale(${1 - 0.04 * ex})`; pill.style.opacity = 1 - ex; }
+  }
+  // 5 plan drafts itself, rooms light up, numbers count
+  if (planEls && t >= 24.5 && t < 46.5) {
+    const tl = t - 25.1;
+    for (const e of planEls.g) e.el.style.strokeDashoffset = 1 - io(clamp((tl - e.i * 0.05) / 1.5));
+    for (const e of planEls.lines) { e.el.style.strokeDashoffset = 1 - io(clamp((tl - 0.3 - e.i * 0.009) / 1.0)); if (e.fill) e.el.style.fillOpacity = clamp((tl - 0.8 - e.i * 0.009) / 0.7); }
+    for (const e of planEls.text) e.style.opacity = clamp((tl - 1.9) / 0.7);
+    let current = null;
+    for (const r of ROUNDS) {
+      const start = r.long ? r.t + 2.8 : r.t + 0.35;
+      const p = out3(pr(t, start, 0.5)) * (1 - pr(t, r.end - 0.3, 0.3));
+      const el = rooms[r.room]; el.style.fillOpacity = 0.2 * p; el.style.strokeOpacity = p;
+      if (t >= start && t < r.end) current = r;
+    }
+    $('#tbroom').textContent = current ? current.room : 'Whole house';
+    $('#tbarea').textContent = current ? current.area : '161.3 m²';
+  }
+  for (const c of counters) {
+    const p = expo(pr(t, c.t, c.d));
+    c.el.textContent = (c.r.big * p).toFixed(c.r.dec);
+    if (c.r.long) { const done = t >= c.r.t + 2.9; c.st.textContent = done ? '' : ['· Reading the plan', '· Reading the plan.', '· Reading the plan..', '· Reading the plan...'][Math.floor(Math.max(0, t - c.r.t) * 3) % 4]; }
+  }
+  // 7 workspace: rise with a tilt, then push in on the answer
+  { const p = expo(pr(t, 46.35, 1.3)), z = io(pr(t, 49.5, 1.6));
+    $('#browser').style.transform = `translateY(${(1 - p) * 320 - z * 96}px) rotateX(${(1 - p) * 16}deg) scale(${lerp(0.94, 1, p) + z * 0.34 + (t - 46.25) * 0.004})`;
+    $('#browser').style.opacity = Math.min(1, pr(t, 46.35, 0.4)); }
+  // 9 feature beats
+  const BL = 2.1875;
+  for (const b of beats) {
+    const on = t >= b.t && t < b.t + BL;
+    b.el.style.display = on ? 'block' : 'none';
+    if (!on) continue;
+    const tl = t - b.t, e = expo(pr(tl, 0, 0.8));
+    if (b.focus) {
+      const [fx, fy, sc] = b.focus, s = (1040 / 3200) * sc * (1.06 - 0.06 * e + tl * 0.006);
+      b.img.style.transform = `translate(${520 - fx * s}px, ${430 - fy * s}px) scale(${s})`;
+      b.shot.style.transform = `translateX(${(1 - e) * 160}px)`; b.shot.style.opacity = Math.min(1, tl * 6);
+      b.h.style.transform = `translateY(${(1 - expo(pr(tl, 0.05, 0.8))) * 60}px)`; b.h.style.opacity = Math.min(1, tl * 5);
+      b.p.style.opacity = out3(pr(tl, 0.35, 0.5)); b.idx.style.opacity = out3(pr(tl, 0, 0.4));
+    } else {
+      b.lines.forEach((l, i) => { const p = pr(tl, i * 0.42, 0.7); l.style.transform = `translateX(${(1 - expo(p)) * -90}px)`; l.style.opacity = Math.min(1, p * 4); });
+    }
+  }
+}
+
+// ---- boot
+async function boot() {
+  buildRounds();
+  const svgText = await (await fetch('/apps/web/partials/plan-drawing.html')).text();
+  $('#plan').innerHTML = svgText;
+  const svg = $('#plan svg');
+  const idx = (el) => +(el.style.getPropertyValue('--i') || 0);
+  planEls = { g: [], lines: [], text: $$('text', svg) };
+  let n = 0;
+  $$('path:not(.room)', svg).forEach((el) => {
+    el.style.strokeDasharray = 1; el.style.strokeDashoffset = 1;
+    if (el.classList.contains('g')) planEls.g.push({ el, i: idx(el) });
+    else { const fill = el.classList.contains('w') || el.classList.contains('f'); if (fill) el.style.fillOpacity = 0; planEls.lines.push({ el, i: el.style.getPropertyValue('--i') ? idx(el) : n, fill }); n++; }
+  });
+  $$('path.room', svg).forEach((el) => { rooms[el.dataset.name] = el; });
+  const terrace = rooms['Terrace']; if (terrace) terrace.style.display = 'none';
+
+  $('#wm1').innerHTML = BIMP.wordmarkSvg('w1', { ink: '#ffffff', disc: '#1d1d1d' });
+  $('#wm2').innerHTML = BIMP.wordmarkSvg('w2', { ink: '#1e1d1b', disc: '#f4f1ea', guide: '#8f897d' });
+  $$('.wm svg').forEach((s) => { s.style.width = '100%'; s.style.height = '100%'; });
+  // the wordmark needs layout to measure its strokes: show both scenes while binding
+  $('#s3').style.display = 'block'; $('#s11').style.display = 'block';
+  wm.a = BIMP.wordmarkFrame($('#wm1 svg')); wm.b = BIMP.wordmarkFrame($('#wm2 svg'));
+
+  const ruler = $('#ruler');
+  for (let i = 0; i < 30; i++) { const s = document.createElement('span'); s.style.left = i * 200 + 'px'; s.textContent = i; ruler.appendChild(s); }
+
+  const loads = [];
+  $$('img').forEach((im) => loads.push(im.decode()));
+  await Promise.all(loads);
+  await document.fonts.load('400 40px Jost'); await document.fonts.load('500 20px Plex'); await document.fonts.load('400 20px Plex'); await document.fonts.ready;
+  initAnim();
+  render(0);
+  window.render = render; window.DUR = DUR; window.FPS = FPS; window.ready = true;
+  // preview in a browser: ?play starts the clock, ?t=12.5 holds a frame
+  const q = new URLSearchParams(location.search);
+  if (q.has('t')) render(+q.get('t'));
+  if (q.has('play')) { const t0 = performance.now() - (+q.get('play') || 0) * 1000; const tick = () => { const t = (performance.now() - t0) / 1000; render(Math.min(t, DUR - 0.01)); if (t < DUR) requestAnimationFrame(tick); }; tick(); }
+}
+boot();
+</script>
+</body>
+</html>
