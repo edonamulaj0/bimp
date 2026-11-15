@@ -379,7 +379,7 @@ code { font-family: var(--font); font-weight: 500; background: var(--soft); padd
 .asks-note { grid-column: 1 / span 7; margin-top: var(--s6); font-size: .9rem; color: var(--muted); max-width: 44rem; }
 .numeral { display: block; font: 400 .85rem var(--mono); color: var(--muted); margin-bottom: clamp(2rem, 5vw, 4.5rem); }
 
-/* company hero (text only) */
+/* about hero (text only) */
 .ah-hero { padding: clamp(1.5rem, 3vw, 2.5rem) 0 clamp(3rem, 7vw, 6rem); overflow-x: clip; }
 .ah-hero .copy { grid-column: 1 / span 9; }
 .ah-hero h1 { font-size: clamp(2.75rem, 7.2vw, 7rem); margin: clamp(2rem, 5vw, 4.5rem) 0 var(--s6); }
@@ -483,7 +483,7 @@ code { font-family: var(--font); font-weight: 500; background: var(--soft); padd
 .ah-list p { color: var(--ink-2); max-width: 34rem; }
 .ah-list .more { justify-self: end; }
 
-/* legal and company pages */
+/* legal and about pages */
 .legal { display: grid; grid-template-columns: 14rem minmax(0, 1fr); gap: clamp(2rem, 5vw, 4.5rem); padding-top: var(--s6); padding-bottom: var(--s9); }
 .legal nav { position: sticky; top: 88px; align-self: start; font-size: .9rem; }
 .legal nav ol { margin: 0; padding: 0 0 0 1.2rem; display: grid; gap: 6px; color: var(--muted); }
