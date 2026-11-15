@@ -1,0 +1,185 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>bimp demo film</title>
+<!-- Assembles the film from a step-by-step recording of the real app (take/frames.json + JPEG frames):
+     title cards, captions, camera moves and the pointer are added here; everything inside the window is the app. -->
+<style>
+@font-face{font-family:Jost;src:url(node_modules/@fontsource-variable/jost/files/jost-latin-wght-normal.woff2) format('woff2');font-weight:100 900}
+@font-face{font-family:Plex;src:url(node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2) format('woff2');font-weight:400}
+@font-face{font-family:Plex;src:url(node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2) format('woff2');font-weight:500}
+:root{--paper:#f4f1ea;--ink:#1e1d1b;--accent:#ff682b;--dark:#171614}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:var(--dark);font-family:Jost,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+.h{opacity:0}
+#stage{position:absolute;inset:0;overflow:hidden;background:var(--dark)}
+#grid{position:absolute;inset:-200px;background-image:linear-gradient(rgba(244,241,234,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(244,241,234,.045) 1px,transparent 1px),linear-gradient(rgba(244,241,234,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(244,241,234,.022) 1px,transparent 1px);background-size:160px 160px,160px 160px,32px 32px,32px 32px}
+#glow{position:absolute;left:560px;top:140px;width:800px;height:800px;border-radius:50%;background:radial-gradient(circle,rgba(255,104,43,.2),transparent 62%)}
+#cam{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0}
+.card{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--paper);text-align:center}
+#logo1 svg,#logo2 svg{height:300px;color:var(--paper);display:block}
+#logo2 svg{height:230px}
+.tag{font-size:50px;font-weight:400;letter-spacing:-.01em;margin-top:26px}
+.tag span,.big span{display:inline-block}
+.tag b{color:var(--accent);font-weight:500}
+.kick{font-family:Plex;font-size:21px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:30px}
+.big{font-size:88px;font-weight:500;letter-spacing:-.025em;line-height:1.08;max-width:1500px}
+.big em{font-style:normal;color:var(--accent)}
+.big s{text-decoration:none;position:relative;color:#a39d92}
+.big s i{position:absolute;left:-6px;right:-6px;top:54%;height:7px;background:var(--accent);transform-origin:left;border-radius:4px}
+.chips{display:flex;gap:16px;margin-top:44px}
+.chip{font-family:Plex;font-size:21px;border:1.5px solid rgba(244,241,234,.35);padding:11px 20px;border-radius:99px;color:var(--paper)}
+.chip i{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--accent);margin-right:11px}
+.sub2{font-family:Plex;font-size:22px;color:#a39d92;margin-top:34px;letter-spacing:.04em}
+#scrim{position:absolute;left:0;top:0;width:1920px;height:170px;background:linear-gradient(#171614 108px,rgba(23,22,20,.85) 124px,rgba(23,22,20,0))}
+.cap{position:absolute;left:115px;top:24px;display:flex;align-items:center;gap:22px;color:var(--paper)}
+.cap .no{font-family:Plex;font-weight:500;font-size:22px;color:var(--ink);background:var(--accent);width:56px;height:56px;border-radius:50%;display:grid;place-items:center}
+.cap h2{font-size:42px;font-weight:500;letter-spacing:-.02em;line-height:1}
+.cap p{font-size:23px;color:#bdb6a9;margin-top:7px}
+#brandtag{position:absolute;right:115px;top:30px;color:var(--paper)}
+#brandtag svg{height:46px;color:var(--paper)}
+#live{position:absolute;right:300px;top:44px;font-family:Plex;font-size:15px;letter-spacing:.12em;text-transform:uppercase;color:#bdb6a9;display:flex;align-items:center;gap:9px}
+#live i{width:9px;height:9px;border-radius:50%;background:var(--accent)}
+#win{position:absolute;left:115px;top:118px;width:1690px;height:950.6px;background:var(--paper);border-radius:12px;overflow:hidden;box-shadow:0 0 0 1px rgba(244,241,234,.14),0 50px 120px -20px rgba(0,0,0,.75);transform-origin:50% 60%}
+#app{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0;transform:scale(.88021)}
+#app img{position:absolute;inset:0;width:1920px;height:1080px}
+#cursor{position:absolute;left:0;top:0;width:26px;height:26px;z-index:50;filter:drop-shadow(0 2px 4px rgba(0,0,0,.4))}
+.rip{position:absolute;width:44px;height:44px;margin:-22px;border-radius:50%;border:3px solid var(--accent);opacity:0;z-index:49}
+#file{position:absolute;left:0;top:0;background:#fff;border:1.5px solid var(--ink);border-radius:7px;padding:9px 15px;font-family:Plex;font-size:15px;display:flex;gap:10px;align-items:center;box-shadow:0 18px 40px -8px rgba(0,0,0,.5);z-index:48;rotate:-4deg;opacity:0}
+#file i{width:14px;height:17px;border:1.5px solid var(--ink);border-radius:2px}
+#fade{position:absolute;inset:0;background:#000;opacity:0;z-index:99}
+</style></head>
+<body>
+<div id="stage">
+  <div id="grid"></div><div id="glow" class="h"></div>
+  <div id="cam">
+    <div id="win" class="h"><div id="app">
+      <img id="fa"><div id="file"><i></i>plan-swiss-3575.webp</div>
+      <svg id="cursor" viewBox="0 0 24 24"><path d="M4 2L4 20L9 15.5L12.2 22.5L15 21.2L11.8 14.5L18.5 14.5Z" fill="#1e1d1b" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+    </div></div>
+  </div>
+  <div id="scrim" class="h"></div>
+  <div id="brandtag" class="h"></div>
+  <div id="live" class="h"><i></i>The live app</div>
+  <div class="cap h" id="cap1"><span class="no">01</span><div><h2>Drop in any drawing</h2><p>PDF, DXF, scans and photos. bimp reads the rooms and measures them.</p></div></div>
+  <div class="cap h" id="cap2"><span class="no">02</span><div><h2>Ask in plain words</h2><p>The answer is highlighted on the sheet, with the working written out.</p></div></div>
+  <div class="cap h" id="cap3"><span class="no">03</span><div><h2>Comment right on the sheet</h2><p>Pin a question to a spot. bimp answers in the thread, from the drawing around the pin.</p></div></div>
+  <div class="cap h" id="cap4"><span class="no">04</span><div><h2>It asks about symbols it can't name</h2><p>Tell bimp once. It keeps your answer to learn the symbol.</p></div></div>
+  <div class="cap h" id="cap5"><span class="no">05</span><div><h2>Checks, escape routes, dimensions</h2><p>Flagged against design standards, each with its source.</p></div></div>
+
+  <div class="card" id="c-intro"><div id="logo1" class="h"></div><div class="tag" id="tag1"></div></div>
+  <div class="card h" id="c-prob1"><div class="kick">The problem</div><div class="big" id="pb1"></div></div>
+  <div class="card h" id="c-prob2"><div class="big" id="pb2"><div class="h" id="pb2a">General AI <s>guesses<i id="strike"></i></s>.</div><div class="h" id="pb2b"><em>bimp</em> measures, and shows you where.</div></div></div>
+  <div class="card h" id="c-outro"><div id="logo2"></div><div class="tag h" id="tag2">Ask your drawings. <b>See the answer on the sheet.</b></div>
+    <div class="chips"><span class="chip h"><i></i>No source, no answer</span><span class="chip h"><i></i>The model reads, the tools measure</span><span class="chip h"><i></i>Show the work</span></div>
+    <div class="sub2 h" id="sub2">bimp · your BIM Pilot</div></div>
+  <div id="fade"></div>
+</div>
+
+<script>
+const TAKE = new URLSearchParams(location.search).get('take') || 'take';
+const $ = (s) => document.querySelector(s), $$ = (s) => [...document.querySelectorAll(s)];
+const OUT = 'cubic-bezier(.16,1,.3,1)', INOUT = 'cubic-bezier(.65,0,.35,1)', BACK = 'cubic-bezier(.34,1.56,.64,1)';
+const anims = [], fns = [];
+function A(el, t, d, kf, ease = OUT) {
+  if (typeof el === 'string') el = $(el);
+  const a = el.animate(kf, { delay: t * 1000, duration: Math.max(d, .001) * 1000, fill: 'forwards', easing: ease });
+  a.pause(); anims.push(a); return a;
+}
+const show = (el, t, d = .6, dy = 14) => A(el, t, d, [{ opacity: 0, translate: `0 ${dy}px` }, { opacity: 1, translate: '0 0' }]);
+const hide = (el, t, d = .35, dy = 0) => A(el, t, d, { opacity: 0, translate: `0 ${dy}px` }, 'ease-in');
+const words = (el, html) => { el.innerHTML = html.split(' ').map((w) => `<span class="h">${w}&nbsp;</span>`).join(''); return [...el.children]; };
+
+const T_APP = 9.9;                       // the window is on screen from here
+const SQUEEZE = { reading: 3.4, q1_think: 1.5, q2_think: 1.4, c_think: 1.9 };   // waits, shortened to this many seconds
+const WX = 115, WY = 118, WS = .88021;   // window position and scale on the stage
+const S = (x, y) => [WX + x * WS, WY + y * WS];
+
+async function build() {
+  const [lg, frames] = await Promise.all([fetch('logo.svg').then((r) => r.text()), fetch(`${TAKE}/frames.json`).then((r) => r.json())]);
+  $('#logo1').innerHTML = lg; $('#logo2').innerHTML = lg; $('#brandtag').innerHTML = lg;
+  await document.fonts.ready;
+
+  // ----- the app's own timeline: waits squeezed, everything else at its recorded pace -----
+  const waitLen = {}; for (const f of frames) if (f.wait && SQUEEZE[f.seg]) waitLen[f.seg] = (waitLen[f.seg] || 0) + f.dur;
+  const m = {}; let t = T_APP; const starts = [];
+  for (const f of frames) {
+    if (!(f.seg in m)) m[f.seg] = t;
+    f.t = t; starts.push(t);
+    t += f.wait && SQUEEZE[f.seg] ? f.dur * SQUEEZE[f.seg] / waitLen[f.seg] : f.dur;
+  }
+  const T_END = t, TOTAL = T_END + 7.2;
+  window.TOTAL = TOTAL; window.marks = m;
+
+  // ===== intro =====
+  A('#glow', 0, 2.5, { opacity: 1 }); A('#grid', 0, TOTAL, [{ translate: '0 0' }, { translate: '-160px -96px' }], 'linear');
+  A('#logo1', .3, 1.5, [{ opacity: 0, clipPath: 'inset(0 100% 0 0)', scale: .94 }, { opacity: 1, clipPath: 'inset(0 0% 0 0)', scale: 1 }]);
+  words($('#tag1'), 'Ask your drawings. <b>See</b> <b>the</b> <b>answer</b> <b>on</b> <b>the</b> <b>sheet.</b>').forEach((w, i) => A(w, 1.5 + i * .11, .6, [{ opacity: 0, translate: '0 22px' }, { opacity: 1, translate: '0 0' }]));
+  A('#c-intro', 4.0, .45, { opacity: 0, scale: 1.06 }, 'ease-in');
+  A('#c-prob1', 4.4, .01, { opacity: 1 });
+  words($('#pb1'), 'Site engineers lose <em>hours</em> <em>every</em> <em>day</em> hunting through drawings.').forEach((w, i) => A(w, 4.5 + i * .09, .6, [{ opacity: 0, translate: '0 30px' }, { opacity: 1, translate: '0 0' }]));
+  A('#c-prob1 .kick', 4.4, .5, [{ opacity: 0 }, { opacity: 1 }]);
+  A('#c-prob1', 6.9, .35, { opacity: 0, translate: '0 -30px' }, 'ease-in');
+  A('#c-prob2', 7.2, .01, { opacity: 1 });
+  show('#pb2a', 7.25, .6, 30); A('#strike', 7.25, .01, { scale: '0 1' }); A('#strike', 7.9, .35, { scale: '1 1' });
+  show('#pb2b', 8.2, .7, 30);
+  A('#c-prob2', 9.45, .4, { opacity: 0, scale: 1.05 }, 'ease-in');
+  A('#glow', 9.4, 1, { opacity: .4 });
+
+  // ===== the app =====
+  A('#win', T_APP - .15, 1.1, [{ opacity: 0, translate: '0 90px', scale: .9 }, { opacity: 1, translate: '0 0', scale: 1 }]);
+  show('#scrim', T_APP, .6, 0); show('#brandtag', T_APP + .3, .6, -10); show('#live', T_APP + .5, .6, -10);
+  const caps = [['#cap1', T_APP + .3, m.q1_type - .2], ['#cap2', m.q1_type, m.c_tool - .2], ['#cap3', m.c_tool, m.s_hover - .2], ['#cap4', m.s_hover, m.ov_tab - .2], ['#cap5', m.ov_tab, T_END - .1]];
+  for (const [id, a, b] of caps) { show(id, a + .1, .7, -16); hide(id, b - .25, .3, -10); }
+
+  // camera: [time, seconds, app x, app y, zoom]
+  const cam = $('#cam');
+  const shots = [
+    [m.read - .2, 1.3, 960, 580, 1.13],
+    [m.q1_type - .1, 1.0, 330, 790, 1.72], [m.q1_think + .25, 1.3, 650, 570, 1.4],
+    [m.q2_type - .1, .9, 330, 790, 1.72], [m.q2_think + .25, 1.3, 700, 600, 1.4],
+    [m.c_tool - .1, 1.0, 960, 430, 1.22], [m.c_pin + .5, 1.0, 900, 440, 1.85], [m.c_think + .1, 1.3, 1330, 430, 1.5],
+    [m.c_done - .2, 1.0, 900, 520, 1.2],
+    [m.s_hover + .2, 1.1, 800, 480, 1.42], [m.s_open - .25, .9, 640, 720, 2.05], [m.s_saved + .1, 1.1, 800, 480, 1.42],
+    [m.ov_tab - .1, 1.1, 1320, 430, 1.48], [m.escape + .2, 1.2, 1060, 540, 1.28], [m.dims + .1, 1.1, 960, 570, 1.1],
+    [T_END - .5, .9, 960, 540, 1, true],
+  ];
+  for (const [t0, d, ax, ay, s, raw] of shots) {
+    const [cx, cy] = raw ? [ax, ay] : S(ax, ay);
+    const tx = Math.min(0, Math.max(1920 * (1 - s), 960 - s * cx)), ty = Math.min(0, Math.max(1080 * (1 - s), 540 - s * cy));
+    A(cam, t0, d, { transform: `translate(${tx}px,${ty}px) scale(${s})` }, INOUT);
+  }
+  // clicks
+  for (const f of frames) if (f.click) {
+    const r = document.createElement('div'); r.className = 'rip'; r.style.left = f.x + 'px'; r.style.top = f.y + 'px'; $('#app').appendChild(r);
+    A(r, f.t, .5, [{ opacity: .9, scale: .2 }, { opacity: 0, scale: 1.3 }]);
+  }
+  // the file being carried to the canvas (the upload itself is real; a file drag can't be recorded)
+  A('#file', m.drag, .3, { opacity: 1 }); A('#file', m.drop - .05, .25, { opacity: 0, scale: .6 }, 'ease-in');
+
+  // frame lookup
+  const img = $('#fa'), cur = $('#cursor'), file = $('#file'); let shown = -1;
+  const at = (tt) => { let lo = 0, hi = starts.length - 1; while (lo < hi) { const mid = (lo + hi + 1) >> 1; if (starts[mid] <= tt) lo = mid; else hi = mid - 1; } return lo; };
+  fns.push(async (tt) => {
+    const i = at(Math.max(tt, T_APP)), f = frames[i];
+    cur.style.translate = `${f.x - 4}px ${f.y - 2}px`; file.style.translate = `${f.x + 14}px ${f.y + 12}px`;
+    if (i !== shown) { shown = i; img.src = `${TAKE}/${f.f}`; await img.decode(); }
+  });
+
+  // ===== outro =====
+  hide('#cap5', T_END - .3, .3, -10); hide('#brandtag', T_END - .2, .3); hide('#live', T_END - .2, .3); hide('#scrim', T_END, .4);
+  A('#win', T_END, .8, { opacity: 0, scale: .86, translate: '0 60px' }, 'cubic-bezier(.5,0,.75,0)');
+  A('#glow', T_END, 1.2, { opacity: 1 });
+  const o = T_END + .7;
+  A('#c-outro', o, .01, { opacity: 1 });
+  A('#logo2', o, 1.2, [{ opacity: 0, clipPath: 'inset(0 100% 0 0)', scale: .94 }, { opacity: 1, clipPath: 'inset(0 0% 0 0)', scale: 1 }]);
+  show('#tag2', o + .9, .8, 24);
+  $$('#c-outro .chip').forEach((c, i) => show(c, o + 1.7 + i * .22, .6, 20));
+  show('#sub2', o + 2.7, .8, 10);
+  A('#c-outro', o, 6.5, [{ scale: 1 }, { scale: 1.035 }], 'linear');
+  A('#fade', TOTAL - 1.1, 1.0, { opacity: 1 }, 'ease-in');
+
+  window.seek = async (tt) => { for (const a of anims) a.currentTime = tt * 1000; for (const f of fns) await f(tt); };
+  await window.seek(0); window.ready = true;
+}
+build();
+</script>
+</body></html>
