@@ -224,8 +224,10 @@ export function ProjectPage({ id }: { id: string }) {
             { label: 'Welcome tour', onSelect: () => (tourStep.value = 0) },
             { label: tutorialOpen.value ? 'Hide the first-project guide' : 'First-project guide', onSelect: () => { tutorialOpen.value = !tutorialOpen.value; store('bimp.tutorial', tutorialOpen.value ? 'open' : 'closed'); } },
             { label: 'Keyboard shortcuts', hint: '?', onSelect: () => setShowKeys(true) },
-            { label: 'Light / dark', onSelect: toggleTheme },
           ]} />
+          <button class="theme-btn" type="button" onClick={toggleTheme} aria-label="Switch between light and dark" title="Light / dark">
+            <svg viewBox="0 0 20 20" aria-hidden="true"><circle cx="10" cy="10" r="7.25" /><path class="half" d="M10 2.75a7.25 7.25 0 0 1 0 14.5z" /></svg>
+          </button>
           <button class="btn ghost sm hide-sm" onClick={upload}><Icon name="upload" size={16} />Add drawings</button>
           <span class="tb-sep hide-sm" aria-hidden="true" />
           <button class="icon-btn hide-sm" aria-pressed={leftOpen} aria-controls="ws-left" onClick={() => setLeftOpen(!leftOpen)} aria-label="Files and bimp AI panel" title={leftOpen ? 'Hide files and bimp AI' : 'Show files and bimp AI'}><Icon name="sidebar" /></button>

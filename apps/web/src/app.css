@@ -103,6 +103,13 @@ kbd { font: 500 11px/1 var(--font); padding: 2px 5px; border: 1px solid var(--li
 .icon-btn:hover { background: var(--hover); color: var(--ink); }
 .icon-btn[aria-pressed="true"], .icon-btn[aria-expanded="true"] { background: var(--sel); color: var(--ink); }
 .icon-btn.xs { width: 24px; height: 24px; }
+/* light / dark: the same half-filled circle as the site header, turning over on hover */
+.theme-btn { display: inline-grid; place-items: center; width: var(--ctl); height: var(--ctl); flex: none; padding: 0; border: 0; border-radius: 6px; background: none; color: var(--ink-2); cursor: pointer; transition: color .35s cubic-bezier(.19, .7, .22, 1), transform .7s cubic-bezier(.19, .7, .22, 1); }
+.theme-btn:hover { color: var(--ink); transform: rotate(180deg); }
+.theme-btn svg { width: 20px; height: 20px; }
+.theme-btn circle { fill: none; stroke: currentColor; stroke-width: 1.4; }
+.theme-btn .half { fill: currentColor; }
+@media (prefers-reduced-motion: reduce) { .theme-btn { transition: none; } .theme-btn:hover { transform: none; } }
 .main-col { display: flex; flex-direction: column; min-width: 0; min-height: 0; height: 100%; overflow: clip; background: var(--surface); }
 .page-body { flex: 1; min-height: 0; overflow: auto; padding: var(--s4) var(--s5) var(--s7); }
 .page-body:focus, .ws-main:focus { outline: none; }
