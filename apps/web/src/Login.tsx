@@ -79,6 +79,7 @@ export function Login() {
                   aria-invalid={err.field === 'pw2'} aria-describedby={desc('pw2')} />
               </label>
             )}
+            {mode === 'signup' && <p class="muted small login-legal">By creating an account you agree to the <a class="link" href="/terms/" target="_blank" rel="noopener">Terms of Service</a> and confirm you have read the <a class="link" href="/privacy/" target="_blank" rel="noopener">Privacy Policy</a>, including that drawings you upload are sent to our AI provider to be read.</p>}
             <p class="err" role="alert" id="login-err">{err.text}</p>
             <button class="btn login-go" disabled={busy}>{busy ? 'One moment…' : mode === 'login' ? 'Sign in' : 'Create account'}</button>
           </form>
@@ -88,7 +89,7 @@ export function Login() {
               : <>Have an account? <button type="button" class="link" onClick={() => switchTo('login')}>Sign in</button></>}
           </p>
         </div>
-        <p class="small login-foot"><span>Every answer, on the drawing.</span><a class="link" href="/docs/#asking">How answers are checked</a></p>
+        <p class="small login-foot"><span>Every answer, on the drawing.</span><span class="login-links"><a class="link" href="/docs/#asking">How answers are checked</a><a class="link" href="/privacy/">Privacy</a><a class="link" href="/terms/">Terms</a></span></p>
       </main>
       <aside class="login-right" aria-hidden="true">
         <p class="bp-caption"><span>Concrete house, garden side</span><span>Photograph: Declan Sun</span></p>

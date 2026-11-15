@@ -63,8 +63,8 @@ function ShareCrop({ projectId, render, box }: { projectId: string; render: stri
       navigator.clipboard?.writeText(d.url).then(() => say('Image link copied')).catch(() => {});
     } catch (e) { setState({ err: (e as Error).message }); }
   };
-  if (state.url) return <a class="link small ev-share" href={state.url} target="_blank" rel="noopener">Open image (link copied)</a>;
-  return <button type="button" class="link small ev-share" onClick={make} disabled={state.busy} title={state.err ?? 'A link to this piece of the sheet as an image, for a report or a message'}>{state.busy ? 'Making image…' : state.err ? 'Could not share. Try again' : 'Share as image'}</button>;
+  if (state.url) return <a class="link small ev-share" href={state.url} target="_blank" rel="noopener">Open image (public link copied)</a>;
+  return <button type="button" class="link small ev-share" onClick={make} disabled={state.busy} title={state.err ?? 'Creates a public link to this piece of the sheet as an image, for a report or a message. Anyone with the link can open it without signing in.'}>{state.busy ? 'Making image…' : state.err ? 'Could not share. Try again' : 'Share as image'}</button>;
 }
 
 /** The body of an answer from bimp: text, citations, calculation, assumptions, and whether it was verified. */

@@ -41,18 +41,18 @@ export function CanvasMenu({ x, y, title, sections, onClose }: { x: number; y: n
   };
   return (
     <>
-      {sheet && <div class="cm-scrim" aria-hidden="true" onPointerDown={() => (armed.current = true)} onClick={(e) => { if (chosen(e)) onClose(); }} />}
-      <div ref={ref} onPointerDown={() => (armed.current = true)} class={`cm${sheet ? ' as-sheet' : ''}`} role="menu" aria-label={title ?? 'Canvas'} onKeyDown={keys} onContextMenu={(e) => e.preventDefault()}
+      {sheet && <div class="cvm-scrim" aria-hidden="true" onPointerDown={() => (armed.current = true)} onClick={(e) => { if (chosen(e)) onClose(); }} />}
+      <div ref={ref} onPointerDown={() => (armed.current = true)} class={`cvm${sheet ? ' as-sheet' : ''}`} role="menu" aria-label={title ?? 'Canvas'} onKeyDown={keys} onContextMenu={(e) => e.preventDefault()}
         style={sheet ? undefined : { left: `${pos.left}px`, top: `${pos.top}px` }}>
-        {title && <div class="cm-title" aria-hidden="true">{title}</div>}
+        {title && <div class="cvm-title" aria-hidden="true">{title}</div>}
         {sections.map((s, i) => (
-          <div key={i} role="group" aria-label={s.title} class="cm-group">
-            {s.title && <div class="cm-h" aria-hidden="true">{s.title}</div>}
+          <div key={i} role="group" aria-label={s.title} class="cvm-group">
+            {s.title && <div class="cvm-h" aria-hidden="true">{s.title}</div>}
             {s.items.map((it) => (
               <button key={it.label} type="button" role={it.checked === undefined ? 'menuitem' : 'menuitemcheckbox'} aria-checked={it.checked} disabled={it.disabled}
-                class={`cm-item${it.danger ? ' danger' : ''}`} onClick={(e) => { if (!chosen(e)) return; onClose(); it.onSelect(); }}>
-                <span class="cm-ico" aria-hidden="true">{it.checked !== undefined ? (it.checked ? <Icon name="check" size={16} /> : null) : it.icon ? <Icon name={it.icon} size={16} /> : null}</span>
-                <span class="cm-label">{it.label}</span>
+                class={`cvm-item${it.danger ? ' danger' : ''}`} onClick={(e) => { if (!chosen(e)) return; onClose(); it.onSelect(); }}>
+                <span class="cvm-ico" aria-hidden="true">{it.checked !== undefined ? (it.checked ? <Icon name="check" size={16} /> : null) : it.icon ? <Icon name={it.icon} size={16} /> : null}</span>
+                <span class="cvm-label">{it.label}</span>
                 {it.hint && <kbd aria-hidden="true">{it.hint}</kbd>}
               </button>
             ))}

@@ -9,7 +9,7 @@ import { roomDims } from '../apps/shared/rooms';
 
 const p = housePlan(), S = 50, M = 70; // px per metre, margin
 const indoor = p.rooms, terrace = [houseTerrace], allRooms = [...indoor, ...terrace];
-const bw = Math.max(...indoor.flatMap((r) => r.polygon.map((q) => q[0]))), bh = Math.max(...indoor.flatMap((r) => r.polygon.map((q) => q[1])));
+const bw = p.width, bh = p.height; // the house on its wall centre lines; room outlines stop at the wall faces
 const f = (n: number) => Math.round(n * 10) / 10;
 const X = (x: number) => f(M + x * S), Y = (y: number) => f(M + y * S);
 const poly = (q: Pt[]) => 'M' + q.map(([x, y]) => `${X(x)},${Y(y)}`).join('L') + 'Z';

@@ -166,7 +166,7 @@ export function ProjectPage({ id }: { id: string }) {
   // V C R M: tools; Escape: drop the pin being written, then back to Select; ?: shortcuts
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || document.querySelector('dialog[open], .cm, .tour-card')) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || document.querySelector('dialog[open], .cvm, .tour-card')) return;
       const t = TOOL_KEYS[e.key.toLowerCase()];
       if (t) { e.preventDefault(); setTool(tool === t && t !== 'select' ? 'select' : t); }
       else if (e.key === 'Escape' && (draft || tool !== 'select')) { if (draft) setDraft(null); else setTool('select'); }
@@ -357,7 +357,7 @@ function CanvasPane({ onRelabel, plan: drawn, planId, projectId, name, loading, 
   // F: fit
   useEffect(() => {
     const k = (e: KeyboardEvent) => {
-      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || document.querySelector('dialog[open], .cm, .tour-card')) return;
+      if (e.metaKey || e.ctrlKey || e.altKey || typing(e.target) || document.querySelector('dialog[open], .cvm, .tour-card')) return;
       if (e.key === 'f' || e.key === 'F') { e.preventDefault(); fit(); }
     };
     addEventListener('keydown', k);

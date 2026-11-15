@@ -7,6 +7,8 @@ const ITER = 100_000;
 const COOKIE = '__Host-bimp_session';
 const SESSION_MS = 7 * 24 * 3600 * 1000;
 const WINDOW_MS = 15 * 60 * 1000;
+/** The date on the Terms of Service and Privacy Policy pages (apps/web/terms, apps/web/privacy). Change it when they change. */
+export const TERMS_VERSION = '2026-11-15';
 const enc = new TextEncoder();
 const b64 = (u: Uint8Array) => btoa(String.fromCharCode(...u));
 const unb64 = (s: string) => Uint8Array.from(atob(s), (c) => c.charCodeAt(0));
@@ -38,8 +40,9 @@ export async function createUser(env: Env, email: string, password: string) {
   const hash = await pbkdf2(password, salt, ITER);
   const id = uid();
   try {
-    await env.DB.prepare('INSERT INTO users (id, email, pw_hash, pw_salt, pw_iter, created_at) VALUES (?,?,?,?,?,?)')
-      .bind(id, email, b64(hash), b64(salt), ITER, now()).run();
+    // the sign-up screen states that creating an account accepts the terms: which version, and when, is kept with the account
+    await env.DB.prepare('INSERT INTO users (id, email, pw_hash, pw_salt, pw_iter, created_at, terms_version, terms_accepted_at) VALUES (?,?,?,?,?,?,?,?)')
+      .bind(id, email, b64(hash), b64(salt), ITER, now(), TERMS_VERSION, now()).run();
   } catch (e) {
     if (!String(e).includes('UNIQUE')) throw e;
     throw fail(409, 'An account with this email already exists. Sign in instead.');

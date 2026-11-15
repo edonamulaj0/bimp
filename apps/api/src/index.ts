@@ -4,7 +4,7 @@ import { housePlan } from '../../shared/house-plan';
 import { clipPlan, parseRegion, regionContents, regionSize, type Region } from '../../shared/region';
 import { type Fixture, type Plan, FIXTURE_KINDS, area, evidenceFor, sourceBox } from '../../shared/plan';
 import { costUsd, meter } from './gemini';
-import { visuals, visualsOn } from './visuals';
+import { forgetProjectImages, visuals, visualsOn } from './visuals';
 import { quickAnswer } from './quick';
 import { briefText, planFacts } from './brief';
 import { ask } from './agent';
@@ -47,6 +47,46 @@ app.post('/auth/logout', async (c) => { await endSession(c); return c.json({ ok:
 app.get('/me', requireUser, async (c) => {
   await refreshSamples(c.env, c.get('user').id).catch(() => {}); // never block sign-in on it
   return c.json({ user: c.get('user'), ai: !!c.env.GEMINI_API_KEY, visuals: visualsOn(c.env), teams: await myTeams(c.env, c.get('user').id) });
+});
+
+/**
+ * Closes the signed-in person's account, after they give their password again. Their personal projects go with
+ * everything stored for them. A team keeps its work: projects they created in a team that has another owner pass to
+ * that owner, and so does the team itself; a team they alone are in is deleted with its projects. A team where they
+ * are the only owner but others are members has to be handed over or deleted first.
+ */
+app.delete('/me', requireUser, async (c) => {
+  const me = c.get('user');
+  const { password } = ((await c.req.json().catch(() => null)) ?? {}) as { password?: unknown };
+  if (typeof password !== 'string' || !password) throw fail(400, 'Enter your password to delete your account.');
+  try { await checkLogin(c.env, me.email, password.slice(0, 256), c.req.header('cf-connecting-ip') ?? 'local'); }
+  catch (e) { if (e instanceof HTTPException && e.status === 401) throw fail(403, 'That password is incorrect.'); throw e; }
+
+  const { results: mine } = await c.env.DB.prepare(
+    `SELECT t.id, t.name, t.created_by,
+            (SELECT COUNT(*) FROM team_members x WHERE x.team_id = t.id AND x.user_id != ?1) AS others,
+            (SELECT x.user_id FROM team_members x WHERE x.team_id = t.id AND x.user_id != ?1 AND x.role = 'owner' ORDER BY x.created_at LIMIT 1) AS heir
+     FROM team_members m JOIN teams t ON t.id = m.team_id WHERE m.user_id = ?1`,
+  ).bind(me.id).all<{ id: string; name: string; created_by: string; others: number; heir: string | null }>();
+  const stuck = mine.filter((t) => t.others > 0 && !t.heir);
+  if (stuck.length) throw fail(409, `You are the only owner of ${stuck.map((t) => `"${t.name}"`).join(', ')}. Make someone else an owner, or delete the team, then delete your account.`);
+
+  // a team with another owner keeps going under that owner, with the projects this person created in it (this also
+  // covers teams they created and have since left)
+  const heir = "(SELECT x.user_id FROM team_members x WHERE x.team_id = %s AND x.user_id != ?1 AND x.role = 'owner' ORDER BY x.created_at LIMIT 1)";
+  await c.env.DB.batch([
+    c.env.DB.prepare(`UPDATE projects SET user_id = ${heir.replace('%s', 'projects.team_id')} WHERE user_id = ?1 AND team_id IS NOT NULL AND ${heir.replace('%s', 'projects.team_id')} IS NOT NULL`).bind(me.id),
+    c.env.DB.prepare(`UPDATE teams SET created_by = ${heir.replace('%s', 'teams.id')} WHERE created_by = ?1 AND ${heir.replace('%s', 'teams.id')} IS NOT NULL`).bind(me.id),
+  ]);
+  const { results: own } = await c.env.DB.prepare('SELECT id FROM projects WHERE user_id = ?').bind(me.id).all<{ id: string }>();
+  for (const p of own) await removeProject(c.env, p.id);
+  await c.env.DB.batch([
+    c.env.DB.prepare('DELETE FROM teams WHERE created_by = ?').bind(me.id), // only teams nobody else is in are left under this person
+    c.env.DB.prepare('DELETE FROM login_failures WHERE key LIKE ?').bind(`e:${me.email}%`),
+    c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(me.id), // sessions and memberships go with the user
+  ]);
+  await endSession(c);
+  return c.json({ ok: true });
 });
 
 /**
@@ -158,18 +198,24 @@ projects.get('/:id', async (c) => {
 projects.delete('/:id', async (c) => {
   const project = await projectAccess(c, c.req.param('id'));
   if (project.role !== 'owner') throw fail(403, 'Only the project owner can delete it.');
-  // Stop running ingestion first so it can't write renders after the R2 sweep, then remove rows, then files.
-  const { results: active } = await c.env.DB.prepare("SELECT id FROM jobs WHERE project_id = ? AND status IN ('queued', 'running')").bind(project.id).all<{ id: string }>();
-  await Promise.all(active.map((j) => c.env.INGEST_WORKFLOW.get(j.id).then((w) => w.terminate()).catch(() => {})));
-  await c.env.DB.prepare('DELETE FROM projects WHERE id = ?').bind(project.id).run();
-  let cursor: string | undefined;
-  do {
-    const page = await c.env.FILES.list({ prefix: `projects/${project.id}/`, cursor });
-    if (page.objects.length) await c.env.FILES.delete(page.objects.map((o) => o.key));
-    cursor = page.truncated ? page.cursor : undefined;
-  } while (cursor);
+  await removeProject(c.env, project.id);
   return c.json({ ok: true });
 });
+
+/** Deletes a project and everything stored for it: its rows, its files in R2 and its images at Cloudinary. */
+async function removeProject(env: Env, id: string) {
+  // Stop running ingestion first so it can't write renders after the R2 sweep, then remove images, rows, then files.
+  const { results: active } = await env.DB.prepare("SELECT id FROM jobs WHERE project_id = ? AND status IN ('queued', 'running')").bind(id).all<{ id: string }>();
+  await Promise.all(active.map((j) => env.INGEST_WORKFLOW.get(j.id).then((w) => w.terminate()).catch(() => {})));
+  await forgetProjectImages(env, id);
+  await env.DB.prepare('DELETE FROM projects WHERE id = ?').bind(id).run();
+  let cursor: string | undefined;
+  do {
+    const page = await env.FILES.list({ prefix: `projects/${id}/`, cursor });
+    if (page.objects.length) await env.FILES.delete(page.objects.map((o) => o.key));
+    cursor = page.truncated ? page.cursor : undefined;
+  } while (cursor);
+}
 
 const publicProject = ({ user_id: _u, team_id: _t, ...p }: Access) => p;
 

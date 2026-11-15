@@ -7,7 +7,9 @@ const roomAt = (plan: Plan, p: Pt) => plan.rooms.find((r) => inside(p, r.polygon
 /** The rooms on either side of a segment (a wall or an opening), probed a little way off its middle. */
 function sides(plan: Plan, a: Pt, b: Pt, reach: number) {
   const L = dist(a, b) || 1, n: Pt = [-(b[1] - a[1]) / L, (b[0] - a[0]) / L], m: Pt = [(a[0] + b[0]) / 2, (a[1] + b[1]) / 2];
-  const at = (s: number) => { for (const k of [reach, reach + 0.2, reach + 0.45]) { const r = roomAt(plan, [m[0] + n[0] * k * s, m[1] + n[1] * k * s]); if (r) return r; } return null; };
+  // the middle can sit exactly where another wall meets this one, between two rooms: look a step to either side of it too
+  const u: Pt = [(b[0] - a[0]) / L, (b[1] - a[1]) / L], step = Math.min(0.3, L / 4);
+  const at = (s: number) => { for (const t of [0, step, -step]) for (const k of [reach, reach + 0.2, reach + 0.45]) { const r = roomAt(plan, [m[0] + u[0] * t + n[0] * k * s, m[1] + u[1] * t + n[1] * k * s]); if (r) return r; } return null; };
   return [at(1), at(-1)] as const;
 }
 const where = (rs: readonly ({ name: string } | null)[]) => {

@@ -47,6 +47,8 @@ export const drawerOpen = signal(false);
 /** Open the "New project" dialog (from the sidebar or the projects page); value = preselected team id or 'personal'. */
 export const newProject = signal<string | null>(null);
 export const newTeam = signal(false);
+/** The delete-account dialog is open. */
+export const closingAccount = signal(false);
 /** Bumped when projects change, so lists reload. */
 export const projectsVersion = signal(0);
 

@@ -18,7 +18,7 @@
   <main id="main">
     <header class="ah page-head">
       <div class="wrap">
-        <div class="ah-rule rise"><b>Privacy Policy</b><span>Last updated <time datetime="2026-11-14">14 November 2026</time></span></div>
+        <div class="ah-rule rise"><b>Privacy Policy</b><span>Last updated <time datetime="2026-11-15">15 November 2026</time></span></div>
         <h1 class="rise" style="--k:1">Privacy Policy</h1>
         <p class="lead rise" style="--k:2">What bimp collects, why, where it is processed and how long it is kept. Written to be read, not skimmed past.</p>
         <span class="stroke" style="margin-top: var(--s6)"></span>
@@ -67,7 +67,8 @@
         <section id="ai" aria-labelledby="ai-h">
           <h2 id="ai-h">AI processing of drawings</h2>
           <p>To read drawings and answer questions, bimp sends the relevant drawing images, extracted plan data and your question to an AI model provider (Google, Gemini API) acting as our processor. We use the paid API terms, under which inputs are not used to train the provider's models. Answers are checked against the plan geometry by bimp's own code before they are shown.</p>
-          <p>Measurements, checks and the 2D plan are computed by bimp itself and do not leave our infrastructure.</p>
+          <p>Measurements and design-standard checks are computed by bimp's own code on our infrastructure.</p>
+          <p>Two optional features send content to a further provider, Cloudinary, and only when you use them. <b>Images</b> uploads a picture of your 2D plan so that a presentation image can be generated from it with Cloudinary's generative AI. <b>Share as image</b>, on a source shown under an answer, uploads the sheet the answer cites and creates a link to the cited part of it. <b>Anyone who has that link can open the image without signing in.</b></p>
         </section>
         <section id="where" aria-labelledby="where-h">
           <h2 id="where-h">Where it is stored, and who processes it</h2>
@@ -75,21 +76,24 @@
           <ul>
             <li>Cloudflare, Inc.: hosting, database, file storage and network.</li>
             <li>Google LLC: AI model processing (Gemini API), as described above.</li>
+            <li>Cloudinary Ltd.: generating presentation images and hosting images you share, only when you use those features.</li>
           </ul>
           <p>Some processing may take place outside your country, including in the United States. Where the GDPR applies, transfers rely on the processors' Standard Contractual Clauses or an adequacy decision.</p>
         </section>
         <section id="keep" aria-labelledby="keep-h">
           <h2 id="keep-h">How long we keep it</h2>
           <ul>
-            <li>Account and project data: while your account exists. Deleting a project removes its files, plans, revisions, comments and chat from our database and storage.</li>
-            <li>When you close your account, we delete its data within 30 days, except where the law requires us to keep it longer.</li>
+            <li>Account and project data: while your account exists. Deleting a project removes its files, plans, revisions, comments and chat from our database and storage, and its generated and shared images from Cloudinary.</li>
+            <li>You can close your account in the app, under Account, Delete account. Your personal projects are deleted with it straight away; projects you created in a team stay with the team. Anything that remains is deleted within 30 days, except where the law requires us to keep it longer.</li>
+            <li>To avoid reading the same sheet twice, we keep the AI provider's reading of a sheet, and answers that passed our checks, in a cache. Cached entries are not linked to an account or a project and are not removed when a project is deleted.</li>
+            <li>Sessions last 7 days.</li>
             <li>Security records of failed sign-ins: 24 hours.</li>
             <li>Backups held by our hosting provider roll over on their own schedule.</li>
           </ul>
         </section>
         <section id="cookies" aria-labelledby="cookies-h">
           <h2 id="cookies-h">Cookies</h2>
-          <p>bimp sets one strictly necessary cookie: a session cookie that keeps you signed in. It is HTTP-only and not readable by scripts. The app also stores a few interface preferences (panel sizes, the view you last used, whether you have seen the welcome tour) in your browser's local storage; these never leave your device.</p>
+          <p>bimp sets one strictly necessary cookie: a session cookie that keeps you signed in. It is HTTP-only and not readable by scripts. The app also keeps interface preferences in your browser's local storage (theme, panel sizes, layers, the view you last used, whether you have seen the welcome tour and the first-project guide). They stay on your device and are not removed when you sign out.</p>
         </section>
         <section id="rights" aria-labelledby="rights-h">
           <h2 id="rights-h">Your rights</h2>
@@ -98,7 +102,7 @@
         </section>
         <section id="security" aria-labelledby="security-h">
           <h2 id="security-h">Security</h2>
-          <p>Traffic is encrypted in transit (HTTPS). Passwords are stored only as salted hashes; sign-in is rate-limited. Uploaded drawings are served back only to people with access to the project, sandboxed so they can never run as a web page.</p>
+          <p>Traffic is encrypted in transit (HTTPS). Passwords are stored only as salted hashes; sign-in is rate-limited. Uploaded drawings are served back by bimp only to people with access to the project, sandboxed so they can never run as a web page. Images you choose to share with "Share as image" are public to anyone who has the link.</p>
         </section>
         <section id="changes" aria-labelledby="changes-h">
           <h2 id="changes-h">Changes to this policy</h2>

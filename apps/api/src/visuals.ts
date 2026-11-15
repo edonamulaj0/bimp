@@ -123,9 +123,51 @@ visuals.post('/evidence', async (c) => {
   return c.json({ url: `https://res.cloudinary.com/${c.env.CLOUDINARY_CLOUD_NAME}/image/upload/${eager}/${publicId}.jpg` });
 });
 
+/**
+ * Removes images from Cloudinary (Admin API, signed with the key and secret): the ones named, and everything stored
+ * under a project's own prefix (the sheets shared as evidence). Best effort: a failure is logged, never thrown, so a
+ * deletion in bimp is not held up by it. Up to 100 names a call; a prefix is deleted in pages.
+ */
+export async function forgetImages(env: Env, publicIds: string[], prefix?: string) {
+  if (!visualsOn(env)) return;
+  const base = `https://api.cloudinary.com/v1_1/${encodeURIComponent(env.CLOUDINARY_CLOUD_NAME!)}/resources/image/upload`;
+  const headers = { authorization: `Basic ${btoa(`${env.CLOUDINARY_API_KEY}:${env.CLOUDINARY_API_SECRET}`)}` };
+  const del = async (q: URLSearchParams) => {
+    q.set('invalidate', 'true');
+    const res = await fetch(`${base}?${q}`, { method: 'DELETE', headers });
+    if (!res.ok) throw new Error(`Cloudinary delete failed: ${res.status}`);
+    return (await res.json().catch(() => ({}))) as { partial?: boolean; next_cursor?: string };
+  };
+  try {
+    for (let i = 0; i < publicIds.length; i += 100) {
+      const q = new URLSearchParams();
+      for (const id of publicIds.slice(i, i + 100)) q.append('public_ids[]', id);
+      await del(q);
+    }
+    if (prefix) {
+      let cursor: string | undefined;
+      for (let page = 0; page < 50; page++) {
+        const q = new URLSearchParams({ prefix });
+        if (cursor) q.set('next_cursor', cursor);
+        const d = await del(q);
+        if (!d.partial || !d.next_cursor) break;
+        cursor = d.next_cursor;
+      }
+    }
+  } catch (e) { console.error(e); }
+}
+/** Every image a project has at Cloudinary: its generated images by name, its shared sheets by prefix. Call before the project's rows go. */
+export async function forgetProjectImages(env: Env, projectId: string) {
+  if (!visualsOn(env)) return;
+  const { results } = await env.DB.prepare('SELECT public_id FROM visuals WHERE project_id = ?').bind(projectId).all<{ public_id: string }>();
+  await forgetImages(env, results.map((r) => r.public_id), `bimp/${projectId}/`);
+}
+
 visuals.delete('/:vid', async (c) => {
   const project = await projectAccess(c, c.req.param('id')!);
-  const r = await c.env.DB.prepare('DELETE FROM visuals WHERE id = ? AND project_id = ?').bind(c.req.param('vid'), project.id).run();
-  if (!r.meta.changes) throw fail(404, 'Image not found.');
+  const row = await c.env.DB.prepare('SELECT public_id FROM visuals WHERE id = ? AND project_id = ?').bind(c.req.param('vid'), project.id).first<{ public_id: string }>();
+  if (!row) throw fail(404, 'Image not found.');
+  await c.env.DB.prepare('DELETE FROM visuals WHERE id = ? AND project_id = ?').bind(c.req.param('vid'), project.id).run();
+  await forgetImages(c.env, [row.public_id]);
   return c.json({ ok: true });
 });

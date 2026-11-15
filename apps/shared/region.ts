@@ -11,8 +11,8 @@ export const inRegion = (p: Pt, r: Region) => p[0] >= r.x0 && p[0] <= r.x1 && p[
 /** A region from untrusted input (the chat API), or null when it is not a usable rectangle on this plan. */
 export function parseRegion(v: unknown, plan: Plan): Region | null {
   if (!v || typeof v !== 'object') return null;
-  const n = ['x0', 'y0', 'x1', 'y1'].map((k) => Number((v as Record<string, unknown>)[k]));
-  if (!n.every(Number.isFinite)) return null;
+  const n = ['x0', 'y0', 'x1', 'y1'].map((k) => (v as Record<string, unknown>)[k]);
+  if (!n.every((x): x is number => typeof x === 'number' && Number.isFinite(x))) return null; // numbers only: null, true and '' are not coordinates
   const pad = Math.max(plan.width, plan.height) * 0.5;
   const c = (x: number, max: number) => round(Math.min(Math.max(x, -pad), max + pad), 3);
   const r = normRegion([c(n[0], plan.width), c(n[1], plan.height)], [c(n[2], plan.width), c(n[3], plan.height)]);
@@ -80,8 +80,14 @@ export function clipPlan(plan: Plan, r: Region): Plan {
   const walls = plan.walls.flatMap((w) => { const s = clipSegment(w.a, w.b, r); return s && Math.hypot(s[1][0] - s[0][0], s[1][1] - s[0][1]) > 0.05 ? [{ ...w, a: s[0], b: s[1] }] : []; });
   const { w, h } = regionSize(r);
   const partial = inside.filter((x) => x.share_of_room < 0.98).map((x) => `${x.name} (${Math.round(x.share_of_room * 100)}% inside)`);
+  // nothing that describes the sheet outside the region may reach an answer: detector symbols are kept by their
+  // centre, like fittings; text written on the sheet has no position in the plan model, so it is left out whole
+  const boxIn = (b: [number, number, number, number]) => inRegion([(b[0] + b[2]) / 2, (b[1] + b[3]) / 2], r);
+  const detected = plan.detected && { ...plan.detected, items: plan.detected.items.filter((d) => boxIn(d.box)).map((d) => ({ ...d, room_id: d.room_id && keep.has(d.room_id) ? d.room_id : null })) };
+  const { texts: _texts, poche: _poche, detected: _detected, ...rest } = plan;
   return {
-    ...plan,
+    ...rest,
+    ...(detected ? { detected } : {}),
     width: w, height: h, rooms, walls, openings, fixtures,
     assumptions: [
       ...plan.assumptions,

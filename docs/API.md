@@ -9,6 +9,7 @@ between teams. Anyone with access can upload, ask, comment and label revisions.
 
 ## Me
 `GET /me` → `{ user: {id, email}, ai: boolean, teams: [{ id, name, role: 'owner'|'member' }] }`
+`DELETE /me { password }` → `{ ok }`. Closes the account after the password is given again (403 if wrong). Personal projects are deleted with their files and images; projects created in a team that has another owner pass to that owner. 409 if the caller is the only owner of a team that has other members.
 
 ## Teams
 - `GET /teams` → `{ teams: [{ id, name, role, members: number, projects: number }] }`

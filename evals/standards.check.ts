@@ -389,6 +389,16 @@ eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
   eq('segment clipped to region', clipSegment([-1, 1], [5, 1], { x0: 0, y0: 0, x1: 2, y1: 2 }), [[0, 1], [2, 1]]);
   eq('tiny region rejected', parseRegion({ x0: 1, y0: 1, x1: 1.1, y1: 3 }, p), null);
   eq('bad region rejected', parseRegion({ x0: 'a' }, p), null);
+  eq('region: only numbers are coordinates', [parseRegion({ x0: null, y0: null, x1: true, y1: true }, p), parseRegion({ x0: '1', y0: '1', x1: '3', y1: '3' }, p)], [null, null]);
+  // a scan: symbols counted by the detector, and text written on the sheet, from outside the region stay out of it
+  const scan = { ...p, texts: ['NOTE in the far corner'], poche: [[[[0, 0], [1, 0], [1, 1]] as [number, number][]]], detected: { model: 't', items: [
+    { id: 'x1', kind: 'door' as const, conf: 0.9, box: [3, 11, 3.9, 11.2] as [number, number, number, number], room_id: 'r10' },
+    { id: 'x2', kind: 'door' as const, conf: 0.9, box: [14, 1, 14.9, 1.2] as [number, number, number, number], room_id: 'r1' },
+    { id: 'x3', kind: 'toilet' as const, conf: 0.9, box: [15, 3, 15.4, 3.6] as [number, number, number, number], room_id: 'r1' }] } };
+  const sc = clipPlan(scan, r);
+  eq('region: detector symbols outside are dropped', sc.detected!.items.map((d) => d.id), ['x1']);
+  eq('region: text on the sheet and the drawn walls are not carried into the region', [sc.texts, sc.poche], [undefined, undefined]);
+  eq('region: a plan without detector results stays without', 'detected' in c, false);
 }
 
 

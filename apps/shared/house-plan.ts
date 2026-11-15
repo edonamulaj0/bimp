@@ -14,7 +14,8 @@ import { type Plan, type Room, type Opening, type Pt, type Fixture, type Fixture
  *  - Light on two sides in the living room, bedroom 2 and the main bedroom; a terrace as an outdoor room off the plan.
  *  - Circulation kept short: hall and corridor are about a tenth of the floor area, and no room is a way through to
  *    another except the dressing room, by design.
- * Geometry is exact (centre lines); it is a model for learning bimp, not a drawing of a real site.
+ * Geometry is exact: walls on the centre lines below, rooms to the inside faces of those walls, so areas are net. It
+ * is a model for learning bimp, not a drawing of a real site.
  */
 const rect = (x0: number, y0: number, x1: number, y1: number): Pt[] => [[x0, y0], [x1, y0], [x1, y1], [x0, y1]];
 const rooms: Room[] = [
@@ -70,7 +71,15 @@ const openings: Opening[] = [
   o('w13', 'window', [0, 5.6], [0, 7.6]),
 ];
 
-const walls = wallsFromRooms(rooms);
+const walls = wallsFromRooms(rooms); // walls stand on the centre lines the layout above is set out on
+// Rooms are stored the way plans read from drawings are: to the inside faces of their walls, so areas are net. Each
+// centre-line rectangle is drawn in by half the wall on that side (0.15 m on the perimeter, 0.06 m at partitions).
+const half = (v: number, edge: number) => (Math.abs(v) < 1e-9 || Math.abs(v - edge) < 1e-9 ? 0.15 : 0.06);
+const r3 = (v: number) => Math.round(v * 1e3) / 1e3;
+const netRooms: Room[] = rooms.map((r) => {
+  const [[x0, y0], , [x1, y1]] = r.polygon;
+  return { ...r, polygon: rect(r3(x0 + half(x0, 16.8)), r3(y0 + half(y0, 9.6)), r3(x1 - half(x1, 16.8)), r3(y1 - half(y1, 9.6))) };
+});
 const inside = (p: Pt, q: Pt[]) => p[0] > q[0][0] && p[0] < q[2][0] && p[1] > q[0][1] && p[1] < q[2][1];
 // [kind, centre x, centre y, width along its back, depth, quarter turns]: 0 backs onto the north side, 1 east, 2 south, 3 west
 const items: [FixtureKind, number, number, number, number, 0 | 1 | 2 | 3][] = [
@@ -111,7 +120,7 @@ export const housePlan = (): Plan => ({
   width: 16.8,
   height: 9.6,
   wallHeight: 2.7,
-  rooms,
+  rooms: netRooms,
   walls,
   openings,
   fixtures,
@@ -119,7 +128,7 @@ export const housePlan = (): Plan => ({
   scale: { metersPerPx: null, source: 'Design model, exact geometry (1:100)', ratio: 100 },
   source: null,
   assumptions: [
-    'Pilot model for learning bimp: exact geometry on wall centre lines, not a drawing of a real site',
+    'Pilot model for learning bimp: exact geometry, walls set out on centre lines and rooms measured to the inside faces of walls; not a drawing of a real site',
     'Wall height 2.7 m, clear ceiling height 2.6 m',
     'Exterior walls 0.30 m (masonry cavity wall), interior partitions 0.12 m',
   ],

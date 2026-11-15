@@ -243,6 +243,8 @@ export function Plan2D({ plan, compact, onRelabel, note, onNoteClose, regionCard
       onPointerDown={compact ? undefined : (e) => {
         ptrs.current.set(e.pointerId, [e.clientX, e.clientY]);
         if (ptrs.current.size === 2) { // two fingers: pinch zoom about their midpoint; no panning until both lift
+          if (press.current) { clearTimeout(press.current.t); press.current = null; } // a pinch is not a long press: no menu
+          setRubber(null); lastTap.current = null; // nor the start of a markup region, nor half of a double tap
           const [a, b] = [...ptrs.current.values()];
           pinch.current = { d: Math.hypot(a[0] - b[0], a[1] - b[1]) || 1, vb, mid: toPlan((a[0] + b[0]) / 2, (a[1] + b[1]) / 2) };
           drag.current = { x: 0, y: 0, vb, moved: true, dead: true };

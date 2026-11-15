@@ -1,7 +1,7 @@
 import type { ComponentChildren } from 'preact';
 import { useEffect, useRef, useState } from 'preact/hooks';
 import { api, loadMe } from './api';
-import { drawerOpen, go, toggleTheme, newProject, newTeam, parsed, projectsVersion, route, sidebarCollapsed, teams, user } from './state';
+import { closingAccount, drawerOpen, go, toggleTheme, newProject, newTeam, parsed, projectsVersion, route, sidebarCollapsed, teams, user } from './state';
 import { Logo } from './brand';
 import { Icon } from './icons';
 import { Dialog, Menu } from './ui';
@@ -54,7 +54,9 @@ export function Sidebar() {
           <li><button class="sb-add" onClick={() => (newTeam.value = true)}><Icon name="plus" />New team</button></li>
         </ul>
         <div class="sb-foot">
-          <Menu label="Account" align="up" class="sb-user" items={[{ label: 'Light / dark', onSelect: toggleTheme }, { label: 'Sign out', onSelect: out }]}
+          <Menu label="Account" align="up" class="sb-user" items={[{ label: 'Light / dark', onSelect: toggleTheme }, { label: 'Privacy Policy', onSelect: () => window.open('/privacy/', '_blank', 'noopener') },
+            { label: 'Terms of Service', onSelect: () => window.open('/terms/', '_blank', 'noopener') }, 'sep', { label: 'Sign out', onSelect: out },
+            { label: 'Delete account…', danger: true, onSelect: () => (closingAccount.value = true) }]}
             text={<><span class="avatar" aria-hidden="true">{email.slice(0, 1).toUpperCase()}</span><span class="sb-email">{email}</span></>} />
         </div>
       </nav>
@@ -83,7 +85,7 @@ export function PageHeader({ crumbs = [], title, actions }: { crumbs?: Crumb[]; 
 
 /** Dialogs opened from anywhere in the shell. */
 export function ShellDialogs() {
-  return <>{newProject.value !== null && <NewProject at={newProject.value} />}{newTeam.value && <NewTeam />}</>;
+  return <>{newProject.value !== null && <NewProject at={newProject.value} />}{newTeam.value && <NewTeam />}{closingAccount.value && <DeleteAccount />}</>;
 }
 
 function NewProject({ at }: { at: string }) {
@@ -135,6 +137,33 @@ function NewTeam() {
         <p class="hint">You'll be its owner. Invite people by email next.</p>
         <p class="err" role="alert">{err}</p>
         <div class="dlg-actions"><button type="button" class="btn ghost sm" onClick={close}>Cancel</button><button class="btn sm" disabled={!name.trim() || busy}>Create team</button></div>
+      </form>
+    </Dialog>
+  );
+}
+
+/** Closing the account: says what goes and what stays, and asks for the password again before anything is deleted. */
+function DeleteAccount() {
+  const [pw, setPw] = useState('');
+  const [err, setErr] = useState(''), [busy, setBusy] = useState(false);
+  const close = () => (closingAccount.value = false);
+  async function remove(e: Event) {
+    e.preventDefault();
+    setBusy(true);
+    try {
+      await api('/me', { method: 'DELETE', json: { password: pw } });
+      close(); user.value = null; go('#/');
+    } catch (e) { setErr((e as Error).message); setBusy(false); }
+  }
+  return (
+    <Dialog title="Delete your account" onClose={close}>
+      <form class="dlg-body" onSubmit={remove}>
+        <p>This deletes the account <b>{user.value?.email}</b> and your personal projects, with their drawings, plans, comments, chat and images. It cannot be undone.</p>
+        <p class="hint">Projects you created in a team stay with the team and pass to another of its owners. If you are a team's only owner and it has other members, make one of them an owner or delete the team first.</p>
+        <label class="field"><span>Your password</span>
+          <input autoFocus required type="password" autocomplete="current-password" value={pw} onInput={(e) => setPw(e.currentTarget.value)} /></label>
+        <p class="err" role="alert">{err}</p>
+        <div class="dlg-actions"><button type="button" class="btn ghost sm" onClick={close}>Cancel</button><button class="btn sm danger" disabled={!pw || busy}>{busy ? 'Deleting…' : 'Delete account'}</button></div>
       </form>
     </Dialog>
   );
