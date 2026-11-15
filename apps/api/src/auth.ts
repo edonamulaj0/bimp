@@ -52,20 +52,12 @@ export async function createUser(env: Env, email: string, password: string) {
 
 /**
  * A demo account: no email of anyone's and no usable password, so it can only be reached through the session started
- * with it. At most 10 per IP per hour. Demo accounts older than two days are removed here, with their projects (they
- * cannot upload or make images, so there is nothing of theirs outside the database).
+ * with it. It can do what any account can.
  */
-export async function createDemoUser(env: Env, ip: string) {
-  const key = `demo:${ip}`;
-  const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM login_failures WHERE key = ? AND at > ?').bind(key, now() - 3600_000).first<{ n: number }>();
-  if ((row?.n ?? 0) >= 10) throw fail(429, 'Too many demos started from this network. Try again in an hour, or create an account.');
+export async function createDemoUser(env: Env) {
   const id = uid(), email = `demo-${id.replace(/-/g, '').slice(0, 10)}${DEMO_DOMAIN}`;
   const rnd = () => b64(crypto.getRandomValues(new Uint8Array(32)));
-  await env.DB.batch([
-    env.DB.prepare('DELETE FROM users WHERE email LIKE ? AND created_at < ?').bind(`demo-%${DEMO_DOMAIN}`, now() - 2 * 24 * 3600_000),
-    env.DB.prepare('INSERT INTO login_failures (key, at) VALUES (?, ?)').bind(key, now()),
-    env.DB.prepare('INSERT INTO users (id, email, pw_hash, pw_salt, pw_iter, created_at) VALUES (?,?,?,?,?,?)').bind(id, email, rnd(), rnd(), ITER, now()),
-  ]);
+  await env.DB.prepare('INSERT INTO users (id, email, pw_hash, pw_salt, pw_iter, created_at) VALUES (?,?,?,?,?,?)').bind(id, email, rnd(), rnd(), ITER, now()).run();
   return { id, email };
 }
 

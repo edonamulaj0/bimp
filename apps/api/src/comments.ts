@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { type Plan, type Pt, area, dist, round } from '../../shared/plan';
 import { inside } from '../../shared/rooms';
-import { chatQuota, projectAccess, questionsFor } from './access';
+import { chatQuota, projectAccess } from './access';
 import { type Answer, ask } from './agent';
 import type { Part } from './gemini';
 import { type AppEnv, type Env, fail, now, toBase64, uid } from './util';
@@ -59,7 +59,7 @@ async function spotContext(env: Env, projectId: string, plan: Plan, x: number, y
 async function answerThread(env: Env, projectId: string, root: Row, question: string, user: { id: string; email: string }) {
   const userId = user.id;
   if (root.x == null || root.y == null) throw fail(400, 'This comment has no pin.');
-  await chatQuota(env, userId, questionsFor(user));
+  await chatQuota(env, userId);
   const { id: planId, plan } = await planRow(env, projectId, root.plan_id);
   const { results: thread } = await env.DB.prepare('SELECT author, body FROM comments WHERE id = ? OR parent_id = ? ORDER BY created_at').bind(root.id, root.id).all<{ author: string; body: string }>();
   const history: { role: 'user' | 'model'; text: string }[] = [];

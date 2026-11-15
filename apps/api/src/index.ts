@@ -10,9 +10,9 @@ import { briefText, planFacts } from './brief';
 import { ask } from './agent';
 import { comments } from './comments';
 import { teams, myTeams } from './teams';
-import { type Access, chatQuota, noDemo, projectAccess, questionsFor } from './access';
+import { type Access, chatQuota, projectAccess } from './access';
 import { checkLogin, createDemoUser, createUser, endSession, requireUser, sameOrigin, signupThrottle, startSession, validate } from './auth';
-import { type AppEnv, type Env, fail, failJob, isDemo, now, sha256, uid } from './util';
+import { type AppEnv, type Env, DEMO_DOMAIN, fail, failJob, isDemo, now, sha256, uid } from './util';
 
 const MAX_UPLOAD = 50 * 1024 * 1024; // the model gets the container's render, not the original
 const MIMES = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'application/dxf']);
@@ -39,12 +39,14 @@ app.post('/auth/signup', async (c) => {
   return c.json({ user });
 });
 /**
- * "See the demo": a throwaway account with the pilot house, signed in for a day. It can do everything on the plan and
- * ask a few questions; it cannot upload drawings, make images or create teams.
+ * "See the demo": a throwaway account with the pilot house, signed in for a day. It can do everything an account can.
+ * Demo accounts older than two days are removed here, a few at a time, with everything stored for them.
  */
 app.post('/auth/demo', async (c) => {
   if (c.env.ALLOW_DEMO === 'false') throw fail(403, 'The demo is closed. Create an account to try bimp.');
-  const user = await createDemoUser(c.env, c.req.header('cf-connecting-ip') ?? 'local');
+  const { results: stale } = await c.env.DB.prepare('SELECT id, email FROM users WHERE email LIKE ? AND created_at < ? LIMIT 3').bind(`demo-%${DEMO_DOMAIN}`, now() - 2 * 24 * 3600_000).all<{ id: string; email: string }>();
+  for (const u of stale) await removeAccount(c.env, u).catch((e) => console.error(e));
+  const user = await createDemoUser(c.env);
   // if the house cannot be marked as given (the sample_version column is not there yet), the account still gets it
   await ensurePilotHouse(c.env, user.id).catch(() => createProject(c.env, user.id, 'Pilot house', housePlan()));
   const project = await c.env.DB.prepare('SELECT id FROM projects WHERE user_id = ? ORDER BY created_at LIMIT 1').bind(user.id).first<{ id: string }>();
@@ -73,10 +75,19 @@ app.get('/me', requireUser, async (c) => {
 app.delete('/me', requireUser, async (c) => {
   const me = c.get('user');
   const { password } = ((await c.req.json().catch(() => null)) ?? {}) as { password?: unknown };
-  if (isDemo(me)) { await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(me.id).run(); await endSession(c); return c.json({ ok: true }); } // a demo has no password and nothing outside the database
-  if (typeof password !== 'string' || !password) throw fail(400, 'Enter your password to delete your account.');
-  try { await checkLogin(c.env, me.email, password.slice(0, 256), c.req.header('cf-connecting-ip') ?? 'local'); }
-  catch (e) { if (e instanceof HTTPException && e.status === 401) throw fail(403, 'That password is incorrect.'); throw e; }
+  if (!isDemo(me)) { // a demo has no password to ask for
+    if (typeof password !== 'string' || !password) throw fail(400, 'Enter your password to delete your account.');
+    try { await checkLogin(c.env, me.email, password.slice(0, 256), c.req.header('cf-connecting-ip') ?? 'local'); }
+    catch (e) { if (e instanceof HTTPException && e.status === 401) throw fail(403, 'That password is incorrect.'); throw e; }
+  }
+  await removeAccount(c.env, me);
+  await endSession(c);
+  return c.json({ ok: true });
+});
+
+/** Removes an account as described above; throws 409 when a team would be left without an owner. */
+async function removeAccount(env: Env, me: { id: string; email: string }) {
+  const c = { env };
 
   const { results: mine } = await c.env.DB.prepare(
     `SELECT t.id, t.name, t.created_by,
@@ -101,9 +112,7 @@ app.delete('/me', requireUser, async (c) => {
     c.env.DB.prepare('DELETE FROM login_failures WHERE key LIKE ?').bind(`e:${me.email}%`),
     c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(me.id), // sessions and memberships go with the user
   ]);
-  await endSession(c);
-  return c.json({ ok: true });
-});
+}
 
 /**
  * Every account has the current pilot house, the one drawn on the home page. Done once per account for each version
@@ -312,7 +321,6 @@ projects.patch('/:id/revisions/:rid/fixtures/:fid', async (c) => {
 
 projects.post('/:id/files', async (c) => {
   const project = await projectAccess(c, c.req.param('id'));
-  noDemo(c.get('user'), 'read uploaded drawings');
   let filename: string;
   try { filename = decodeURIComponent(c.req.header('x-filename') ?? 'drawing'); } catch { throw fail(400, 'The file name could not be read. Rename the file and try again.'); }
   filename = filename.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 200) || 'drawing';
@@ -475,7 +483,7 @@ projects.post('/:id/chat', async (c) => {
   const turns = region ? [] : history;
   const cacheKey = quick ? null : await sha256(JSON.stringify([c.env.GEMINI_MODEL ?? '', await sha256(JSON.stringify(scope)), q.toLowerCase().replace(/\s+/g, ' '), turns]));
   const kept = cacheKey ? await c.env.DB.prepare('SELECT answer FROM answer_cache WHERE key = ?').bind(cacheKey).first<{ answer: string }>().catch(() => null) : null;
-  if (!quick && !kept) await chatQuota(c.env, c.get('user').id, questionsFor(c.get('user')));
+  if (!quick && !kept) await chatQuota(c.env, c.get('user').id);
   const found = quick ? { ...quick, verified: true, issues: [] } : kept ? (JSON.parse(kept.answer) as Awaited<ReturnType<typeof ask>>) : await ask(c.env, scope, q, turns, context, used);
   if (cacheKey && !kept && found.verified && !found.issues.length)
     await c.env.DB.prepare('INSERT OR REPLACE INTO answer_cache (key, answer, created_at) VALUES (?,?,?)').bind(cacheKey, JSON.stringify(found), now()).run().catch(() => {});

@@ -11,9 +11,8 @@ between teams. Anyone with access can upload, ask, comment and label revisions.
 `GET /me` → `{ user: {id, email, demo?}, ai: boolean, teams: [{ id, name, role: 'owner'|'member' }] }`. Also makes sure the account has the
 current pilot house, once per version of the house: an untouched sample project gets it as a new revision, an account without one gets a new
 "Pilot house" project.
-`POST /auth/demo` → `{ user, project_id }`. A throwaway account with the pilot house, signed in for a day (10 per IP per hour; off with
-`ALLOW_DEMO=false`). A demo answers 20 questions a day and gets 403 on uploads, images and teams. `DELETE /me` needs no password for it. Demo
-accounts are deleted after two days.
+`POST /auth/demo` → `{ user, project_id }`. A throwaway account with the pilot house, signed in for a day (off with `ALLOW_DEMO=false`). A demo can do
+what any account can. `DELETE /me` needs no password for it. Demo accounts are deleted after two days, with their projects and files.
 `DELETE /me { password }` → `{ ok }`. Closes the account after the password is given again (403 if wrong). Personal projects are deleted with their files and images; projects created in a team that has another owner pass to that owner. 409 if the caller is the only owner of a team that has other members.
 
 ## Teams

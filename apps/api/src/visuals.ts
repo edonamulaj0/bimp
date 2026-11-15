@@ -4,7 +4,7 @@
 // Config: CLOUDINARY_CLOUD_NAME and CLOUDINARY_API_KEY (vars), CLOUDINARY_API_SECRET (secret).
 import { Hono } from 'hono';
 import { VISUAL_STYLES, cleanPrompt } from '../../shared/visual-styles';
-import { noDemo, projectAccess } from './access';
+import { projectAccess } from './access';
 import { type AppEnv, type Env, fail, now, uid } from './util';
 
 export const visualsOn = (env: Env) => !!(env.CLOUDINARY_CLOUD_NAME && env.CLOUDINARY_API_KEY && env.CLOUDINARY_API_SECRET);
@@ -53,7 +53,6 @@ visuals.get('/', async (c) => {
 visuals.post('/', async (c) => {
   const project = await projectAccess(c, c.req.param('id')!);
   if (!visualsOn(c.env)) throw fail(503, 'Image generation is not set up on this server.');
-  noDemo(c.get('user'), 'generate images');
   const user = c.get('user');
   const style = c.req.header('x-style') ?? '';
   const preset = VISUAL_STYLES.find((s) => s.key === style);
@@ -98,7 +97,6 @@ export const cropTransformation = (b: [number, number, number, number]) =>
 visuals.post('/evidence', async (c) => {
   const project = await projectAccess(c, c.req.param('id')!);
   if (!visualsOn(c.env)) throw fail(503, 'Sharing images is not set up on this server.');
-  noDemo(c.get('user'), 'share images');
   const b = (await c.req.json().catch(() => ({}))) as { render?: unknown; box?: unknown };
   const sha = typeof b.render === 'string' && /^[0-9a-f]{64}$/.test(b.render) ? b.render : null;
   const box = Array.isArray(b.box) && b.box.length === 4 && b.box.every((v) => Number.isInteger(v) && v >= 0 && v < 100000) ? (b.box as [number, number, number, number]) : null;

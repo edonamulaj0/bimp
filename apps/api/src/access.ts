@@ -1,9 +1,4 @@
-import { type Env, fail, isDemo, now } from './util';
-
-/** Questions a day: 200 for an account, 20 for a demo. */
-export const questionsFor = (u: { email: string }) => (isDemo(u) ? 20 : 200);
-/** Things a demo cannot do, because they cost money or leave files behind. */
-export const noDemo = (u: { email: string }, what: string) => { if (isDemo(u)) throw fail(403, `The demo cannot ${what}. Create a free account to do that.`); };
+import { type Env, fail, now } from './util';
 
 export type Access = { id: string; name: string; created_at: number; updated_at: number; user_id: string; team_id: string | null;
   role: 'owner' | 'member'; team: { id: string; name: string } | null };
@@ -23,9 +18,9 @@ export async function projectAccess(c: { env: Env; get: (k: 'user') => { id: str
 
 /** Per-user cap on questions: each one can make several model calls. */
 /** Questions in chat and to bimp in comments count together. */
-export async function chatQuota(env: Env, userId: string, max = 200) {
+export async function chatQuota(env: Env, userId: string) {
   const row = await env.DB.prepare("SELECT (SELECT COUNT(*) FROM messages WHERE user_id = ?1 AND role = 'user' AND content NOT LIKE ?2 AND created_at > ?3) + (SELECT COUNT(*) FROM comments WHERE user_id = ?1 AND author = 'ai' AND created_at > ?3) AS n")
     .bind(userId, '{"text":"Uploaded %', now() - 24 * 3600_000).first<{ n: number }>();
-  if ((row?.n ?? 0) >= max) throw fail(429, max < 200 ? `The demo answers ${max} questions a day. Create a free account to ask more.` : 'You have reached today\'s limit of questions. Try again tomorrow.');
+  if ((row?.n ?? 0) >= 200) throw fail(429, 'You have reached today\'s limit of questions. Try again tomorrow.');
 }
 

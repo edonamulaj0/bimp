@@ -101,7 +101,7 @@ export function Login() {
           <div class="login-demo">
             <span class="login-or" aria-hidden="true">or</span>
             <button type="button" class="btn ghost login-go" onClick={demo} disabled={busy}>See the demo</button>
-            <p class="muted small">No account needed. Opens the pilot house so you can try the plan tools and ask a few questions; a demo cannot upload drawings and is deleted after two days.</p>
+            <p class="muted small">No account needed. Opens the pilot house, and you can upload your own drawings too. A demo is deleted when you leave it, or after two days.</p>
           </div>
           <p class="muted small login-switch">
             {mode === 'login'
