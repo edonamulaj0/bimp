@@ -36,4 +36,4 @@ Running at 1536 px did not help (72.5%). Windows and doors need a change to trai
 when a plan has them; vector PDFs and DXF are unaffected. Its boxes also decide where those five kinds are drawn: a
 door, window, toilet, sink, shower or bathtub the language model also read is moved to the detector's box, and one
 only the detector saw is added. It knows nothing else: walls and rooms are measured on the image by `ingest/service.py`
-(`/trace`), and beds, sofas, tables and the like are still found by the language model and tightened onto their lines. To replace the model: export to ONNX at 1024 px, update `DET_THRESHOLD` in `service.py`, redeploy the container.
+(`/trace`), and beds, sofas, tables and the like are still found by the language model and moved onto the lines drawn for them. A box only the detector saw that is too small to be the thing (a shower under 45 cm, a toilet or sink under 20 cm) is not added. To replace the model: export to ONNX at 1024 px, update `DET_THRESHOLD` in `service.py`, redeploy the container.

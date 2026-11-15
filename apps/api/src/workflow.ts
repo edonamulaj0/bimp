@@ -1,7 +1,8 @@
 import { WorkflowEntrypoint, type WorkflowEvent, type WorkflowStep, type WorkflowStepConfig } from 'cloudflare:workers';
 import { NonRetryableError } from 'cloudflare:workflows';
-import { buildPlan, readDrawing, traceRequest, type Measured, type Raw } from './extract';
-import { analyze, trace, type Analysis } from './ingest';
+import { buildPlan, mergeFixtures, planRegion, readDrawing, readFixtures, traceRequest, type Measured, type Raw } from './extract';
+import { analyze, tiles, trace, type Analysis } from './ingest';
+import { costUsd, meter } from './gemini';
 import { checkPlan } from '../../shared/standards';
 import { type Env, failJob, now, sha256, toBase64 } from './util';
 
@@ -65,10 +66,28 @@ export class IngestWorkflow extends WorkflowEntrypoint<Env, IngestParams> {
         const loadAnalysis = async () => (await (await this.env.FILES.get(sum.analysisKey))!.json()) as Omit<Analysis, 'render_png'>;
         const loadPng = () => this.env.FILES.get(sum.renderKey).then((o) => o!.arrayBuffer()).then(toBase64);
 
-        const raw = await step.do(`read page ${n} with AI`, RETRY, async (): Promise<Raw> => {
+        const read1 = await step.do(`read page ${n} with AI`, RETRY, async (): Promise<Raw> => {
           await stage(`${of}Reading rooms, labels and openings…`);
           const [png, an] = await Promise.all([loadPng(), loadAnalysis()]);
           return readDrawing(this.env, png, sum.renderSha, an);
+        });
+
+        // A second look at fittings and furniture on enlarged pieces of the plan: small things the first reading
+        // left out or put a little off. The plan stands without it, so a failure here keeps the first reading.
+        const raw = await step.do(`read furniture on page ${n}`, { retries: { limit: 1, delay: '3 seconds' }, timeout: '5 minutes' }, async (): Promise<Raw> => {
+          if (this.env.ZOOM_FURNITURE === 'off') return read1;
+          try {
+            const an = await loadAnalysis(), region = planRegion(read1, an);
+            if (!region) return read1;
+            await stage(`${of}Looking closer at fittings and furniture…`);
+            const cut = await tiles(this.env, await loadPng(), region);
+            const m = meter(), read = await readFixtures(this.env, cut.tiles, sum.renderSha, m);
+            const found = read.reduce((t, r) => t + r.fixtures.length, 0);
+            if (!found) return read1;
+            const u = read1.usage ?? { calls: 0, tokens_in: 0, tokens_out: 0, usd: 0 };
+            return { ...read1, fixtures: mergeFixtures(read1.fixtures ?? [], read, an), zoom: { tiles: read.length, found },
+              usage: { calls: u.calls + m.calls, tokens_in: u.tokens_in + m.tokens_in, tokens_out: u.tokens_out + m.tokens_out, usd: u.usd + costUsd(this.env, m) } };
+          } catch (e) { console.warn('furniture pass', jobId, (e as Error).message); return read1; }
         });
 
         // Exact outlines from the wall lines. The plan stands without them, so a failure here is not a failed reading.
@@ -80,7 +99,7 @@ export class IngestWorkflow extends WorkflowEntrypoint<Env, IngestParams> {
             const req = traceRequest(raw, an);
             if (!req.rooms.some((r) => r.length)) return { rooms: [] };
             const m = await trace(this.env, png, req);
-            return { rooms: m.rooms ?? [], how: m.how, boxes: m.boxes, exterior_px: m.exterior_px ?? null };
+            return { rooms: m.rooms ?? [], how: m.how, arcs: m.arcs, drawn: m.drawn, poche: m.poche, poche_share: m.poche_share, boxes: m.boxes, blank: m.blank, exterior_px: m.exterior_px ?? null };
           } catch (e) { console.warn('trace', jobId, (e as Error).message); return { rooms: [] }; }
         });
 

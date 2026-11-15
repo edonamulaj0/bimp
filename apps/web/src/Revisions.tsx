@@ -9,13 +9,13 @@ import type { Revision } from './types';
 
 type Props = {
   revisions: Revision[]; latestId: string | null; viewedId: string | null; loading: string | null;
-  compare: [string, string] | null; diff: PlanDiff | null; hidden?: boolean;
+  compare: [string, string] | null; diff: PlanDiff | null; hidden?: boolean; /** for the link to each revision's reference file */ projectId?: string;
   onView(id: string | null): void; onCompare(pair: [string, string] | null): void; onNote(id: string, note: string): Promise<void>;
 };
 const sgn = (n: number) => `${n > 0 ? '+' : n < 0 ? '−' : '±'}${Math.abs(round(n, 2))}`;
 
 /** Every reading of a drawing, newest first: view one, label it, or compare two. */
-export function Revisions({ revisions, latestId, viewedId, loading, compare, diff, hidden, onView, onCompare, onNote }: Props) {
+export function Revisions({ revisions, latestId, viewedId, loading, compare, diff, hidden, projectId, onView, onCompare, onNote }: Props) {
   const [picked, setPicked] = useState<string[]>([]);
   const [editing, setEditing] = useState<string | null>(null);
   const [err, setErr] = useState('');
@@ -90,6 +90,7 @@ export function Revisions({ revisions, latestId, viewedId, loading, compare, dif
                     <span class="mono rev-file" title={r.filename ?? undefined}>{r.filename ?? 'sample plan'}</span>
                   </button>
                   {latest && <span class="pill">Latest</span>}
+                  {projectId && <a class="small" href={`/api/projects/${projectId}/revisions/${r.id}/reference`} target="_blank" rel="noopener" title="Everything worked out from this drawing, as one readable file: what the chat answers from">Reference file</a>}
                   {loading === r.id && <Spinner size={14} label="Loading revision" />}
                 </div>
                 {editing === r.id

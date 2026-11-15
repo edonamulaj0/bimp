@@ -116,6 +116,57 @@ with tempfile.TemporaryDirectory() as tmp:
         check(f"hatched walls, reading {seed}: every room stays a square-cornered rectangle, no kinks or bent walls", square, out["how"])
         # known limit: the worktop drawn 8 px inside the top wall can be taken for that wall's face
         check(f"hatched walls, reading {seed}: walls within 10 px of their face (read up to 20 px off)", worst <= 10, round(worst, 1))
+    # furniture boxes: read a third of a box off, they land on the rectangle drawn; one read on empty paper is flagged
+    W, H = 1200, 900
+    img = np.full((H, W), 255, np.uint8)
+    cv2.rectangle(img, (100, 100), (1100, 800), 0, 12)
+    cv2.rectangle(img, (106, 300), (166, 620), 0, 2)          # a worktop against the left wall
+    for cy in (340, 380):
+        cv2.circle(img, (136, cy), 12, 0, 1)
+    cv2.rectangle(img, (500, 400), (760, 540), 0, 2)          # a table in the room
+    png = base64.b64encode(cv2.imencode(".png", img)[1]).decode()
+    out = service.trace_rooms(json.dumps({"png": png, "rooms": [], "close": [], "boxes": [[125, 330, 185, 650], [470, 440, 730, 580], [850, 200, 950, 280]]}).encode())
+    off = lambda got, want: max(abs(a - b) for a, b in zip(got, want)) if got else 999
+    check("furniture: a worktop read 30 px off lands on its outline", off(out["boxes"][0], [106, 300, 166, 620]) <= 3, out["boxes"][0])
+    check("furniture: a table read 40 px off lands on its outline", off(out["boxes"][1], [500, 400, 760, 540]) <= 3, out["boxes"][1])
+    check("furniture: one read where nothing is drawn is flagged, the drawn ones are not", out["blank"] == [False, False, True], out["blank"])
+
+    # curved walls: a room with a half-round end (radius 250 to the wall's centre line), read as a few slanted edges
+    def bow(filled, bay=False):
+        img = np.full((1000, 1400), 255, np.uint8)
+        t = 12 if filled else 2
+        for a, b in (((200, 200), (800, 200)), ((200, 700), (800, 700)), ((200, 200), (200, 700))):
+            cv2.line(img, a, b, 0, t)
+        if bay:                                               # three straight facets, not a curve
+            cv2.polylines(img, [np.array([[800, 200], [1000, 300], [1000, 600], [800, 700]], np.int32)], False, 0, t)
+        else:
+            cv2.ellipse(img, (800, 450), (250, 250), 0, -90, 90, 0, t)
+        cv2.rectangle(img, (400, 690), (490, 710), 255, -1)   # a doorway with its leaf and swing, reported by nobody
+        cv2.line(img, (400, 700), (400, 610), 0, 1)
+        cv2.ellipse(img, (400, 700), (90, 90), 0, -90, 0, 0, 1)
+        return base64.b64encode(cv2.imencode(".png", img)[1]).decode()
+    rough = [[210, 215], [790, 195], [930, 250], [1040, 440], [960, 640], [805, 715], [195, 690]]
+    for filled in (True, False):
+        out = service.trace_rooms(json.dumps({"png": bow(filled), "rooms": [rough], "close": []}).encode())
+        arcs = out["arcs"][0]
+        ok = len(arcs) == 1 and abs(arcs[0][2] - 800) <= 3 and abs(arcs[0][3] - 450) <= 3 and abs(arcs[0][4] - (244 if filled else 249)) <= 3
+        check(f"curved wall ({'filled' if filled else 'thin'} walls, open doorway): one arc on the wall's inside face, the door swing is not one", ok, [[round(v, 1) for v in a] for a in arcs])
+        poly = np.array(out["rooms"][0])
+        on = poly[arcs[0][0]:arcs[0][0] + arcs[0][1]] if arcs else poly[:0]
+        check("curved wall: its corners lie on the circle, half way round", len(on) >= 8 and np.abs(np.hypot(on[:, 0] - 800, on[:, 1] - 450) - arcs[0][4]).max() < 1 and on[:, 0].max() > 1030, len(on))
+    out = service.trace_rooms(json.dumps({"png": bow(True), "rooms": [rough], "close": [[400, 700, 490, 700]]}).encode())
+    check("curved wall, enclosed room: traced from the contour with its arc", out["how"] == ["traced"] and len(out["arcs"][0]) == 1 and abs(out["arcs"][0][0][4] - 244) <= 3, out["arcs"])
+    out = service.trace_rooms(json.dumps({"png": bow(True, bay=True), "rooms": [[[210, 215], [790, 195], [990, 310], [1005, 590], [805, 715], [195, 690]]], "close": []}).encode())
+    check("a bay of straight walls is not a curve", out["arcs"] == [[]], out["arcs"])
+    # zoomed-in pieces: they cover the part asked for, overlap, and are enlarged
+    an = service.analyze_image(Path(tmp, "plan-scan.png").read_bytes())
+    box = [100, 80, 100 + 1500, 80 + 900]
+    cut = service.cut_tiles(json.dumps({"png": an["render_png"], "box": box}).encode())["tiles"]
+    xs, ys = sorted({(t["box"][0], t["box"][2]) for t in cut}), sorted({(t["box"][1], t["box"][3]) for t in cut})
+    check("pieces: 3 x 2 for a 1500 x 900 px part, covering it edge to edge", (len(xs), len(ys), xs[0][0], xs[-1][1], ys[0][0], ys[-1][1]) == (3, 2, 100, 1600, 80, 980), (xs, ys))
+    check("pieces: neighbours overlap by about a fifth", all(0.15 <= (a[1] - b[0]) / (a[1] - a[0]) <= 0.25 for a, b in zip(xs, xs[1:])), xs)
+    piece = cv2.imdecode(np.frombuffer(base64.b64decode(cut[0]["png"]), np.uint8), cv2.IMREAD_COLOR)
+    check("pieces: each is enlarged to about 1400 px on its long side", 1350 <= max(piece.shape[:2]) <= 1450, piece.shape)
     # pages
     two = pymupdf.open()
     two.insert_pdf(pymupdf.open(Path(tmp, "plan-vector.pdf")))

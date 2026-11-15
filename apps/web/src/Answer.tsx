@@ -103,6 +103,7 @@ export function AnswerBody({ c, badge }: { c: Content; badge?: boolean }) {
         <p class="cost small muted" title={c.cost.by === 'model' ? `${c.cost.tokens_in ?? 0} tokens in, ${c.cost.tokens_out ?? 0} out, at the model's list price` : undefined}>
           {c.cost.by === 'reading' ? c.cost.note
             : c.cost.by === 'code' ? `Answered by code from the stored plan · 0¢ · ${c.cost.ms ?? 0} ms`
+            : c.cost.by === 'cache' ? `Answered before for this plan: given again · 0¢ · ${c.cost.ms ?? 0} ms`
             : `${cents(c.cost.usd)} · ${c.cost.calls ?? 0} model call${c.cost.calls === 1 ? '' : 's'} · ${((c.cost.ms ?? 0) / 1000).toFixed(1)} s`}
         </p>
       )}

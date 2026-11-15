@@ -44,3 +44,7 @@ export const analyze = (env: Env, data: ArrayBuffer, mime: string, page = 1) =>
  */
 export const trace = (env: Env, png: string, req: { rooms: number[][][]; close: number[][]; boxes: number[][] }) =>
   call<import('./extract').Measured>(env, '/trace', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ png, ...req }) });
+
+/** Enlarged, overlapping pieces of the part of the render that holds the plan (`box`, render pixels), for a second reading of small things. */
+export const tiles = (env: Env, png: string, box: number[]) =>
+  call<{ tiles: { png: string; box: number[] }[] }>(env, '/tiles', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ png, box }) });

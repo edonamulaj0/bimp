@@ -278,7 +278,7 @@ export function ProjectPage({ id }: { id: string }) {
                   active={active} onActive={(cid) => openThread(cid)} viewedPlanId={shownId} revOf={revOf} roomName={roomName}
                   isOwner={data.project.role === 'owner'} onNew={() => setTool('comment')} onShowOn={(pid) => view(pid === latestId ? null : pid).then(() => openThread(active))}
                   errors={threadErr} setError={(cid, e) => setThreadErr((x) => ({ ...x, [cid]: e }))} />
-                <Revisions revisions={data.revisions} latestId={latestId} viewedId={compare ? null : shownId} loading={loadingRev} compare={compare} diff={diff}
+                <Revisions projectId={id} revisions={data.revisions} latestId={latestId} viewedId={compare ? null : shownId} loading={loadingRev} compare={compare} diff={diff}
                   hidden={rightTab !== 'revisions'} onView={view} onCompare={startCompare}
                   onNote={async (rid, note) => {
                     const d = await api<{ revision: { note: string | null } }>(`/projects/${id}/revisions/${rid}`, { method: 'PATCH', json: { note } });

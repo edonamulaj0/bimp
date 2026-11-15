@@ -15,10 +15,15 @@ const where = (rs: readonly ({ name: string } | null)[]) => {
   return names.length === 2 ? `between ${names[0]} and ${names[1]}` : names.length === 1 ? (rs.some((r) => !r) ? `${names[0]}, outside wall` : `in ${names[0]}`) : 'not beside a room';
 };
 
-export type WallInfo = { id: string; length_m: number; thickness_m: number; exterior: boolean; rooms: string[]; where: string };
+export type WallInfo = { id: string; length_m: number; thickness_m: number; exterior: boolean; rooms: string[]; where: string; /** a curved wall: its radius; length_m is then the length round the curve */ curved_radius_m?: number };
+/** The pieces of the curved wall that `w` is a piece of (just `w` for a straight wall). */
+export const curvePieces = (plan: Plan, w: Wall) => (w.curve ? plan.walls.filter((x) => x.curve?.id === w.curve!.id) : [w]);
 export function wallInfo(plan: Plan, w: Wall): WallInfo {
   const s = sides(plan, w.a, w.b, w.thickness / 2 + 0.1);
-  return { id: `wall-${w.id}`, length_m: round(dist(w.a, w.b), 2), thickness_m: round(w.thickness, 3), exterior: s.some((r) => !r), rooms: s.filter((r) => !!r).map((r) => r!.id), where: where(s) };
+  // a curved wall is drawn in short pieces: its length is all of them, measured round the curve
+  const length = w.curve ? curvePieces(plan, w).reduce((t, x) => { const c = dist(x.a, x.b) / (2 * x.curve!.radius); return t + 2 * x.curve!.radius * Math.asin(Math.min(1, c)); }, 0) : dist(w.a, w.b);
+  return { id: `wall-${w.id}`, length_m: round(length, 2), thickness_m: round(w.thickness, 3), exterior: s.some((r) => !r), rooms: s.filter((r) => !!r).map((r) => r!.id), where: where(s),
+    ...(w.curve ? { curved_radius_m: round(w.curve.radius, 2) } : {}) };
 }
 export type OpeningInfo = { id: string; kind: Opening['kind']; width_m: number; rooms: string[]; where: string; exit: boolean };
 export function openingInfo(plan: Plan, o: Opening): OpeningInfo {
@@ -41,7 +46,8 @@ export function describe(plan: Plan, kind: 'wall' | 'opening' | 'fixture', id: s
     const w = plan.walls.find((x) => x.id === id);
     if (!w) return null;
     const i = wallInfo(plan, w);
-    return { title: i.exterior ? 'Outside wall' : 'Wall', detail: `${i.length_m.toFixed(2)} m long · ${mm(i.thickness_m)} thick · ${i.where}` };
+    return { title: `${i.curved_radius_m ? 'Curved ' : ''}${i.exterior ? (i.curved_radius_m ? 'outside wall' : 'Outside wall') : i.curved_radius_m ? 'wall' : 'Wall'}`,
+      detail: `${i.length_m.toFixed(2)} m long${i.curved_radius_m ? ` round the curve · radius ${i.curved_radius_m.toFixed(2)} m` : ''} · ${mm(i.thickness_m)} thick · ${i.where}` };
   }
   if (kind === 'opening') {
     const o = plan.openings.find((x) => x.id === id);

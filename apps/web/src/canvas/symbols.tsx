@@ -29,8 +29,9 @@ function Shape({ k, w, d }: { k: Fixture['kind']; w: number; d: number }) {
     case 'sauna_stove':
       return <>{rect}<path d={`M${x0},${y0}L${-x0},${-y0}M${-x0},${y0}L${x0},${-y0}`} {...T} /><rect x={x0 + 0.05} y={y0 + 0.05} width={w - 0.1} height={d - 0.1} {...T} /></>;
     case 'stove': { // counter with a four-ring cooktop; wall cabinets above shown dashed
-      const r = Math.min(w, d) * 0.15;
-      return <>{rect}{[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => <circle key={`${a}${b}`} cx={(a * w) / 4} cy={(b * d) / 4} r={r} {...T} />)}
+      // a kitchen run read as one cooker keeps its worktop; the hob on it is the size of a hob, not stretched along it
+      const hob = Math.min(w, 0.65), r = Math.min(hob, d) * 0.15;
+      return <>{rect}{[[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([a, b]) => <circle key={`${a}${b}`} cx={(a * hob) / 4} cy={(b * d) / 4} r={r} {...T} />)}
         <line x1={x0} y1={y0 + 0.35} x2={-x0} y2={y0 + 0.35} {...HIDDEN} /></>;
     }
     case 'fridge':

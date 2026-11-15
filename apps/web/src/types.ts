@@ -14,7 +14,7 @@ export type Content = {
   /** How the answer was worked out, in steps; and what was looked up on the plan to get there. */
   reasoning?: string[]; steps?: { tool: string; found: string }[];
   /** How the answer was produced and what it cost: by code from the stored plan (free), by model calls, or the cost of reading a drawing. */
-  cost?: { by: 'code' | 'model' | 'reading'; usd: number; calls?: number; tokens_in?: number; tokens_out?: number; ms?: number; note?: string };
+  cost?: { by: 'code' | 'model' | 'reading' | 'cache'; usd: number; calls?: number; tokens_in?: number; tokens_out?: number; ms?: number; note?: string };
   /** A question asked about a marked region of the plan. */
   region?: import('../../shared/region').Region;
 };
