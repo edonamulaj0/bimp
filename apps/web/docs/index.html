@@ -65,7 +65,7 @@
             <li>Create a project, personal or in a <a href="#teams">team</a>, and <a href="#uploading">upload a drawing</a>. bimp reads it in the background and the plan appears when it's ready.</li>
             <li>When the plan appears, <a href="#asking">ask a question</a> in the chat on the left, or click a room on the plan for its numbers.</li>
           </ol>
-          <div class="callout"><b>Pilot limits.</b> One drawing being read at a time per person, 200 questions per person per day, files up to 50 MB. See <a href="/pricing/">Pricing</a>.</div>
+          <div class="callout"><b>Pilot limits.</b> One drawing being read at a time per person, 200 questions per person per day, files up to 50 MB. bimp is free during the pilot.</div>
           <figure class="frame"><img src="/shots/workspace.webp" width="2400" height="1500" loading="lazy" alt="The bimp workspace: the project files and bimp AI on the left, the pilot house plan in the centre and the overview panel with areas and room list on the right."></figure>
         </section>
 
@@ -91,7 +91,7 @@
             <li><b>Read.</b> An AI model names the rooms and their types, outlines them, and finds doors, windows, fittings, level marks and one dimension string.</li>
             <li><b>Measure.</b> Code snaps each room outline edge by edge to the drawing's line work, replaces labels with the exact text inside the room, chooses the scale (see <a href="#method">Method</a>) and computes areas.</li>
           </ol>
-          <p>Only the first page of a PDF is read. Files larger than 50 MB are refused.</p>
+          <p>Every page of a PDF is read, up to 8 pages per file; each page with a floor plan becomes its own revision. Files larger than 50 MB are refused.</p>
         </section>
 
         <section id="asking" aria-labelledby="ask-h">
@@ -112,7 +112,7 @@
 
         <section id="plans" aria-labelledby="pl-h">
           <h2 id="pl-h">Plans and dimensions</h2>
-          <p>The canvas shows the plan in <b>2D</b>, <b>3D</b> or <b>Split</b>. Rooms are coloured by type, and selection is linked between the views and the chat.</p>
+          <p>The canvas shows the plan in <b>2D</b>, over the drawing it was read from. Rooms are coloured by type, and selection is linked between the plan, the file list and the chat.</p>
           <h3>Plan and Dimensioned modes</h3>
           <p>The 2D plan follows drafting convention: the plan is cut at 1.2 m, cut walls are filled and hatched by type, and anything above the cut is dashed.</p>
           <ul>
@@ -137,23 +137,21 @@
           <h3>Scale and printing</h3>
           <p>The 2D view shows its scale as 1:x. Type any ratio or pick a standard one; "Drawing 1:N" jumps to the drawing's own scale when it's known. The graphic scale bar is always correct relative to the plan.</p>
           <p>On-screen 1:x is nominal: it assumes 96 CSS pixels per inch, and real screens differ. <b>Print…</b> is exact: the plan is sized in millimetres at 1:x on the smallest ISO sheet from A4 to A0 that fits, with a scale bar and a title line stating the scale and whether the plan is measured or a preview.</p>
-          <h3>3D</h3>
-          <p>A true isometric view, rotated in 90° steps, in three wall modes: <b>Dollhouse</b> (default; walls between you and the rooms drop to 0.3 m, back walls stay full height), <b>Cut 1.2 m</b> and <b>Full</b>. Floor materials by room type are a visual convention, not drawing data.</p>
           <h3>Room and plan info</h3>
           <p>Click a room for its net area, length × width, perimeter, ceiling height, volume, doors, windows, glazed area and glazing ratio. With nothing selected, the panel shows the plan: net floor area (rooms to the inside of walls), wall area, gross area (net plus walls), and floor level. Heights not stated on the drawing are shown as "not stated" or "assumed".</p>
         </section>
 
         <section id="workspace" aria-labelledby="ws-h">
           <h2 id="ws-h">The workspace</h2>
-          <p>A project opens in three columns. On the left, <b>Files</b> lists drawings, revisions and the model's rooms; drop drawings anywhere on it. Under it, <b>bimp AI</b> answers questions. In the middle, the <b>canvas</b> shows the plan in 2D, the model in 3D, or both (keys 1, 2, 3). On the right, <b>Comments</b>, <b>Revisions</b> and the <b>Overview</b>. Drag the dividers to resize; the buttons at the top right hide either side.</p>
+          <p>A project opens in three columns. On the left, <b>Files</b> lists drawings, revisions and the model's rooms; drop drawings anywhere on it. Under it, <b>bimp AI</b> answers questions. In the middle, the <b>canvas</b> shows the 2D plan. On the right, <b>Comments</b>, <b>Revisions</b> and the <b>Overview</b>. Drag the dividers to resize; the buttons at the top right hide either side.</p>
           <h3>Tools</h3>
           <ul>
             <li><b>Select (V)</b>: pick rooms; drag to pan.</li>
             <li><b>Comment (C)</b>: click a spot to pin a thread.</li>
-            <li><b>Markup (R)</b>: drag a region over the plan or the model. While a region is marked, bimp AI answers only from what lies inside it (rooms are clipped to the region, and the answer says so). Clear it to ask about the whole plan again.</li>
+            <li><b>Markup (R)</b>: drag a region over the plan. While a region is marked, bimp AI answers only from what lies inside it (rooms are clipped to the region, and the answer says so). Clear it to ask about the whole plan again.</li>
             <li><b>Measure (M)</b>: click two points; they snap to corners, and Shift keeps the line straight.</li>
           </ul>
-          <p>Right-click, double-click or press and hold on the canvas for tools, layers (room fills, furniture, dimensions, labels, pins) and views. In 3D, drag to orbit, right-drag or Shift-drag to pan, and scroll to zoom; arrow keys orbit and Home returns to the isometric view.</p>
+          <p>Right-click, double-click or press and hold on the canvas for tools, layers (room fills, furniture, dimensions, labels, pins) and views. Drag to pan and scroll to zoom; F fits the plan to the view.</p>
           <p>On a phone the canvas fills the screen and Files, Ask, Comments and Overview open as sheets from the bar at the bottom. Help (the ? button) replays the welcome tour and opens the first-project guide.</p>
         </section>
 
@@ -245,7 +243,7 @@
             <li>Cloudflare Workers for the app and API, D1 for projects, R2 for drawings, Workflows and Containers for reading them</li>
             <li>Python for reading: PyMuPDF for PDFs, OpenCV for scans, ezdxf for CAD</li>
             <li>Google Gemini to read labels and outlines and to write answers that cite their sources</li>
-            <li>Preact and three.js in the browser: the 2D plan in SVG, the isometric model in WebGL</li>
+            <li>Preact in the browser: the 2D plan is drawn in SVG</li>
           </ul>
           <h3 id="contact">Contact</h3>
           <p>For enterprise or on-premise deployments, data location or higher limits, contact the bimp team. bimp is in its pilot; we'll publish a contact address here.</p>
@@ -255,8 +253,7 @@
           <h2 id="cr-h">Credits</h2>
           <ul>
             <li>Design data: <i>Metric Handbook: Planning and Design Data</i>, 4th ed. (Littlefield, 2012), cited with each check. The book's text is not reproduced.</li>
-            <li>Wall joining and baked occlusion: techniques after neonplan3d (MIT licence, © 2026 Mastershort), reimplemented.</li>
-            <li>Furniture models: Kenney Furniture Kit (CC0).</li>
+            <li>Wall joining: a technique after neonplan3d (MIT licence, © 2026 Mastershort), reimplemented.</li>
             <li>Plan sheets on the home page: drawn from <a href="https://doi.org/10.5281/zenodo.7788422">Swiss Dwellings v3.0.0</a> by Matthias Standfest, Michael Franzen, Yvonne Schröder, Luis Gonzalez Medina, Yarilo Villanueva Hernandez, Jan Hendrik Buck, Yen-Ling Tan, Milena Niedzwiecka and Rachele Colmegna (Archilyse AG), <a href="https://creativecommons.org/licenses/by/4.0/">CC BY 4.0</a>; sites 694 and 3575, cropped and shown in greyscale. Archilyse AG does not endorse these drawings.</li>
             <li>Photographs on the home page and the sign-in page: Troy Mortier, Declan Sun, Pixasquare and Divaris Shirichena, via Unsplash (Unsplash License), shown in greyscale.</li>
             <li>Type: Jost and IBM Plex Mono (SIL Open Font License).</li>

@@ -128,15 +128,19 @@ const PLAN = `
 <path d="M 440 114 L 1160 114 M 440 786 L 1160 786" stroke="${W}0.035)" stroke-width="1" stroke-dasharray="6 8"/>
 ${[[182, 466], [1414, 412]].map(([x, y]) => `<g class="sp-datum" transform="translate(${x}, ${y})" opacity="0"><circle cx="0" cy="0" r="9" stroke="${W}0.085)" stroke-width="1"/><path d="M 0 0 L 0 -9 A 9 9 0 0 1 9 0 Z" fill="rgba(248,106,36,0.22)"/><path d="M 0 0 L 0 9 A 9 9 0 0 1 -9 0 Z" fill="rgba(248,106,36,0.22)"/><line x1="-14" y1="0" x2="14" y2="0" stroke="${W}0.085)" stroke-width="1"/><line x1="0" y1="-14" x2="0" y2="14" stroke="${W}0.085)" stroke-width="1"/></g>`).join('')}`;
 
-const SPLASH_HTML = `
-<svg class="sp-bg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
+// On an upright screen the plan is turned a quarter, so its two wings sit above and below the wordmark instead of
+// being cropped off the sides.
+const splashHtml = (upright: boolean) => `
+<svg class="sp-bg" viewBox="${upright ? '0 0 900 1600' : '0 0 1600 900'}" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
   <defs>
     <pattern id="sp-grid" width="80" height="80" patternUnits="userSpaceOnUse"><path d="M 80 0 L 0 0 0 80" fill="none" stroke="${W}0.022)" stroke-width="1"/></pattern>
     <radialGradient id="sp-clear" cx="50%" cy="50%" r="46%"><stop offset="0%" stop-color="#1d1d1d" stop-opacity="0.96"/><stop offset="58%" stop-color="#1d1d1d" stop-opacity="0.55"/><stop offset="100%" stop-color="#1d1d1d" stop-opacity="0"/></radialGradient>
   </defs>
+  <g${upright ? ' transform="translate(900 0) rotate(90)"' : ''}>
   <rect width="1600" height="900" fill="url(#sp-grid)"/>
   <g class="sp-plan" fill="none" stroke-linecap="round" stroke-linejoin="round">${PLAN}</g>
-  <ellipse cx="800" cy="450" rx="510" ry="300" fill="url(#sp-clear)"/>
+  <ellipse cx="800" cy="450" rx="${upright ? 380 : 510}" ry="${upright ? 400 : 300}" fill="url(#sp-clear)"/>
+  </g>
 </svg>
 <div class="sp-stage">
   ${wordmarkSvg('sp')}
@@ -154,10 +158,10 @@ const SPLASH_HTML = `
 </div>`;
 
 const SPLASH_CSS = `
-#bimp-splash{position:fixed;inset:0;z-index:2147483000;background:#1d1d1d;display:flex;align-items:center;justify-content:center;transition:opacity .7s cubic-bezier(.22,1,.36,1);visibility:visible!important}
+#bimp-splash{position:fixed;inset:0;height:100vh;height:100dvh;z-index:2147483000;background:#1d1d1d;display:flex;align-items:center;justify-content:center;transition:opacity .7s cubic-bezier(.22,1,.36,1);visibility:visible!important}
 #bimp-splash.is-dismissed{opacity:0;pointer-events:none}
 #bimp-splash .sp-bg{position:absolute;inset:0;width:100%;height:100%;pointer-events:none}
-#bimp-splash .sp-stage{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;width:clamp(230px,34vw,420px)}
+#bimp-splash .sp-stage{position:relative;z-index:2;display:flex;flex-direction:column;align-items:center;width:clamp(200px,min(34vw,60vh),420px);max-width:calc(100vw - 96px)}
 #bimp-splash .wordmark-anim{width:100%;height:auto;display:block;overflow:visible}
 #bimp-splash .sp-rule{margin-top:20px;width:min(190px,58%);height:auto;display:block;overflow:visible}`;
 
@@ -174,7 +178,7 @@ export function showSplash({ ready = Promise.resolve() as Promise<unknown>, minM
   const el = document.createElement('div');
   el.id = 'bimp-splash';
   el.setAttribute('role', 'presentation');
-  el.innerHTML = SPLASH_HTML;
+  el.innerHTML = splashHtml(innerHeight > innerWidth);
   document.head.appendChild(style);
   document.body.appendChild(el);
 

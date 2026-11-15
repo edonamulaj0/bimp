@@ -1,16 +1,23 @@
-import { type Plan, area, roomStats, round } from '../../shared/plan';
+import { type Plan, type Evidence, FIXTURE_KINDS, area, roomStats, round, detectedKindOf, detectedCount } from '../../shared/plan';
 import { calculate } from './calc';
 import { ACCESS, BED, CORRIDOR, DOOR, FLAT_TRAVEL, GARAGE, OCCUPANCY, OCCUPANCY_REF, PLAN_SCALES, ROOM_STANDARDS, STAIR, TRAVEL, TRAVEL_REF, TURNING, WALL, checkPlan, escapeWidth } from '../../shared/standards';
 import { escapeRoutes } from '../../shared/escape';
 import { openingsOfRoom, planAreas, roomInfo } from '../../shared/rooms';
 import { fengShui } from '../../shared/fengshui';
-import { type Content, type Part, generate } from './gemini';
+import { basisOf, fixtureInfo, openingInfo, wallInfo } from '../../shared/measure';
+import { type Content, type Meter, type Part, generate } from './gemini';
 import type { Env } from './util';
+import { briefText, planFacts } from './brief';
 
 export type Answer = {
   text: string;
-  claims: { text: string; room_ids: string[] }[];
+  /** item_ids: the openings and fittings a claim counts; evidence: the crop of the source sheet that shows them. */
+  claims: { text: string; room_ids: string[]; item_ids?: string[]; evidence?: Evidence }[];
   calculation: string | null;
+  /** How the answer follows from the plan, step by step, in words. */
+  reasoning: string[];
+  /** What was looked up to get there: each tool call and what it returned, written by code (the model cannot edit it). */
+  steps?: { tool: string; found: string }[];
   assumptions: string[];
   not_found: boolean;
   verified: boolean;
@@ -22,7 +29,7 @@ const TOOLS = [
   { name: 'plan_info', description: 'Overview of the plan: how it was produced, whether measured, scale source, assumptions, extent, counts.', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'list_rooms', description: 'All rooms with id, name, type, area_m2 and perimeter_m (computed from geometry).', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'get_room', description: 'One room by id: area, perimeter, bounding dimensions, doors and windows on its boundary.', parameters: S('OBJECT', undefined, { properties: { id: S('STRING') }, required: ['id'] }) },
-  { name: 'count', description: 'Count doors, windows, rooms of a type, or fittings/furniture drawn on the plan (each counted item is cited by id).', parameters: S('OBJECT', undefined, { properties: { what: S('STRING', 'door | window | room | wc | sink | bathtub | shower | sauna_stove | stove | fridge | washer | bed | sofa | table | desk | wardrobe'), room_type: S('STRING', 'optional room type filter for rooms'), room_id: S('STRING', 'optional: only items in this room') }, required: ['what'] }) },
+  { name: 'count', description: 'Count doors, windows, rooms of a type, or fittings/furniture drawn on the plan (each counted item is cited by id). On scans and images, doors, windows, wc, sink and shower_bath are counted by a symbol detector; it counts showers and bathtubs together, so use shower_bath for that total.', parameters: S('OBJECT', undefined, { properties: { what: S('STRING', `door | window | room | shower_bath | ${FIXTURE_KINDS.join(' | ')}`), room_type: S('STRING', 'optional room type filter for rooms'), room_id: S('STRING', 'optional: only items in this room') }, required: ['what'] }) },
   { name: 'check_plan', description: 'Plausibility checks of the plan against design standards (room minimum sizes, corridor and door widths, scale). Each check cites its source.', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'space_standard', description: 'Design standard figures with their source: room minimum areas by type, door, corridor, stair, bed, wheelchair turning, preferred plan scales.', parameters: S('OBJECT', undefined, { properties: { topic: S('STRING', 'room type (bedroom, living, kitchen...), or door | corridor | stair | bed | turning | scale') }, required: ['topic'] }) },
   { name: 'escape_route', description: 'Estimated travel distance from the furthest point of each room (or one room) to an exit door, through doors, with the path and the limits that apply (Metric Handbook Ch. 41).', parameters: S('OBJECT', undefined, { properties: { room_id: S('STRING', 'optional room id') } }) },
@@ -30,19 +37,23 @@ const TOOLS = [
   { name: 'room_info', description: 'One room: net area, perimeter, length × width, ceiling height, volume, doors, windows, glazed area and ratio, fittings.', parameters: S('OBJECT', undefined, { properties: { id: S('STRING') }, required: ['id'] }) },
   { name: 'plan_areas', description: 'Whole plan: net floor area (rooms), wall area, gross floor area (net + walls), net/gross ratio, ceiling height and its source, floor level, volume, counts.', parameters: S('OBJECT', undefined, { properties: {} }) },
   { name: 'feng_shui', description: 'Feng shui guidance as geometric checks (command position of bed/desk, headboard wall, stove vs sink and door, WC vs door, light, entrance alignment). Traditional guidance, not a standard.', parameters: S('OBJECT', undefined, { properties: { room_id: S('STRING', 'optional') } }) },
+  { name: 'list_walls', description: 'Every wall with its length and thickness in metres, whether it is an outside wall, and the rooms beside it. Use this for wall lengths and thicknesses that are not written on the drawing; they are measured on the plan model. Cite walls by their id in item_ids.', parameters: S('OBJECT', undefined, { properties: { room_id: S('STRING', 'optional: only walls beside this room') } }) },
+  { name: 'list_openings', description: 'Every door and window with its clear width in metres and the rooms it joins or lights; exit marks doors to the outside. Measured on the plan model. Cite by id in item_ids.', parameters: S('OBJECT', undefined, { properties: { room_id: S('STRING', 'optional: only openings of this room'), kind: S('STRING', 'optional: door | window') } }) },
+  { name: 'list_fixtures', description: 'Every fitting, appliance and furniture item with its name, width and depth in metres and its room. Items a person named have that name. Cite by id in item_ids.', parameters: S('OBJECT', undefined, { properties: { room_id: S('STRING', 'optional: only items in this room') } }) },
   { name: 'calculate', description: 'Evaluate arithmetic exactly. Supports + - * / ^ ( ) ceil floor round sqrt min max abs.', parameters: S('OBJECT', undefined, { properties: { expression: S('STRING') }, required: ['expression'] }) },
   {
     name: 'final_answer',
     description: 'Return the answer. Call exactly once, last.',
     parameters: S('OBJECT', undefined, {
       properties: {
-        text: S('STRING', 'Answer in the user\'s language, plain and short.'),
-        claims: S('ARRAY', 'Each factual claim with the room ids it comes from', { items: S('OBJECT', undefined, { properties: { text: S('STRING'), room_ids: S('ARRAY', undefined, { items: S('STRING') }) }, required: ['text', 'room_ids'] }) }),
+        text: S('STRING', 'Answer in the user\'s language, short. Markdown: a blank line between paragraphs, a bullet list when listing several rooms or items, **bold** for the key figure, a small table only for comparing several rooms. No headings in a short answer.'),
+        claims: S('ARRAY', 'Each factual claim with the room ids it comes from, and the ids of the walls, openings or items it is about', { items: S('OBJECT', undefined, { properties: { text: S('STRING'), room_ids: S('ARRAY', undefined, { items: S('STRING') }), item_ids: S('ARRAY', 'ids from list_walls, list_openings, list_fixtures or count', { items: S('STRING') }) }, required: ['text', 'room_ids'] }) }),
+        reasoning: S('ARRAY', 'How the answer follows from the tool results, step by step, 3 to 7 short steps in the user\'s language: what was looked up and where (room names), each figure used with its unit, the formula and its result, any standard applied with its source, and what limits the answer (preview plan, assumed values). Only figures from tool results.', { items: S('STRING') }),
         calculation: S('STRING', 'Formula with inputs and result, if any arithmetic was done', { nullable: true }),
         assumptions: S('ARRAY', undefined, { items: S('STRING') }),
         not_found: S('BOOLEAN', 'True if the plan does not contain the answer'),
       },
-      required: ['text', 'claims', 'assumptions', 'not_found'],
+      required: ['text', 'reasoning', 'claims', 'assumptions', 'not_found'],
     }),
   },
 ];
@@ -55,15 +66,25 @@ say that dimensions are approximate. Cite the rooms each claim comes from by id.
 adequate, compliance or "is this right", use check_plan and space_standard and name the standard's source in the answer;
 standards are guidance, not a legal verdict. For fire escape and capacity questions use escape_route and occupancy. For an overview of a room or
 the home (size, light, feel), use room_info or plan_areas plus feng_shui, and write a short, warm, practical overview.
-Finish by calling final_answer.
-Answer in the language of the question.`;
+A length, width, thickness or size that is not written on the drawing can still be given: measure it with list_walls,
+list_openings, list_fixtures, room_info or get_room, and say it was measured on the plan and how exact that is.
+Finish by calling final_answer. Keep "text" short, and put the full working in "reasoning": a reader must be able to
+follow every step from the drawing to the answer and check it.
+Answer in the language of the question.
+Below is the plan's REFERENCE FILE: everything the tools would return for the whole plan, already worked out by code
+(rooms, areas, counts, doors and windows, walls, fittings, checks, escape distances, the text on the sheet). Read the
+answer off it and call final_answer straight away; its figures count as tool results. Call a tool only for what the
+file does not hold: arithmetic (calculate), a design standard's figures (space_standard), occupancy, feng shui, or an
+item the file lists as "and N more". Never call a tool for something the file already states.`;
 
-function runTool(plan: Plan, name: string, args: any): unknown {
+export function runTool(plan: Plan, name: string, args: any): unknown {
   switch (name) {
     case 'plan_info':
       return { method: plan.method, measured: plan.measured, scale_source: plan.scale.source, assumptions: plan.assumptions,
         width_m: plan.width, height_m: plan.height, wall_height_m: plan.wallHeight, rooms: plan.rooms.length,
-        doors: plan.openings.filter((o) => o.kind === 'door').length, windows: plan.openings.filter((o) => o.kind === 'window').length,
+        doors: detectedCount(plan, 'door')?.length ?? plan.openings.filter((o) => o.kind === 'door').length,
+        windows: detectedCount(plan, 'window')?.length ?? plan.openings.filter((o) => o.kind === 'window').length,
+        ...(plan.detected ? { counts_from: `symbol detector ${plan.detected.model}` } : {}),
         total_room_area_m2: round(plan.rooms.reduce((s, r) => s + area(r.polygon), 0)) };
     case 'list_rooms':
       return plan.rooms.map(roomStats);
@@ -76,6 +97,18 @@ function runTool(plan: Plan, name: string, args: any): unknown {
         doors: ops.filter((o) => o.kind === 'door').length, windows: ops.filter((o) => o.kind === 'window').length };
     }
     case 'count': {
+      // Scans and images: the detector's count wins for the kinds it was trained on; the model's reading is kept for comparison.
+      const dk = detectedKindOf(String(args.what)), det = dk && detectedCount(plan, dk, args.room_id);
+      if (dk && det) {
+        const drawn = dk === 'door' || dk === 'window' ? plan.openings.filter((o) => o.kind === dk).length
+          : (plan.fixtures ?? []).filter((f) => (dk === 'toilet' ? f.kind === 'wc' : dk === 'sink' ? f.kind === 'sink' : f.kind === 'shower' || f.kind === 'bathtub') && (!args.room_id || f.room_id === args.room_id)).length;
+        return { what: args.what, count: det.length, source: `symbol detector ${plan.detected!.model}`, items: det.map((d) => ({ id: d.id, room_id: d.room_id })),
+          ...(args.room_id && (dk === 'door' || dk === 'window') ? {} : { drawn_in_model: drawn }) };
+      }
+      if (args.what === 'shower_bath') {
+        const fx = (plan.fixtures ?? []).filter((f) => (f.kind === 'shower' || f.kind === 'bathtub') && (!args.room_id || f.room_id === args.room_id));
+        return { what: 'shower_bath', count: fx.length, items: fx.map((f) => ({ id: f.id, room_id: f.room_id })) };
+      }
       if (args.what === 'door' || args.what === 'window') return { what: args.what, count: plan.openings.filter((o) => o.kind === args.what).length };
       if (args.what !== 'room') {
         const fx = (plan.fixtures ?? []).filter((f) => f.kind === args.what && (!args.room_id || f.room_id === args.room_id));
@@ -119,6 +152,20 @@ function runTool(plan: Plan, name: string, args: any): unknown {
       return planAreas(plan);
     case 'feng_shui':
       return { notes: fengShui(plan, args.room_id || undefined), note: 'Traditional placement guidance, presented as such.' };
+    case 'list_walls': {
+      // a curved wall is stored in short pieces: it is listed once, with its length round the curve
+      const firstPiece = (w: Plan['walls'][number]) => !w.curve || plan.walls.find((x) => x.curve?.id === w.curve!.id) === w;
+      const all = plan.walls.filter(firstPiece).map((w) => wallInfo(plan, w)).filter((w) => !args.room_id || w.rooms.includes(args.room_id));
+      return { basis: basisOf(plan), count: all.length, total_length_m: round(all.reduce((s, w) => s + w.length_m, 0), 2), walls: all.slice(0, 80) };
+    }
+    case 'list_openings': {
+      const all = plan.openings.map((o) => openingInfo(plan, o)).filter((o) => (!args.room_id || o.rooms.includes(args.room_id)) && (!args.kind || o.kind === args.kind));
+      return { basis: basisOf(plan), count: all.length, openings: all.slice(0, 80) };
+    }
+    case 'list_fixtures': {
+      const all = (plan.fixtures ?? []).map((f) => fixtureInfo(plan, f)).filter((f) => !args.room_id || f.room_id === args.room_id);
+      return { basis: basisOf(plan), count: all.length, items: all.slice(0, 80) };
+    }
     case 'calculate':
       try { return { expression: args.expression, result: round(calculate(String(args.expression)), 4) }; }
       catch (e) { return { error: (e as Error).message }; }
@@ -135,16 +182,30 @@ function numbersIn(v: unknown, out: number[] = []): number[] {
   return out;
 }
 
+/** The sources that results name for their figures (`ref`: a handbook chapter, table or figure). Written by code. */
+function refsIn(v: unknown, out: string[] = []): string[] {
+  if (Array.isArray(v)) v.forEach((x) => refsIn(x, out));
+  else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { if (k === 'ref' && typeof x === 'string') out.push(x); else refsIn(x, out); }
+  return out;
+}
+
 /**
  * Every number in the answer must be a numeric tool result, appear in the question, or in the plan's own assumptions
- * (code-written; quoted drawing text excluded), at the precision written. Numbers the model only states as its own
+ * (code-written; quoted drawing text excluded, except a quoted dimension), or in the source a result names (chapter
+ * and table numbers), at the precision written. Numbers the model only states as its own
  * assumption are not evidence. A count next to a counted thing ("3 doors") must equal that count.
  */
 export function verify(ans: Omit<Answer, 'verified' | 'issues'>, results: unknown[], question: string, plan: Plan): string[] {
   const nums = (s: string) => (s.match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => n.replace(',', '.'));
-  const known = [...numbersIn(results), ...nums(question), ...plan.assumptions.flatMap((a) => nums(a.replace(/"[^"]*"/g, '')))].map(Number);
+  // A dimension quoted from the drawing ("12000", "2,50 m") is a figure of the plan; any other quoted text is not.
+  const quotedFigures = plan.assumptions.flatMap((a) => (a.match(/"[^"]*"/g) ?? []).filter((x) => /^"[\d\s.,'’+−-]+(?:mm|cm|m)?"$/.test(x)).flatMap(nums));
+  const known = [...numbersIn(results), ...refsIn(results).flatMap(nums), ...quotedFigures, ...nums(question), ...plan.assumptions.flatMap((a) => nums(a.replace(/"[^"]*"/g, '')))].map(Number);
   const issues: string[] = [];
-  const said = [ans.text, ...ans.claims.map((c) => c.text), ans.calculation ?? ''].join(' ');
+  // numbered-list markers ("1. ", "2) ") are formatting, not figures
+  // room names quoted in the answer ("Bedroom 2", "Flat 3 kitchen") are labels, not figures: taken out before the numbers are checked
+  const names = plan.rooms.map((r) => r.name).filter((n) => /\d/.test(n)).sort((a, b) => b.length - a.length);
+  const unnamed = (t: string) => names.reduce((x, n) => x.split(n).join(' '), t);
+  const said = unnamed([ans.text.replace(/^[ \t]*\d{1,3}[.)][ \t]+/gm, ''), ...(ans.reasoning ?? []), ...ans.claims.map((c) => c.text), ans.calculation ?? ''].join(' '));
   for (const n of new Set(nums(said))) {
     const d = n.split('.')[1]?.length ?? 0;
     if (!known.some((k) => Math.abs(round(k, d) - Number(n)) < 1e-9)) issues.push(`The number ${n} does not come from the plan or a calculation`);
@@ -162,34 +223,65 @@ export function verify(ans: Omit<Answer, 'verified' | 'issues'>, results: unknow
   return issues;
 }
 
+/** One line of the trail under an answer: what was looked up and what came back, in words. */
+export function traceStep(plan: Plan, tool: string, args: Record<string, unknown>, result: unknown): { tool: string; found: string } {
+  const r = (result ?? {}) as Record<string, any>, room = (id: unknown) => plan.rooms.find((x) => x.id === id)?.name ?? String(id ?? '');
+  const short = (v: unknown) => { const t = JSON.stringify(v) ?? ''; return t.length > 150 ? `${t.slice(0, 147)}…` : t; };
+  if (r.error) return { tool, found: String(r.error) };
+  switch (tool) {
+    case 'plan_info': return { tool: 'Plan overview', found: `${r.rooms} rooms, ${r.doors} doors, ${r.windows} windows; ${r.measured ? 'measured' : 'preview, not measured'}; scale: ${r.scale_source}` };
+    case 'list_rooms': return { tool: 'Room list', found: (result as { name: string; area_m2: number }[]).map((x) => `${x.name} ${x.area_m2} m²`).join(', ') };
+    case 'get_room': case 'room_info': return { tool: `Room: ${room(args.id)}`, found: [`${r.net_area_m2 ?? r.area_m2} m²`, r.length && `${r.length} × ${r.width} m`, r.perimeter_m && `perimeter ${r.perimeter_m} m`,
+      r.ceiling_height_m && `ceiling ${r.ceiling_height_m} m`, `${r.doors} doors`, `${r.windows} windows`].filter(Boolean).join(', ') };
+    case 'count': return { tool: `Count: ${args.what}${args.room_type ? ` (${args.room_type})` : ''}${args.room_id ? ` in ${room(args.room_id)}` : ''}`, found: `${r.count}${r.source ? `, by the ${r.source}` : ', from the plan model'}` };
+    case 'plan_areas': return { tool: 'Plan areas', found: `net ${r.net_floor_area_m2} m², walls ${r.wall_area_m2} m², gross ${r.gross_floor_area_m2} m², ceiling ${r.ceiling_height_m} m (${r.ceiling_source})` };
+    case 'list_walls': return { tool: `Walls${args.room_id ? ` of ${room(args.room_id)}` : ''}`, found: `${r.count} walls, ${r.total_length_m} m in all (${r.basis}): ${(r.walls as { length_m: number; thickness_m: number }[]).slice(0, 6).map((w) => `${w.length_m} m × ${w.thickness_m} m`).join(', ')}${r.count > 6 ? ', …' : ''}` };
+    case 'list_openings': return { tool: `Doors and windows${args.room_id ? ` of ${room(args.room_id)}` : ''}`, found: `${r.count} (${r.basis}): ${(r.openings as { kind: string; width_m: number }[]).slice(0, 8).map((o) => `${o.kind} ${o.width_m} m`).join(', ')}${r.count > 8 ? ', …' : ''}` };
+    case 'list_fixtures': return { tool: `Fittings and furniture${args.room_id ? ` in ${room(args.room_id)}` : ''}`, found: `${r.count}: ${(r.items as { name: string; width_m: number; depth_m: number }[]).slice(0, 8).map((f) => `${f.name} ${f.width_m} × ${f.depth_m} m`).join(', ')}${r.count > 8 ? ', …' : ''}` };
+    case 'calculate': return { tool: 'Calculation', found: `${r.expression} = ${r.result}` };
+    case 'check_plan': return { tool: 'Checks against design standards', found: `${(result as { level: string }[]).filter((x) => x.level === 'warn').length} to review of ${(result as unknown[]).length}` };
+    case 'space_standard': return { tool: `Standard: ${args.topic}`, found: short(result) };
+    case 'escape_route': return { tool: `Escape route${args.room_id ? ` from ${room(args.room_id)}` : 's'}`, found: (r.routes as { room_id: string; distance_m: number }[] ?? []).slice(0, 6).map((x) => `${room(x.room_id)} ${x.distance_m} m`).join(', ') };
+    case 'occupancy': return { tool: `Occupancy as ${args.use}`, found: `${r.area_m2} m² ÷ ${r.m2_per_person} m² per person = ${r.people} people` };
+    case 'feng_shui': return { tool: 'Placement guidance', found: `${(r.notes as unknown[] ?? []).length} notes` };
+    default: return { tool, found: short(result) };
+  }
+}
+
 /** `context` goes in front of the question: e.g. the drawing sheet and where on it a comment is pinned. */
-export async function ask(env: Env, plan: Plan, question: string, history: { role: 'user' | 'model'; text: string }[], context: Part[] = []): Promise<Answer> {
+export async function ask(env: Env, plan: Plan, question: string, history: { role: 'user' | 'model'; text: string }[], context: Part[] = [], meter?: Meter): Promise<Answer> {
   const contents: Content[] = [...history.map((h) => ({ role: h.role, parts: [{ text: h.text }] })), { role: 'user', parts: [...context, { text: question }] }];
-  const results: unknown[] = [];
+  // The reference file is the same text for every question about this plan, at the very front of the request: the model
+  // provider bills a repeated prefix at its cached rate, and most questions need one call instead of a round of look-ups.
+  const facts = planFacts(plan);
+  const system = `${SYSTEM}\n\n${briefText(plan, facts)}`;
+  const results: unknown[] = [facts], steps: NonNullable<Answer['steps']> = [{ tool: 'Reference file', found: `${facts.rooms.length} rooms, ${facts.openings.length} doors and windows, ${facts.fixtures.length} fittings, ${facts.wall_totals.count} walls: worked out by code when the drawing was read` }];
   for (let step = 0; step < 8; step++) {
     const reply = await generate(env, {
-      systemInstruction: { parts: [{ text: SYSTEM }] },
+      systemInstruction: { parts: [{ text: system }] },
       contents,
       tools: [{ functionDeclarations: TOOLS }],
       toolConfig: { functionCallingConfig: { mode: 'ANY' } },
       generationConfig: { temperature: 0 },
-    });
+    }, undefined, undefined, meter);
     contents.push(reply);
     const calls = reply.parts.filter((p) => p.functionCall).map((p) => p.functionCall!);
     const final = calls.find((c) => c.name === 'final_answer');
     if (final) {
       const a = final.args ?? {};
       const ans = { text: String(a.text ?? ''), claims: Array.isArray(a.claims) ? a.claims : [], calculation: a.calculation ?? null,
+        reasoning: Array.isArray(a.reasoning) ? a.reasoning.filter((x: unknown): x is string => typeof x === 'string' && !!x.trim()).slice(0, 12) : [],
         assumptions: Array.isArray(a.assumptions) ? a.assumptions : [], not_found: !!a.not_found };
       const issues = verify(ans, results, question, plan);
-      return { ...ans, verified: issues.length === 0, issues };
+      return { ...ans, steps, verified: issues.length === 0, issues };
     }
     if (!calls.length) break;
     contents.push({ role: 'user', parts: calls.map((c) => {
       const result = runTool(plan, c.name, c.args ?? {});
       results.push(result);
+      steps.push(traceStep(plan, c.name, c.args ?? {}, result));
       return { functionResponse: { name: c.name, response: { result } } };
     }) });
   }
-  return { text: 'I could not finish answering this question. Try rephrasing it.', claims: [], calculation: null, assumptions: [], not_found: true, verified: false, issues: ['Agent did not finish'] };
+  return { text: 'I could not finish answering this question. Try rephrasing it.', claims: [], calculation: null, reasoning: [], steps, assumptions: [], not_found: true, verified: false, issues: ['Agent did not finish'] };
 }

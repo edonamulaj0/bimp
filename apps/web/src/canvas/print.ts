@@ -55,3 +55,34 @@ export function printPlan(svg: SVGSVGElement, plan: Plan, ratio: number, pad: nu
   w.document.open(); w.document.write(doc); w.document.close();
   setTimeout(() => { w.focus(); w.print(); setTimeout(() => frame.remove(), 1000); }, 300);
 }
+
+/**
+ * The plan as a PNG: the whole plan on a white sheet with a thin edge, transparent around it, without the screen-only
+ * layers (pins, hover targets, the answer note, the source drawing). For presentation images.
+ */
+export async function planSnapshot(svg: SVGSVGElement, plan: Plan, pad: number, width = 1800): Promise<Blob> {
+  const clone = svg.cloneNode(true) as SVGSVGElement, ns = 'http://www.w3.org/2000/svg';
+  const m = pad * 0.25, x = -pad, y = -pad, w = plan.width + 2 * pad, h = plan.height + 2 * pad; // the sheet; m of clear space round it
+  const px = Math.round(width), py = Math.round((width * (h + 2 * m)) / (w + 2 * m));
+  clone.setAttribute('viewBox', `${x - m} ${y - m} ${w + 2 * m} ${h + 2 * m}`);
+  clone.setAttribute('width', String(px)); clone.setAttribute('height', String(py));
+  clone.setAttribute('xmlns', ns);
+  clone.removeAttribute('class'); clone.removeAttribute('style');
+  clone.querySelectorAll('.hits, .q-pins, .pins, .diff, .note-area, .region, .measures, .focus-ring, .escape, image').forEach((n) => n.remove());
+  clone.querySelectorAll('[data-name]').forEach((n) => n.removeAttribute('visibility')); // names hidden over the source drawing belong on the sheet
+  // an image drawn from an SVG sees no page styles: the colours the drawing refers to are set here, for a white sheet
+  const style = document.createElementNS(ns, 'style');
+  style.textContent = 'svg{--wall:#1e1d1b;--fg:#1e1d1b;--ink:#1e1d1b;--sheet:#ffffff;--paper:#ffffff;--surface:#ffffff;--accent:#ff682b;--muted:#6b6862}text{font-family:Helvetica,Arial,sans-serif;fill:#1e1d1b}';
+  const sheet = document.createElementNS(ns, 'rect');
+  Object.entries({ x, y, width: w, height: h, fill: '#ffffff', stroke: '#1e1d1b', 'stroke-width': w / 900 }).forEach(([k, v]) => sheet.setAttribute(k, String(v)));
+  clone.prepend(style, sheet);
+  const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(clone)], { type: 'image/svg+xml' }));
+  try {
+    const img = new Image();
+    await new Promise<void>((ok, fail) => { img.onload = () => ok(); img.onerror = () => fail(new Error('The plan could not be captured.')); img.src = url; });
+    const canvas = document.createElement('canvas');
+    canvas.width = px; canvas.height = py;
+    canvas.getContext('2d')!.drawImage(img, 0, 0, px, py);
+    return await new Promise<Blob>((ok, fail) => canvas.toBlob((b) => (b ? ok(b) : fail(new Error('The plan could not be captured.'))), 'image/png'));
+  } finally { URL.revokeObjectURL(url); }
+}

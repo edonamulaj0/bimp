@@ -1,12 +1,15 @@
 import type { ComponentChildren } from 'preact';
-import { useEffect, useMemo, useRef, useState } from 'preact/hooks';
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'preact/hooks';
 import type { PlanDiff } from '../../../shared/diff';
 import { doorLinks, escapeRoutes } from '../../../shared/escape';
 import { type Footprint, labelPoint, wallFootprints } from '../../../shared/walls';
-import { type Plan, type Pt, area, centroid, dist, round } from '../../../shared/plan';
+import { type Fixture, type FixtureKind, type Plan, type Pt, FIXTURE_KINDS, FIXTURE_LABEL, area, centroid, dist, round } from '../../../shared/plan';
+import { basisOf, describe } from '../../../shared/measure';
 import { hoverRoom, selectedRooms } from '../state';
 import { ROOM_COLORS } from './colors';
-import { printPlan } from './print';
+import { type AnswerNote, noteArea, placeNote } from './note';
+import { Icon } from '../icons';
+import { planSnapshot, printPlan } from './print';
 import { FixtureSymbol } from './symbols';
 import { FLOOR_OF } from './floors-kind';
 import { inside, roomDims } from '../../../shared/rooms';
@@ -23,6 +26,8 @@ export type MenuAt = { x: number; y: number; p: Pt | null; roomId: string | null
 export type Plan2DApi = {
   fit(): void; zoom(k: number): void; mode(): PlanMode; setMode(m: PlanMode): void;
   escape(): boolean; toggleEscape(): void; measures(): number; clearMeasures(): void; print(): void;
+  /** The whole plan as a PNG on a white sheet, for presentation images. */
+  snapshot(): Promise<Blob>;
 };
 
 /** CSS pixels per metre of screen (96 px per inch). Screens vary, so on-screen 1:x is nominal; print is exact. */
@@ -33,7 +38,11 @@ const NICE = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200];
 /** A comment pinned to the plan (plan metres). */
 export type PinMark = { id: string; n: number; x: number; y: number; resolved: boolean; label: string };
 type Props = {
-  plan: Plan; compact?: boolean; sourceUrl?: string | null; title?: string;
+  /** Says what a symbol is (a known kind, or 'unknown' with a name); `similar` names the other unknown symbols of its size too. Absent = read-only. */
+  onRelabel?(fixtureId: string, kind: FixtureKind, label: string, similar: boolean): Promise<void>;
+  /** The latest answer, shown beside the part of the plan it is about. */ note?: AnswerNote | null; onNoteClose?(): void;
+  /** What the marked region holds: shown beside the region, above the answer, never over it. */ regionCard?: ComponentChildren;
+  plan: Plan; compact?: boolean; sourceUrl?: string | null; /** 0-1: how strongly the source drawing and the model over it are drawn */ sourceOpacity?: number; modelOpacity?: number; title?: string;
   /** Comment pins on this plan; drawn at a constant screen size. */
   pins?: PinMark[]; activePin?: string | null; onPin?(id: string): void;
   /** Comment tool: a click (or Enter on a room) drops a pin at that spot instead of selecting. */
@@ -51,7 +60,7 @@ type Props = {
 /** plan: the drawing with overall sizes; dims: every wall, opening and room dimensioned in millimetres. */
 export type PlanMode = 'plan' | 'dims';
 
-export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activePin, onPin, placing, onPlace, draft, popover, diff, focusAt, tool = 'select', region, onRegion, layers = ALL_LAYERS, apiRef, onMenu }: Props) {
+export function Plan2D({ plan, compact, onRelabel, note, onNoteClose, regionCard, sourceUrl, sourceOpacity = 0.45, modelOpacity = 1, title = 'Plan', pins, activePin, onPin, placing, onPlace, draft, popover, diff, focusAt, tool = 'select', region, onRegion, layers = ALL_LAYERS, apiRef, onMenu }: Props) {
   const [mode, setMode] = useState<PlanMode>(() => { try { return localStorage.getItem('bimp.planMode') === 'dims' ? 'dims' : 'plan'; } catch { return 'plan'; } });
   // Dimension strings sit outside the building: three tiers on every side need about twice the margin.
   const pad = Math.max(plan.width, plan.height) * (mode === 'dims' && !compact ? 0.2 : 0.1), top = compact ? 0 : pad * 0.35; // room for the toolbar
@@ -91,10 +100,46 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
       const d = Math.hypot(m[0] - w.a[0] - u[0] * t, m[1] - w.a[1] - u[1] * t);
       if (d < bd) { bd = d; best = w.thickness; }
     }
-    return [o.id, best];
+    return [o.id, o.t ?? best]; // measured in the drawn wall when it was
   })), [plan]);
   const exits = useMemo(() => (showEscape ? doorLinks(plan).filter((d) => d.exit) : []), [plan, showEscape]);
   useEffect(() => setVb(home), [plan, mode]);
+  // What is under the pointer besides rooms: a wall, a door or window, a fitting. Its name and measurements show at the
+  // top of the plan. A clicked fitting stays shown (so it can be renamed) until something else is clicked.
+  type Hit = { kind: 'wall' | 'opening' | 'fixture'; id: string };
+  const [hit, setHit] = useState<Hit | null>(null);
+  const [picked, setPicked] = useState<string | null>(null);  // a fitting clicked on
+  const [naming, setNaming] = useState<string | null>(null);  // the fitting being named
+  useEffect(() => { setHit(null); setPicked(null); setNaming(null); }, [plan]);
+  const shown: Hit | null = hit ?? (picked ? { kind: 'fixture', id: picked } : null);
+  const info = useMemo(() => (shown ? describe(plan, shown.kind, shown.id) : null), [plan, shown?.kind, shown?.id]);
+  const shownFx = shown?.kind === 'fixture' ? plan.fixtures?.find((f) => f.id === shown.id) : undefined;
+  // a curved wall is drawn in short pieces: pointing at one lights up the whole wall
+  const shownCurve = shown?.kind === 'wall' ? plan.walls.find((w) => w.id === shown.id)?.curve?.id : undefined;
+  const unknowns = useMemo(() => (plan.fixtures ?? []).filter((f) => f.kind === 'unknown' && !f.label && f.source !== 'suggested'), [plan]);
+  // The answer note: its area on the plan, and the measured size of its card.
+  const noteAt = useMemo(() => (note ? noteArea(plan, note) : null), [plan, note]);
+  // the side panel stands beside the marked region while there is one, else beside the area the answer is about
+  const sideBox: [number, number, number, number] | null = region && regionCard ? [region.x0, region.y0, region.x1, region.y1] : noteAt?.box ?? null;
+  const noteEl = useRef<HTMLDivElement>(null);
+  const [noteSize, setNoteSize] = useState({ w: 220, h: 60 });
+  useLayoutEffect(() => { const el = noteEl.current; if (el && (el.offsetWidth !== noteSize.w || el.offsetHeight !== noteSize.h)) setNoteSize({ w: el.offsetWidth, h: el.offsetHeight }); });
+  // A new note brings its area into view, with room beside it for the note; if the area still fills the view when
+  // the card has been measured, more of the plan is shown until the note fits clear of it.
+  useEffect(() => {
+    if (!sideBox || !size.w || size.w < 560) return;
+    const [x0, y0, x1, y1] = sideBox, k = size.h / size.w, pad = 0.6;
+    setVb((v) => {
+      const vis = x0 >= v.x && x1 <= v.x + v.w && y0 >= v.y && y1 <= v.y + v.h;
+      const s = Math.min(size.w / v.w, size.h / v.h), need = (noteSize.w + 40) / s, needH = (noteSize.h + 40) / s;
+      const roomBeside = Math.max(v.x + v.w - x1, x0 - v.x) >= need || Math.max(v.y + v.h - y1, y0 - v.y) >= needH;
+      if (vis && roomBeside) return v;
+      // frame the area with the note's width to spare on the right
+      // wide enough that, at the resulting zoom, the note's own width (plus its gap) is left over beside the area
+      const w = Math.max(((x1 - x0 + 2 * pad) * size.w) / Math.max(120, size.w - noteSize.w - 48), (y1 - y0 + 2 * pad) / k, 4), h = w * k;
+      return { x: x0 - pad, y: (y0 + y1) / 2 - h / 2, w, h };
+    });
+  }, [note?.key, sideBox?.join(), noteSize.w, noteSize.h, size.w > 0]);
   useEffect(() => {
     if (!focusAt) return;
     const [x, y] = focusAt.p;
@@ -129,6 +174,7 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
     fit: () => setVb(home), zoom, mode: () => mode, setMode: pickMode, escape: () => showEscape, toggleEscape: () => setShowEscape((v) => !v),
     measures: () => measures.length, clearMeasures: () => { setMeasures([]); setMFrom(null); },
     print: () => setPrinting(String(printRatio)),
+    snapshot: () => planSnapshot(svg.current!, plan, pad),
   };
   // Snapping for the measure tool: room corners, wall footprint corners and opening ends within 10 px.
   const snapPts = useMemo(() => [
@@ -279,8 +325,9 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
       {sourceUrl && plan.source && (
         <image aria-hidden="true" href={sourceUrl} x={plan.source.offset[0]} y={plan.source.offset[1]}
           width={plan.source.imageWidth * (plan.scale.metersPerPx ?? 1)} height={plan.source.imageHeight * (plan.scale.metersPerPx ?? 1)}
-          opacity={0.45} preserveAspectRatio="none" />
+          opacity={sourceOpacity} preserveAspectRatio="none" />
       )}
+      <g class="model" opacity={modelOpacity}>
       {plan.rooms.map((r) => {
         const on = hovered === r.id || selected.includes(r.id);
         return (
@@ -309,8 +356,22 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
         </g>
       )}
       {layers.furniture && <g pointer-events="none" class="fixtures" aria-hidden="true">{(plan.fixtures ?? []).map((f) => <FixtureSymbol key={f.id} f={f} />)}</g>}
-      <Walls footprints={footprints} />
+      <Walls footprints={footprints} poche={plan.poche} />
       <Openings plan={plan} thick={openingT} u={pxPerM ? 1 / pxPerM : 0.03} />
+      {!compact && !diff && tool === 'select' && (
+        <g class="hits">
+          {footprints.map((f) => <polygon key={`w${f.wall.id}`} points={f.poly.map((p) => p.join(',')).join(' ')} class={shown?.kind === 'wall' && (shown.id === f.wall.id.replace(/[ab]+$/, '') || (!!f.wall.curve && f.wall.curve.id === shownCurve)) ? 'on' : undefined}
+            onPointerEnter={() => setHit({ kind: 'wall', id: f.wall.id.replace(/[ab]+$/, '') })} onPointerLeave={() => setHit(null)} />)}
+          {plan.openings.map((o) => <line key={`o${o.id}`} x1={o.a[0]} y1={o.a[1]} x2={o.b[0]} y2={o.b[1]} stroke-width={Math.max(openingT.get(o.id) ?? 0.2, 0.25)} class={shown?.kind === 'opening' && shown.id === o.id ? 'on' : undefined}
+            onPointerEnter={() => setHit({ kind: 'opening', id: o.id })} onPointerLeave={() => setHit(null)} />)}
+          {layers.furniture && (plan.fixtures ?? []).map((f) => (
+            <rect key={`f${f.id}`} x={-f.size[0] / 2} y={-f.size[1] / 2} width={f.size[0]} height={f.size[1]} transform={`translate(${f.center[0]} ${f.center[1]}) rotate(${(f.angle * 180) / Math.PI})`}
+              class={shown?.kind === 'fixture' && shown.id === f.id ? 'on' : undefined}
+              onPointerEnter={() => { setHit({ kind: 'fixture', id: f.id }); hoverRoom.value = f.room_id; }} onPointerLeave={() => setHit(null)}
+              onClick={(e) => { if (drag.current?.moved) return; e.stopPropagation(); setPicked(f.id); if (onRelabel && f.kind === 'unknown' && !f.label && f.source !== 'suggested') setNaming(f.id); }} />
+          ))}
+        </g>
+      )}
       {!compact && layers.dims && <Dimensions plan={plan} fs={fs} mode={mode} footprints={footprints} thick={openingT} />}
       {diff && <DiffOverlay diff={diff} fs={fs} labelAt={labelAt} />}
       {kbd && (() => { const r = plan.rooms.find((x) => x.id === kbd); return r && <polygon class="focus-ring" aria-hidden="true" points={r.polygon.map((p) => p.join(',')).join(' ')} />; })()}
@@ -328,12 +389,20 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
             const [x, y] = labelAt.get(r.id) ?? centroid(r.polygon);
             return (
               <text key={r.id} x={x} y={y} font-size={fs}>
-                <tspan x={x} font-weight="600">{r.name}</tspan>
+                {/* over the source drawing the room's name is already on the sheet: only the measured figures are added */}
+                <tspan x={x} font-weight="600" data-name visibility={sourceUrl && sourceOpacity >= 0.3 ? 'hidden' : undefined}>{r.name}</tspan>
                 <tspan x={x} dy={fs * 1.2} font-size={fs * 0.85}>{mode === 'dims' ? `A: ${area(r.polygon).toFixed(2).replace('.', ',')} m²` : `${round(area(r.polygon), 1)} m²`}</tspan>
                 {mode === 'plan' && <tspan x={x} dy={fs * 1.05} font-size={fs * 0.72} opacity={0.75}>{(() => { const d = roomDims(r.polygon); return `${d.length.toFixed(2)} × ${d.width.toFixed(2)}`; })()}</tspan>}
               </text>
             );
           })}
+        </g>
+      )}
+      </g>
+      {!compact && noteAt && pxPerM > 0 && (
+        <g class="note-area" pointer-events="none" aria-hidden="true">
+          {noteAt.polys.map((q, i) => <polygon key={`p${i}`} points={q.map((p) => p.join(',')).join(' ')} />)}
+          {noteAt.marks.map((b, i) => <rect key={`m${i}`} x={b[0]} y={b[1]} width={b[2] - b[0]} height={b[3] - b[1]} rx={0.08} />)}
         </g>
       )}
       {!compact && pxPerM > 0 && (region || rubber) && <RegionMark r={rubber ? normRegion(rubber[0], rubber[1]) : region!} live={!!rubber} u={1 / pxPerM} />}
@@ -344,6 +413,19 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
         </g>
       )}
       {!compact && tool === 'measure' && cursor && !mFrom && pxPerM > 0 && <circle cx={cursor[0]} cy={cursor[1]} r={4 / pxPerM} class="m-pt hover" aria-hidden="true" pointer-events="none" />}
+      {!compact && !diff && pxPerM > 0 && layers.furniture && unknowns.length > 0 && (
+        <g class="q-pins">
+          {unknowns.map((f) => (
+            <g key={f.id} transform={`translate(${f.center[0]} ${f.center[1]}) scale(${1 / pxPerM})`} class="q-pin" tabIndex={0} role="button"
+              aria-label={`Unknown symbol${f.room_id ? ` in ${plan.rooms.find((r) => r.id === f.room_id)?.name ?? 'a room'}` : ''}. ${onRelabel ? 'Say what it is.' : ''}`}
+              onPointerDown={(e) => e.stopPropagation()} onPointerEnter={() => setHit({ kind: 'fixture', id: f.id })} onPointerLeave={() => setHit(null)}
+              onClick={(e) => { e.stopPropagation(); setPicked(f.id); if (onRelabel) setNaming(f.id); }}
+              onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); e.stopPropagation(); setPicked(f.id); if (onRelabel) setNaming(f.id); } }}>
+              <circle r="10" /><text y="0.5" text-anchor="middle" dominant-baseline="central">?</text>
+            </g>
+          ))}
+        </g>
+      )}
       {!compact && pxPerM > 0 && layers.pins && (!!pins?.length || draft) && (
         <g class="pins">
           {pins?.map((p) => (
@@ -375,8 +457,44 @@ export function Plan2D({ plan, compact, sourceUrl, title = 'Plan', pins, activeP
   const printN = Math.round(Number(printing));
   const doPrint = (e: Event) => { e.preventDefault(); if (!(printN >= 1)) return; setPrinting(null); printPlan(svg.current!, plan, printN, pad, title); };
   return (
-    <div class="plan2d-wrap">
+    <div class="plan2d-wrap" onClick={(e) => { if (picked && !(e.target as Element).closest('.hits, .q-pins, .item-chip, .name-pop')) { setPicked(null); setNaming(null); } }}>
       {drawing}
+      {info && (
+        <div class="item-chip" role="status" onPointerDown={(e) => e.stopPropagation()}>
+          <b>{info.title}</b><span class="mono">{info.detail}</span><span class="muted">{basisOf(plan)}</span>
+          {onRelabel && shownFx && shownFx.source !== 'suggested' && picked === shownFx.id && !naming && (
+            <button type="button" class="link small" onClick={() => setNaming(shownFx.id)}>{shownFx.kind === 'unknown' && !shownFx.label ? 'Say what it is' : 'Not right? Rename'}</button>
+          )}
+        </div>
+      )}
+      {naming && onRelabel && pxPerM > 0 && (() => {
+        const f = plan.fixtures?.find((x) => x.id === naming);
+        if (!f) return null;
+        const at = toScreen(f.center), r = (Math.max(...f.size) / 2) * pxPerM + 14;
+        const same = unknowns.filter((x) => x !== f && [x.size, [x.size[1], x.size[0]]].some(([w, d]) => Math.abs(w / f.size[0] - 1) <= 0.15 && Math.abs(d / f.size[1] - 1) <= 0.15)).length;
+        return <NamePop f={f} same={f.kind === 'unknown' && !f.label ? same : 0} onClose={() => setNaming(null)}
+          onSave={async (kind, label, similar) => { await onRelabel(f.id, kind, label, similar); setNaming(null); setPicked(null); }}
+          style={size.w < 560 ? undefined : { left: `${Math.max(8, Math.min(at[0] + r, size.w - 268))}px`, top: `${Math.max(8, Math.min(at[1] - 30, size.h - 250))}px` }} sheet={size.w < 560} />;
+      })()}
+      {sideBox && !rubber && pxPerM > 0 && (() => {
+        const a = toScreen([sideBox[0], sideBox[1]]), b = toScreen([sideBox[2], sideBox[3]]);
+        const sheet = size.w < 560, p = placeNote([a[0], a[1], b[0], b[1]], noteSize.w, noteSize.h, size.w, size.h);
+        return (
+          <>
+            {!sheet && <svg class="note-lead" aria-hidden="true"><line x1={p.from[0]} y1={p.from[1]} x2={p.to[0]} y2={p.to[1]} /><circle cx={p.to[0]} cy={p.to[1]} r="3.5" /></svg>}
+            <div ref={noteEl} class={`note-stack${sheet ? ' sheet-bottom' : ''}`} onPointerDown={(e) => e.stopPropagation()} onWheel={(e) => e.stopPropagation()}
+              style={sheet ? undefined : { left: `${p.left}px`, top: `${p.top}px` }}>
+              {region && regionCard}
+              {note && noteAt && (
+                <div class="note-card" role="note" aria-label="Answer about the highlighted area">
+                  <span class="note-body" title={`Asked: ${note.question}`}>{note.text}{note.verified === false && <span class="unverified"> · unverified</span>}</span>
+                  <button type="button" class="icon-btn xs" aria-label="Close the note" onClick={onNoteClose}><Icon name="close" size={12} /></button>
+                </div>
+              )}
+            </div>
+          </>
+        );
+      })()}
       {popover && at && (
         <div class={`pin-pop${size.w < 560 ? ' sheet-bottom' : ''}`} onPointerDown={(e) => e.stopPropagation()}
           style={size.w < 560 ? undefined : { left: `${Math.max(8, Math.min(at[0] + 20, size.w - 328))}px`, top: `${Math.max(8, Math.min(at[1] - 40, size.h - 230))}px` }}>
@@ -432,8 +550,17 @@ const pts = (poly: Pt[]) => poly.map((p) => p.join(',')).join(' ');
  * Cut walls as poché at their real thickness. Outlines are drawn at double width first, then every fill on top,
  * so only the outer half of each outline shows and joints between wall pieces leave no seams.
  */
-function Walls({ footprints }: { footprints: Footprint[] }) {
+function Walls({ footprints, poche }: { footprints: Footprint[]; poche?: Pt[][][] }) {
   const fill = { exterior: 'url(#hatch-masonry)', bearing: 'url(#hatch-block)', partition: null } as const;
+  // The drawing's own filled walls, traced: one shape per piece of wall, holes and all, filled solid as they are drawn.
+  if (poche?.length) {
+    const d = (rings: Pt[][]) => rings.map((r) => `M${r.map((p) => p.join(',')).join('L')}Z`).join('');
+    return (
+      <g pointer-events="none" aria-hidden="true" class="walls">
+        {poche.map((rings, i) => <path key={`p${i}`} d={d(rings)} fill="var(--wall)" fill-rule="evenodd" stroke-linejoin="round" {...ln(W.thin)} />)}
+      </g>
+    );
+  }
   return (
     <g pointer-events="none" aria-hidden="true" class="walls">
       {footprints.map((f) => <polygon key={`o${f.wall.id}`} points={pts(f.poly)} fill="var(--sheet)" stroke-linejoin="miter" {...ln(W[wallClass(f.wall.thickness)] * 2)} />)}
@@ -457,8 +584,9 @@ function Openings({ plan, thick, u }: { plan: Plan; thick: Map<string, number>; 
         const jw = W[wallClass(T)], sw = o.swing ?? 1, tip = P(0, sw * len);
         return (
           <g key={o.id}>
-            <polygon points={pts([P(0, -h - e), P(len, -h - e), P(len, h + e), P(0, h + e)])} fill="var(--sheet)" />
-            {L(P(0, -h), P(0, h), jw)}{L(P(len, -h), P(len, h), jw)}
+            {/* built walls are cut open here; the drawing's own walls already have the gap at a door, and are cut for a window */}
+            {(!plan.poche?.length || o.kind === 'window') && <><polygon points={pts([P(0, -h - e), P(len, -h - e), P(len, h + e), P(0, h + e)])} fill="var(--sheet)" />
+              {L(P(0, -h), P(0, h), jw)}{L(P(len, -h), P(len, h), jw)}</>}
             {o.kind === 'door'
               ? <>{L(o.a, tip, W.opening)}<path d={`M${o.b[0]},${o.b[1]} A${len},${len} 0 0 ${sw === 1 ? 1 : 0} ${tip[0]},${tip[1]}`} {...ln(W.thin)} /></>
               : <>{L(P(0, -h), P(len, -h), W.opening)}{L(P(0, h), P(len, h), W.opening)}{L(P(0, -0.015), P(len, -0.015), W.thin)}{L(P(0, 0.015), P(len, 0.015), W.thin)}</>}
@@ -643,5 +771,39 @@ function DiffOverlay({ diff, fs, labelAt }: { diff: PlanDiff; fs: number; labelA
         })}
       </g>
     </g>
+  );
+}
+
+const KIND_OPTIONS = FIXTURE_KINDS.filter((k) => k !== 'unknown').map((k) => [k, FIXTURE_LABEL[k]] as const).sort((a, b) => a[1].localeCompare(b[1]));
+/** Says what a symbol is: one of the kinds bimp knows, or a name in the person's own words. */
+function NamePop({ f, same, onSave, onClose, style, sheet }: { f: Fixture; same: number; onSave(kind: FixtureKind, label: string, similar: boolean): Promise<void>; onClose(): void; style?: Record<string, string>; sheet: boolean }) {
+  const [kind, setKind] = useState<FixtureKind | ''>(f.kind === 'unknown' ? '' : f.kind);
+  const [label, setLabel] = useState(f.label ?? '');
+  const [similar, setSimilar] = useState(same > 0);
+  const [busy, setBusy] = useState(false);
+  const [err, setErr] = useState('');
+  const ok = !!kind || label.trim().length >= 2;
+  const save = async (e: Event) => {
+    e.preventDefault();
+    if (!ok || busy) return;
+    setBusy(true); setErr('');
+    try { await onSave(kind || 'unknown', kind ? '' : label.trim(), similar && same > 0); }
+    catch (x) { setErr((x as Error).message); setBusy(false); }
+  };
+  return (
+    <form class={`name-pop${sheet ? ' sheet-bottom' : ''}`} style={style} onSubmit={save} onPointerDown={(e) => e.stopPropagation()} onKeyDown={(e) => { if (e.key === 'Escape') { e.stopPropagation(); onClose(); } }}>
+      <div class="note-head"><b>What is this?</b><span class="spacer" /><button type="button" class="icon-btn xs" aria-label="Close" onClick={onClose}><Icon name="close" size={14} /></button></div>
+      <label class="small">It is a
+        <select value={kind} autoFocus onChange={(e) => { setKind(e.currentTarget.value as FixtureKind | ''); if (e.currentTarget.value) setLabel(''); }}>
+          <option value="">something else…</option>
+          {KIND_OPTIONS.map(([k, l]) => <option key={k} value={k}>{l}</option>)}
+        </select>
+      </label>
+      {!kind && <label class="small">Its name<input type="text" maxLength={40} value={label} placeholder="e.g. piano, safe, boiler" onInput={(e) => setLabel(e.currentTarget.value)} /></label>}
+      {same > 0 && <label class="small check"><input type="checkbox" checked={similar} onChange={(e) => setSimilar(e.currentTarget.checked)} />Also the {same} other unknown symbol{same === 1 ? '' : 's'} of this size</label>}
+      {err && <p class="err small" role="alert">{err}</p>}
+      <div class="name-actions"><button type="button" class="link small" onClick={onClose}>Cancel</button><button class="btn sm" disabled={!ok || busy}>{busy ? 'Saving…' : 'Save'}</button></div>
+      <p class="small muted">bimp keeps your answer as an example, to learn this symbol.</p>
+    </form>
   );
 }

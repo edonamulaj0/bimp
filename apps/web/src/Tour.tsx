@@ -13,7 +13,7 @@ const DESKTOP: Step[] = [
   { title: 'Welcome to your workspace', body: 'Three columns, like an editing suite: your files and bimp AI on the left, the drawing in the middle, the project overview on the right. Drag the dividers to size them; the buttons top right hide either side.' },
   { target: '[data-tour="files"]', title: 'Files and drop zone', body: 'Every drawing, revision and room in the project, as a tree. Drop PDFs, DXF files or scans anywhere on it; each one is read into the next revision. Click a room to find it on the plan.' },
   { target: '[data-tour="chat"]', title: 'bimp AI, docked', body: 'Ask about the plan in your own words while you look at it. Every answer lists the rooms it came from, and numbers that can\'t be traced to the plan are marked unverified.' },
-  { target: '[data-tour="canvas"]', title: 'The canvas', body: 'The plan in 2D, the model in 3D, or both side by side (keys 1, 2, 3). In 3D, drag to orbit, right-drag to pan and scroll to zoom. Right-click or double-click anywhere for tools, layers and views.' },
+  { target: '[data-tour="canvas"]', title: 'The canvas', body: 'The plan, drawn to scale over the drawing you uploaded. Drag to pan, scroll to zoom, F to fit. Hover a wall, door, window or symbol for what it is and its measurements. Right-click or double-click anywhere for tools, layers and views.' },
   { target: '[data-tour="tools"]', title: 'Tools', body: 'Select (V), Comment (C) to pin a thread to a spot, Measure (M) between snapped points, and Markup (R): drag a region and bimp AI answers from what lies inside it only.' },
   { target: '[data-tour="right"]', title: 'Overview', body: 'Comments, revisions you can compare, and the project overview with areas and design-standard checks.' },
   { target: '.help-menu', title: 'Help is here', body: 'Replay this tour, see keyboard shortcuts, or follow the first-project guide to set up a project of your own from scratch.' },
@@ -21,14 +21,19 @@ const DESKTOP: Step[] = [
 const PHONE: Step[] = [
   { title: 'Welcome to your workspace', body: 'The drawing fills the screen. Files, bimp AI, comments and the overview open as sheets from the bar at the bottom; swipe a sheet up to expand it, down to close it.' },
   { target: '[data-tour="mbar"]', title: 'Everything one tap away', body: 'Plan, Files (drop or pick drawings), Ask (bimp AI), Comments and Overview. The badge counts open comments.' },
-  { target: '[data-tour="canvas"]', title: 'The canvas', body: 'Pinch to zoom and drag to pan; in 3D, one finger orbits and two fingers pan. Press and hold for tools, layers and views.' },
+  { target: '[data-tour="canvas"]', title: 'The canvas', body: 'Pinch to zoom and drag to pan. Press and hold for tools, layers and views.' },
   { target: '[data-tour="tools"]', title: 'Tools', body: 'Comment pins a thread to a spot. Markup marks a region so bimp AI answers from inside it only. Measure snaps to corners.' },
   { target: '.help-menu', title: 'Help is here', body: 'Replay this tour or follow the first-project guide.' },
 ];
 
 /** The welcome tour: a spotlight on each part of the workspace with a short card. Arrow keys step, Escape ends. */
-export function Tour({ phone, onPane }: { phone: boolean; onPane(p: 'plan'): void }) {
-  const steps = phone ? PHONE : DESKTOP;
+/** In a project with no drawing yet, the canvas and its tools are there but switched off: the tour says so. */
+const EMPTY_NOTE: Record<string, string> = {
+  '[data-tour="canvas"]': ' This project has no drawing yet: drop one here, or open the pilot house from Projects to try everything first.',
+  '[data-tour="tools"]': ' They switch on as soon as a drawing has been read.',
+};
+export function Tour({ phone, onPane, empty }: { phone: boolean; onPane(p: 'plan'): void; empty?: boolean }) {
+  const steps = (phone ? PHONE : DESKTOP).map((st) => (empty && st.target && EMPTY_NOTE[st.target] ? { ...st, body: st.body + EMPTY_NOTE[st.target] } : st));
   const i = Math.min(tourStep.value ?? 0, steps.length - 1), s = steps[i];
   const [rect, setRect] = useState<DOMRect | null>(null);
   const card = useRef<HTMLDivElement>(null);
@@ -109,7 +114,7 @@ export function Tutorial({ data, comments, isSample, onTool, onUpload, onTab, on
   const steps: TStep[] = [
     { key: 'project', title: 'Create a project of your own', body: isSample ? 'The pilot house is for exploring. Your own project starts empty; name it after the job.' : 'Done: this project is yours.', done: !isSample,
       action: ['New project', () => (newProject.value = data.project.team?.id ?? 'personal')] },
-    { key: 'drawing', title: 'Add a floor plan', body: 'Drop a PDF, DXF or scan on Files. bimp reads walls, rooms and openings and builds the 2D plan and 3D model.', done: hasDrawing,
+    { key: 'drawing', title: 'Add a floor plan', body: 'Drop a PDF, DXF or scan on Files. bimp reads walls, rooms and openings and draws the plan to scale.', done: hasDrawing,
       action: ['Add drawings', () => { if (phone) onPane('files'); onUpload(); }] },
     { key: 'check', title: 'Check how it was read', body: 'Open the Overview: the scale source, room areas and checks. A preview (not measured) means sizes are approximate.', done: hasDrawing && checked,
       action: ['Open the overview', () => { onTab('info'); setChecked(true); store(`bimp.tut.${pid}.check`, '1'); }] },
@@ -158,7 +163,7 @@ export function Tutorial({ data, comments, isSample, onTool, onUpload, onTab, on
 
 const KEYS: [string, string][] = [
   ['V', 'Select'], ['C', 'Comment tool'], ['R', 'Markup region'], ['M', 'Measure'], ['Esc', 'Back to Select'],
-  ['1 · 2 · 3', '2D · 3D · Split'], ['F', 'Fit to view'], ['+ / −', 'Zoom'], ['Arrows', 'Pan (2D), orbit (3D)'], ['Shift + arrows', 'Pan (3D)'],
+  ['F', 'Fit to view'], ['+ / −', 'Zoom'], ['Arrows', 'Pan'],
   ['Right-click · double-click', 'Tools, layers and views'], ['?', 'This list'],
 ];
 export function Shortcuts({ onClose }: { onClose(): void }) {

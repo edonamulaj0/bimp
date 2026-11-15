@@ -1,3 +1,4 @@
 *
 !requirements.txt
 !service.py
+!models/fixtures-v1.onnx

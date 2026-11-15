@@ -46,7 +46,7 @@ export function InfoPanel({ plan, suggest, onSuggest, hidden }: { plan: Plan; su
               <dt>Doors · windows</dt><dd>{ri.doors} · {ri.windows}</dd>
               <dt>Glazing</dt><dd>{m(ri.glazed_area_m2)} m² ({Math.round(ri.glazing_ratio * 100)}% of floor)</dd>
             </dl>
-            {!!ri.fixtures.length && <p class="small muted ip-items">{ri.fixtures.map((f) => FIXTURE_LABEL[f.kind as keyof typeof FIXTURE_LABEL] + (f.source === 'suggested' ? ' (suggested)' : '')).join(', ')}</p>}
+            {!!ri.fixtures.length && <p class="small muted ip-items">{ri.fixtures.map((f) => (FIXTURE_LABEL[f.kind as keyof typeof FIXTURE_LABEL] ?? f.kind) + (f.source === 'suggested' ? ' (suggested)' : '')).join(', ')}</p>}
           </>
         );
       })() : (

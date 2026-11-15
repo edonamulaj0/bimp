@@ -9,13 +9,17 @@ export type ProjectRow = {
 
 /** An answer from bimp (chat, or an ai comment's `answer`). */
 export type Content = {
-  text: string; kind?: 'system' | 'error'; claims?: { text: string; room_ids: string[] }[]; calculation?: string | null;
+  text: string; kind?: 'system' | 'error'; claims?: { text: string; room_ids: string[]; item_ids?: string[]; evidence?: import('../../shared/plan').Evidence }[]; calculation?: string | null;
   assumptions?: string[]; not_found?: boolean; verified?: boolean; issues?: string[];
+  /** How the answer was worked out, in steps; and what was looked up on the plan to get there. */
+  reasoning?: string[]; steps?: { tool: string; found: string }[];
+  /** How the answer was produced and what it cost: by code from the stored plan (free), by model calls, or the cost of reading a drawing. */
+  cost?: { by: 'code' | 'model' | 'reading' | 'cache'; usd: number; calls?: number; tokens_in?: number; tokens_out?: number; ms?: number; note?: string };
   /** A question asked about a marked region of the plan. */
   region?: import('../../shared/region').Region;
 };
 export type Msg = { id?: string; role: 'user' | 'assistant'; content: Content; created_at?: number; user_email?: string | null };
-export type Job = { id: string; status: string; stage: string; error?: string | null };
+export type Job = { id: string; status: string; stage: string; error?: string | null; file_id?: string; render_sha?: string | null };
 export type Revision = { id: string; rev: number; file_id: string | null; filename: string | null; note: string | null; created_at: number; rooms: number; net_m2: number; measured: boolean | number };
 export type ProjectData = {
   project: { id: string; name: string; created_at: number; updated_at: number; role: 'owner' | 'member'; team: TeamLink };

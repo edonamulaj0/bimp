@@ -1,10 +1,12 @@
 # Copy to .dev.vars for local development. Never commit .dev.vars.
 GEMINI_API_KEY=
+# The model is set in wrangler.jsonc (GEMINI_MODEL, default gemini-4-hydrogen); override it here for local runs if needed
+# GEMINI_MODEL=gemini-4-hydrogen
 # Optional: route model calls through Cloudflare AI Gateway (caching, logs, rate limits)
 # AI_GATEWAY_URL=https://gateway.ai.cloudflare.com/v1/<account_id>/<gateway_id>
 # Local ingestion service when Docker isn't available (pip install -r ingest/requirements.txt; npm run ingest:dev)
 INGEST_URL=http://127.0.0.1:8090
-# Optional: Cloudinary image generation from the 3D model (cloud name and API key can also go in wrangler.jsonc vars)
+# Optional: Cloudinary, for presentation images of the plan and shareable evidence images (cloud name and API key can also go in wrangler.jsonc vars)
 # CLOUDINARY_CLOUD_NAME=
 # CLOUDINARY_API_KEY=
 # CLOUDINARY_API_SECRET=

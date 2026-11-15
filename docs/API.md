@@ -25,6 +25,7 @@ between teams. Anyone with access can upload, ask, comment and label revisions.
 - `PATCH /projects/:id { name?, team_id? }` (`team_id` owner only; `null` = personal)
 - `DELETE /projects/:id` (owner)
 - `GET /projects/:id` → `{ project: {id, name, created_at, updated_at, role, team}, plan, plan_id, revisions, files, jobs, messages }`
+- `GET /projects/:id/files/:fid/preview` → the uploaded drawing as an image: the file itself for PNG/JPG/WebP, the sheet as rendered for reading for PDF/DXF (404 until it has been read)
   - `revisions`: newest first, `[{ id, rev, file_id, filename, note, created_at, rooms, net_m2, measured }]` (`rev` counts from 1, oldest first)
   - `messages[]`: `{ id, role, content, created_at, user_email }` (`user_email` on user messages in shared projects)
 
@@ -47,3 +48,16 @@ Every reading of a drawing is a revision (a row in `plans`). The latest is the p
 - `POST /projects/:id/comments/:cid/ask { question? }` → `{ reply }` (asks about the thread; the question defaults to its last message)
 - `PATCH /projects/:id/comments/:cid { resolved?, body? }` (`body`: author only; `resolved`: anyone with access)
 - `DELETE /projects/:id/comments/:cid` (author or project owner); deletes replies too.
+
+## Chat answers
+- `POST /projects/:id/chat { message, region?, plan_id? }` → `{ message }`. `plan_id` is the revision (or PDF page) on the canvas; without it the latest plan is used.
+- `message.content.claims[]`: `{ text, room_ids, item_ids?, evidence? }`. `evidence` is the crop of the source sheet: `{ render, size: [w, h], page, pages?, box, marks[] }`, boxes in render pixels; the image is `GET /projects/:id/render/:render`.
+- `message.content.reasoning`: the steps from the plan to the answer, in words. `message.content.steps`: `[{ tool, found }]`, what was looked up and what came back, written by code (model answers only).
+- `message.content.cost`: `{ by: 'code' | 'model', usd, calls, tokens_in, tokens_out, ms }`. `by: 'code'` means the answer was computed from the stored plan without a model call.
+- Jobs (`GET /projects/:id/jobs/:jid`, and `jobs[]` of a project) carry `file_id` and `render_sha`: the sheet being read, shown on the canvas meanwhile.
+- Plans: every room, opening and fitting read from a drawing has `src: { page, box }`; `plan.source.page` / `pages` say which page of the file the plan is.
+- `PATCH /projects/:id/revisions/:rid/fixtures/:fid { kind, label?, similar? }` → `{ plan, named }`. Says what a symbol is: `kind` a fixture kind, or `unknown` with a `label` in the person's words; `similar: true` names the other unknown symbols of the same size too. Each answer is kept in `symbol_labels` (render, box, name) as a training example.
+- `DELETE /projects/:id/jobs/:jid` stops a reading in progress → `{ ok, removed, message }`. A file that was never read into a plan is removed from the project with it (`removed: true`).
+- `GET|POST /projects/:id/visuals`, `DELETE /projects/:id/visuals/:vid`: presentation images of the plan (POST body: a PNG snapshot; headers `x-style`, `x-prompt`). `POST /projects/:id/visuals/evidence { render, box }` → `{ url }`: the cited piece of a sheet as an image on Cloudinary's CDN.
+
+`GET /api/projects/:id/revisions/:rid/reference` returns the revision's reference file as Markdown (`text/markdown`): everything worked out from the drawing, the document the chat answers from. A chat answer's `cost.by` is `code`, `cache` (given before for this plan) or `model`.

@@ -1,0 +1,42 @@
+{
+  "model": "fixtures-v1 (YOLO11s, imgsz 1024, best epoch 58 of 66 run)",
+  "scored_on": "CubiCasa5K test split, 387 of 400 plans present in the challenge set; thresholds tuned on val (382 plans)",
+  "overall_test_exact": 0.724,
+  "classes": {
+    "window": {
+      "threshold": 0.425,
+      "val_exact": 0.581151832460733,
+      "test_exact": 0.4806201550387597,
+      "test_within_1": 0.7493540051679587,
+      "test_questions": 387
+    },
+    "door": {
+      "threshold": 0.4,
+      "val_exact": 0.697508896797153,
+      "test_exact": 0.6330935251798561,
+      "test_within_1": 0.9100719424460432,
+      "test_questions": 278
+    },
+    "toilet": {
+      "threshold": 0.375,
+      "val_exact": 0.9345549738219895,
+      "test_exact": 0.8963730569948186,
+      "test_within_1": 0.9870466321243523,
+      "test_questions": 386
+    },
+    "sink": {
+      "threshold": 0.35,
+      "val_exact": 0.8594164456233422,
+      "test_exact": 0.8481675392670157,
+      "test_within_1": 0.9633507853403142,
+      "test_questions": 382
+    },
+    "shower_bath": {
+      "threshold": 0.2,
+      "val_exact": 0.808695652173913,
+      "test_exact": 0.736986301369863,
+      "test_within_1": 0.9616438356164384,
+      "test_questions": 365
+    }
+  }
+}

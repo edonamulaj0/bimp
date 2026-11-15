@@ -78,8 +78,8 @@ const items: [FixtureKind, number, number, number, number, 0 | 1 | 2 | 3][] = [
   ['washer', 2.34, 0.6, 0.6, 0.6, 1], ['sink', 2.34, 1.4, 0.7, 0.6, 1], ['wardrobe', 2.34, 2.5, 1.2, 0.6, 1],
   // bedroom 3
   ['bed', 3.76, 3.2, 1.4, 2.0, 3], ['desk', 4.4, 0.45, 1.4, 0.6, 0], ['wardrobe', 3.06, 1.1, 1.6, 0.6, 3],
-  // entrance hall: coats
-  ['wardrobe', 6.36, 1.3, 1.6, 0.6, 3],
+  // entrance hall: coats, clear of the open front door and of the door to bedroom 3
+  ['wardrobe', 6.36, 1.75, 1.2, 0.6, 3],
   // WC
   ['wc', 9.0, 0.475, 0.4, 0.65, 0], ['sink', 9.39, 1.2, 0.45, 0.3, 1],
   // bathroom
@@ -89,12 +89,15 @@ const items: [FixtureKind, number, number, number, number, 0 | 1 | 2 | 3][] = [
   // kitchen: fridge and hob on the north wall, sink under the west window
   ['fridge', 2.5, 4.585, 0.65, 0.65, 0], ['stove', 3.9, 4.56, 0.6, 0.6, 0], ['sink', 0.45, 6.6, 1.0, 0.6, 3],
   // dining and living
-  ['table', 5.0, 7.3, 2.2, 1.0, 1], ['sofa', 9.8, 7.9, 2.6, 0.95, 2], ['sofa', 10.865, 6.2, 1.8, 0.95, 1],
+  // the table clear of the island stools and of the walk from the hall door to the garden door
+  ['table', 5.4, 7.3, 2.2, 1.0, 1], ['sofa', 9.7, 7.9, 2.6, 0.95, 2], ['sofa', 10.865, 6.2, 1.8, 0.95, 1],
   // dressing and en-suite
-  ['wardrobe', 13.44, 5.1, 1.5, 0.6, 1], ['wardrobe', 11.76, 5.5, 0.8, 0.6, 3],
+  // dressing: both wardrobes stop short of the door through to the bedroom
+  ['wardrobe', 13.44, 4.9, 1.1, 0.6, 1], ['wardrobe', 11.76, 5.5, 0.8, 0.6, 3],
   ['shower', 14.31, 4.71, 0.9, 0.9, 0], ['wc', 15.3, 4.585, 0.4, 0.65, 0], ['sink', 16.1, 4.51, 0.9, 0.5, 0],
   // main bedroom
-  ['bed', 15.7, 7.06, 1.8, 2.0, 0], ['desk', 11.76, 8.3, 1.3, 0.6, 3],
+  // main bedroom: headboard on the solid west wall with room to walk round both sides, looking to the garden; desk at the east window
+  ['bed', 12.46, 8.0, 1.8, 2.0, 3], ['desk', 16.35, 7.8, 1.3, 0.6, 1],
 ];
 const fixtures: Fixture[] = items.map(([kind, x, y, w, d, q], i) => ({
   id: `f${i + 1}`, kind, center: [x, y], size: [w, d], angle: Math.round(q * (Math.PI / 2) * 1e4) / 1e4,

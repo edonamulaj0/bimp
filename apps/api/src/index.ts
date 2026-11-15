@@ -1,9 +1,12 @@
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { housePlan } from '../../shared/house-plan';
-import { visuals, visualsOn } from './visuals';
 import { clipPlan, parseRegion, regionContents, regionSize, type Region } from '../../shared/region';
-import { type Plan, area } from '../../shared/plan';
+import { type Fixture, type Plan, FIXTURE_KINDS, area, evidenceFor, sourceBox } from '../../shared/plan';
+import { costUsd, meter } from './gemini';
+import { visuals, visualsOn } from './visuals';
+import { quickAnswer } from './quick';
+import { briefText, planFacts } from './brief';
 import { ask } from './agent';
 import { comments } from './comments';
 import { teams, myTeams } from './teams';
@@ -138,7 +141,7 @@ projects.get('/:id', async (c) => {
   const [files, messages, jobs] = await c.env.DB.batch([
     c.env.DB.prepare('SELECT id, filename, mime, size, created_at FROM files WHERE project_id = ? ORDER BY created_at').bind(project.id),
     c.env.DB.prepare('SELECT m.id, m.role, m.content, m.created_at, u.email AS user_email FROM messages m LEFT JOIN users u ON u.id = m.user_id WHERE m.project_id = ? ORDER BY m.id').bind(project.id),
-    c.env.DB.prepare("SELECT id, status, stage FROM jobs WHERE project_id = ? AND status IN ('queued', 'running') ORDER BY created_at DESC").bind(project.id),
+    c.env.DB.prepare("SELECT id, status, stage, file_id, render_sha FROM jobs WHERE project_id = ? AND status IN ('queued', 'running') ORDER BY created_at DESC").bind(project.id),
   ]);
   const revs = await revisions(c.env, project.id);
   const latest = revs[0] && (await c.env.DB.prepare('SELECT data FROM plans WHERE id = ?').bind(revs[0].id).first<{ data: string }>());
@@ -189,6 +192,14 @@ projects.get('/:id/revisions/:rid', async (c) => {
   const row = await c.env.DB.prepare('SELECT data FROM plans WHERE id = ?').bind(revision.id).first<{ data: string }>();
   return c.json({ revision, plan: JSON.parse(row!.data) });
 });
+/** The plan's reference file as Markdown: what the chat answers from, for a person to read or download. */
+projects.get('/:id/revisions/:rid/reference', async (c) => {
+  const project = await projectAccess(c, c.req.param('id'));
+  const row = await c.env.DB.prepare('SELECT data FROM plans WHERE id = ? AND project_id = ?').bind(c.req.param('rid'), project.id).first<{ data: string }>();
+  if (!row) throw fail(404, 'Revision not found.');
+  const plan = JSON.parse(row.data) as Plan;
+  return new Response(briefText(plan, planFacts(plan), project.name), { headers: { 'content-type': 'text/markdown; charset=utf-8', 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff' } });
+});
 projects.patch('/:id/revisions/:rid', async (c) => {
   const project = await projectAccess(c, c.req.param('id'));
   const { note } = (await c.req.json().catch(() => ({}))) as { note?: unknown };
@@ -199,6 +210,36 @@ projects.patch('/:id/revisions/:rid', async (c) => {
 });
 
 // --- files: raw body upload, deduplicated by content hash per project
+/**
+ * A person says what a symbol is: `kind` one of the known kinds, or 'unknown' with a `label` in their own words.
+ * `similar` names the other unknown symbols of the same size on the sheet at once. The plan is corrected in place
+ * (it is the same reading, now better informed), and each named symbol is kept as an example for training.
+ */
+projects.patch('/:id/revisions/:rid/fixtures/:fid', async (c) => {
+  const project = await projectAccess(c, c.req.param('id'));
+  const b = (await c.req.json().catch(() => ({}))) as { kind?: unknown; label?: unknown; similar?: unknown };
+  const kind = typeof b.kind === 'string' && (FIXTURE_KINDS as readonly string[]).includes(b.kind) ? (b.kind as Fixture['kind']) : null;
+  const label = typeof b.label === 'string' ? b.label.replace(/[\u0000-\u001f\u007f]/g, '').trim().slice(0, 40) : '';
+  if (!kind || (kind === 'unknown' && !label)) throw fail(400, 'Choose what it is from the list, or type a name for it.');
+  const row = await c.env.DB.prepare('SELECT data FROM plans WHERE id = ? AND project_id = ?').bind(c.req.param('rid'), project.id).first<{ data: string }>();
+  if (!row) throw fail(404, 'Revision not found.');
+  const plan = JSON.parse(row.data) as Plan, target = plan.fixtures?.find((f) => f.id === c.req.param('fid'));
+  if (!target) throw fail(404, 'That symbol is no longer on the plan.');
+  const like = (f: Fixture) => f.kind === 'unknown' && !f.label && [f.size, [f.size[1], f.size[0]]].some(([w, d]) => Math.abs(w / target.size[0] - 1) <= 0.15 && Math.abs(d / target.size[1] - 1) <= 0.15);
+  const named = [target, ...(b.similar === true && target.kind === 'unknown' ? plan.fixtures!.filter((f) => f !== target && like(f)) : [])];
+  const t = now(), stmts = [];
+  for (const f of named) {
+    const box = f.src?.box ?? sourceBox(plan, [f.center], Math.max(...f.size) / 2);
+    stmts.push(c.env.DB.prepare('INSERT INTO symbol_labels (id, project_id, user_id, render_sha, page, x0, y0, x1, y1, kind, label, was_kind, created_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)')
+      .bind(uid(), project.id, c.get('user').id, plan.source?.renderSha ?? null, f.src?.page ?? plan.source?.page ?? null, box?.[0] ?? null, box?.[1] ?? null, box?.[2] ?? null, box?.[3] ?? null, kind, kind === 'unknown' ? label : null, f.kind, t));
+    f.kind = kind;
+    if (kind === 'unknown') f.label = label; else delete f.label;
+  }
+  await c.env.DB.batch([c.env.DB.prepare('UPDATE plans SET data = ? WHERE id = ? AND project_id = ?').bind(JSON.stringify(plan), c.req.param('rid'), project.id), ...stmts,
+    c.env.DB.prepare('UPDATE projects SET updated_at = ? WHERE id = ?').bind(t, project.id)]);
+  return c.json({ plan, named: named.length });
+});
+
 projects.post('/:id/files', async (c) => {
   const project = await projectAccess(c, c.req.param('id'));
   let filename: string;
@@ -252,13 +293,13 @@ async function startJob(env: Env, projectId: string, fileId: string, filename: s
     await failJob(env, id, projectId, 'the reading service is unavailable. Try again in a minute.');
     throw fail(503, 'The reading service is unavailable. Try again in a minute.');
   }
-  return { id, status: 'queued', stage: 'Queued' };
+  return { id, status: 'queued', stage: 'Queued', file_id: fileId, render_sha: null };
 }
 
 projects.get('/:id/jobs/:jid', async (c) => {
   const project = await projectAccess(c, c.req.param('id'));
-  const job = await c.env.DB.prepare('SELECT id, status, stage, error, created_at FROM jobs WHERE id = ? AND project_id = ?').bind(c.req.param('jid'), project.id)
-    .first<{ id: string; status: string; stage: string; error: string | null; created_at?: number }>();
+  const job = await c.env.DB.prepare('SELECT id, status, stage, error, created_at, file_id, render_sha FROM jobs WHERE id = ? AND project_id = ?').bind(c.req.param('jid'), project.id)
+    .first<{ id: string; status: string; stage: string; error: string | null; created_at?: number; file_id: string; render_sha: string | null }>();
   if (!job) throw fail(404, 'Job not found.');
   if (job.status === 'queued' || job.status === 'running') {
     // The workflow can die outside a step (terminated, or never created); don't leave the UI waiting forever.
@@ -273,6 +314,26 @@ projects.get('/:id/jobs/:jid', async (c) => {
   if (job.status !== 'done') return c.json({ job });
   const last = await c.env.DB.prepare("SELECT content FROM messages WHERE project_id = ? AND role = 'assistant' ORDER BY id DESC LIMIT 1").bind(project.id).first<{ content: string }>();
   return c.json({ job, plan: await latestPlan(c.env, project.id), message: last && { role: 'assistant', content: JSON.parse(last.content) } });
+});
+
+/** Stops a reading in progress. A file that was never read into a plan (an accidental upload) is removed with it. */
+projects.delete('/:id/jobs/:jid', async (c) => {
+  const project = await projectAccess(c, c.req.param('id'));
+  const job = await c.env.DB.prepare('SELECT j.id, j.status, j.file_id, f.filename, f.r2_key FROM jobs j LEFT JOIN files f ON f.id = j.file_id WHERE j.id = ? AND j.project_id = ?')
+    .bind(c.req.param('jid'), project.id).first<{ id: string; status: string; file_id: string; filename: string | null; r2_key: string | null }>();
+  if (!job) throw fail(404, 'Job not found.');
+  const stopped = await c.env.DB.prepare("UPDATE jobs SET status = 'failed', stage = 'Stopped', error = 'stopped', updated_at = ? WHERE id = ? AND status IN ('queued', 'running')").bind(now(), job.id).run();
+  if (!stopped.meta.changes) throw fail(409, job.status === 'done' ? 'This drawing has already been read.' : 'This reading has already ended.');
+  await c.env.INGEST_WORKFLOW.get(job.id).then((w) => w.terminate()).catch(() => {});
+  // pages of a PDF read before the stop stay as revisions; a file with none of them goes
+  const kept = await c.env.DB.prepare('SELECT 1 FROM plans WHERE file_id = ? LIMIT 1').bind(job.file_id).first();
+  if (!kept) {
+    await c.env.DB.prepare('DELETE FROM files WHERE id = ? AND project_id = ?').bind(job.file_id, project.id).run();
+    if (job.r2_key) await c.env.FILES.delete(job.r2_key).catch(() => {});
+  }
+  const content = { kind: 'system', claims: [], text: `Stopped reading ${job.filename ?? 'the drawing'}.${kept ? '' : ' The file was removed from the project.'}` };
+  await c.env.DB.prepare('INSERT INTO messages (project_id, role, content, created_at) VALUES (?,?,?,?)').bind(project.id, 'assistant', JSON.stringify(content), now()).run();
+  return c.json({ ok: true, removed: !kept, message: { role: 'assistant', content } });
 });
 
 projects.get('/:id/render/:sha', async (c) => {
@@ -293,13 +354,33 @@ projects.get('/:id/files/:fid', async (c) => {
     'content-security-policy': "sandbox; default-src 'none'; img-src 'self'; style-src 'unsafe-inline'",
     ...(f.mime.startsWith('image/') ? {} : { 'content-disposition': 'attachment' }) } });
 });
+/** What an uploaded drawing looks like: the image itself, or for a PDF or DXF the sheet as it was rendered for reading. */
+projects.get('/:id/files/:fid/preview', async (c) => {
+  const project = await projectAccess(c, c.req.param('id'));
+  const f = await c.env.DB.prepare('SELECT r2_key, mime FROM files WHERE id = ? AND project_id = ?').bind(c.req.param('fid'), project.id).first<{ r2_key: string; mime: string }>();
+  if (!f) throw fail(404, 'File not found.');
+  let key = f.r2_key, mime = f.mime;
+  if (!/^image\/(png|jpeg|webp)$/.test(mime)) {
+    const p = await c.env.DB.prepare('SELECT data FROM plans WHERE project_id = ? AND file_id = ? ORDER BY created_at DESC LIMIT 1').bind(project.id, c.req.param('fid')).first<{ data: string }>();
+    const sha = p && (JSON.parse(p.data) as Plan).source?.renderSha;
+    if (!sha || !/^[0-9a-f]{64}$/.test(sha)) throw fail(404, 'This drawing has no preview yet: it has not been read.');
+    key = `projects/${project.id}/renders/${sha}.png`; mime = 'image/png';
+  }
+  const obj = await c.env.FILES.get(key);
+  if (!obj) throw fail(404, 'File not found.');
+  return new Response(obj.body, { headers: { 'content-type': mime, 'cache-control': 'private, max-age=3600', 'x-content-type-options': 'nosniff', 'content-security-policy': "sandbox; default-src 'none'" } });
+});
 // --- chat
 projects.post('/:id/chat', async (c) => {
   const project = await projectAccess(c, c.req.param('id'));
-  const { message, region: rawRegion } = (await c.req.json().catch(() => ({}))) as { message?: unknown; region?: unknown };
+  const { message, region: rawRegion, plan_id: planId } = (await c.req.json().catch(() => ({}))) as { message?: unknown; region?: unknown; plan_id?: unknown };
   const q = typeof message === 'string' ? message.trim().slice(0, 2000) : '';
   if (!q) throw fail(400, 'Type a question.');
-  const plan = await latestPlan(c.env, project.id);
+  // The question is about the sheet on the canvas: the revision (or PDF page) being viewed, else the latest.
+  const viewed = typeof planId === 'string' && planId
+    ? await c.env.DB.prepare('SELECT data FROM plans WHERE id = ? AND project_id = ?').bind(planId, project.id).first<{ data: string }>() : null;
+  if (typeof planId === 'string' && planId && !viewed) throw fail(404, 'That revision is no longer in the project.');
+  const plan = viewed ? (JSON.parse(viewed.data) as Plan) : await latestPlan(c.env, project.id);
   if (!plan) throw fail(409, 'Upload a floor plan first, then ask about it.');
   const { results } = await c.env.DB.prepare('SELECT role, content FROM messages WHERE project_id = ? ORDER BY id DESC LIMIT 10').bind(project.id).all<{ role: string; content: string }>();
   // Conversation turns only (no upload notes or system messages), alternating and starting with the user.
@@ -314,10 +395,25 @@ projects.post('/:id/chat', async (c) => {
   // Markup region: the agent only sees the plan clipped to it, so every tool result (and so every answer) comes from inside.
   const region = rawRegion == null ? null : parseRegion(rawRegion, plan);
   if (rawRegion != null && !region) throw fail(400, 'The marked region is too small or not on the plan. Drag a larger area.');
-  await chatQuota(c.env, c.get('user').id);
   const scope = region ? clipPlan(plan, region) : plan;
   const context = region ? [{ text: regionBrief(plan, region) }] : [];
-  const answer = await ask(c.env, scope, q, region ? [] : history, context);
+  // Recognised questions are answered by code from the stored plan: no model call, nothing to pay, nothing to verify.
+  const t0 = now(), used = meter(), quick = quickAnswer(q, scope);
+  // An answer the model already gave to this question, about this very plan, after these same turns, is given again
+  // as it stands: only answers that passed the check are kept, and any change to the plan changes the key.
+  const turns = region ? [] : history;
+  const cacheKey = quick ? null : await sha256(JSON.stringify([c.env.GEMINI_MODEL ?? '', await sha256(JSON.stringify(scope)), q.toLowerCase().replace(/\s+/g, ' '), turns]));
+  const kept = cacheKey ? await c.env.DB.prepare('SELECT answer FROM answer_cache WHERE key = ?').bind(cacheKey).first<{ answer: string }>().catch(() => null) : null;
+  if (!quick && !kept) await chatQuota(c.env, c.get('user').id);
+  const found = quick ? { ...quick, verified: true, issues: [] } : kept ? (JSON.parse(kept.answer) as Awaited<ReturnType<typeof ask>>) : await ask(c.env, scope, q, turns, context, used);
+  if (cacheKey && !kept && found.verified && !found.issues.length)
+    await c.env.DB.prepare('INSERT OR REPLACE INTO answer_cache (key, answer, created_at) VALUES (?,?,?)').bind(cacheKey, JSON.stringify(found), now()).run().catch(() => {});
+  const answer = {
+    ...found,
+    // each citation carries its crop of the source sheet: the boxes of the rooms and items it rests on
+    claims: found.claims.map((cl) => { const evidence = evidenceFor(plan, cl.room_ids ?? [], cl.item_ids); return evidence ? { ...cl, evidence } : cl; }),
+    cost: { by: quick ? 'code' : kept ? 'cache' : 'model', usd: costUsd(c.env, used), calls: used.calls, tokens_in: used.tokens_in, tokens_out: used.tokens_out, ms: now() - t0 },
+  };
   const t = now();
   await c.env.DB.batch([
     c.env.DB.prepare('INSERT INTO messages (project_id, role, content, created_at, user_id) VALUES (?,?,?,?,?)').bind(project.id, 'user', JSON.stringify(region ? { text: q, region } : { text: q }), t, c.get('user').id),
