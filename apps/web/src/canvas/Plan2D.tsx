@@ -100,7 +100,7 @@ export function Plan2D({ plan, compact, onRelabel, note, onNoteClose, regionCard
       const d = Math.hypot(m[0] - w.a[0] - u[0] * t, m[1] - w.a[1] - u[1] * t);
       if (d < bd) { bd = d; best = w.thickness; }
     }
-    return [o.id, best];
+    return [o.id, o.t ?? best]; // measured in the drawn wall when it was
   })), [plan]);
   const exits = useMemo(() => (showEscape ? doorLinks(plan).filter((d) => d.exit) : []), [plan, showEscape]);
   useEffect(() => setVb(home), [plan, mode]);
@@ -356,7 +356,7 @@ export function Plan2D({ plan, compact, onRelabel, note, onNoteClose, regionCard
         </g>
       )}
       {layers.furniture && <g pointer-events="none" class="fixtures" aria-hidden="true">{(plan.fixtures ?? []).map((f) => <FixtureSymbol key={f.id} f={f} />)}</g>}
-      <Walls footprints={footprints} />
+      <Walls footprints={footprints} poche={plan.poche} />
       <Openings plan={plan} thick={openingT} u={pxPerM ? 1 / pxPerM : 0.03} />
       {!compact && !diff && tool === 'select' && (
         <g class="hits">
@@ -550,8 +550,17 @@ const pts = (poly: Pt[]) => poly.map((p) => p.join(',')).join(' ');
  * Cut walls as poché at their real thickness. Outlines are drawn at double width first, then every fill on top,
  * so only the outer half of each outline shows and joints between wall pieces leave no seams.
  */
-function Walls({ footprints }: { footprints: Footprint[] }) {
+function Walls({ footprints, poche }: { footprints: Footprint[]; poche?: Pt[][][] }) {
   const fill = { exterior: 'url(#hatch-masonry)', bearing: 'url(#hatch-block)', partition: null } as const;
+  // The drawing's own filled walls, traced: one shape per piece of wall, holes and all, filled solid as they are drawn.
+  if (poche?.length) {
+    const d = (rings: Pt[][]) => rings.map((r) => `M${r.map((p) => p.join(',')).join('L')}Z`).join('');
+    return (
+      <g pointer-events="none" aria-hidden="true" class="walls">
+        {poche.map((rings, i) => <path key={`p${i}`} d={d(rings)} fill="var(--wall)" fill-rule="evenodd" stroke-linejoin="round" {...ln(W.thin)} />)}
+      </g>
+    );
+  }
   return (
     <g pointer-events="none" aria-hidden="true" class="walls">
       {footprints.map((f) => <polygon key={`o${f.wall.id}`} points={pts(f.poly)} fill="var(--sheet)" stroke-linejoin="miter" {...ln(W[wallClass(f.wall.thickness)] * 2)} />)}
@@ -575,8 +584,9 @@ function Openings({ plan, thick, u }: { plan: Plan; thick: Map<string, number>; 
         const jw = W[wallClass(T)], sw = o.swing ?? 1, tip = P(0, sw * len);
         return (
           <g key={o.id}>
-            <polygon points={pts([P(0, -h - e), P(len, -h - e), P(len, h + e), P(0, h + e)])} fill="var(--sheet)" />
-            {L(P(0, -h), P(0, h), jw)}{L(P(len, -h), P(len, h), jw)}
+            {/* built walls are cut open here; the drawing's own walls already have the gap at a door, and are cut for a window */}
+            {(!plan.poche?.length || o.kind === 'window') && <><polygon points={pts([P(0, -h - e), P(len, -h - e), P(len, h + e), P(0, h + e)])} fill="var(--sheet)" />
+              {L(P(0, -h), P(0, h), jw)}{L(P(len, -h), P(len, h), jw)}</>}
             {o.kind === 'door'
               ? <>{L(o.a, tip, W.opening)}<path d={`M${o.b[0]},${o.b[1]} A${len},${len} 0 0 ${sw === 1 ? 1 : 0} ${tip[0]},${tip[1]}`} {...ln(W.thin)} /></>
               : <>{L(P(0, -h), P(len, -h), W.opening)}{L(P(0, h), P(len, h), W.opening)}{L(P(0, -0.015), P(len, -0.015), W.thin)}{L(P(0, 0.015), P(len, 0.015), W.thin)}</>}

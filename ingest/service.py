@@ -330,6 +330,11 @@ def trace_rooms(data: bytes):
     A room still without an outline has each of its edges moved onto the wall face beside it (`how`: traced | fitted).
     `arcs` lists, per room, the curved walls of its traced outline: [first corner, number of corners, centre x,
     centre y, radius]; the corners from the first one on lie on that circle.
+    `poche` is the wall mass itself where the walls are drawn filled: polygons [[outer ring, hole, ...], ...] of the
+    filled strokes that run along the rooms' outlines, and `poche_share` the part of all room outline that has such a
+    wall beside it. Where that is most of it, the plan can show the walls exactly as drawn, whatever their shape.
+    `drawn` says, per room and per edge of its outline, along which stretches of the edge anything is drawn at all
+    ([[from, to], ...] as fractions of the edge): a room's boundary with nothing drawn along it is not a wall.
     `boxes` (rough boxes of fittings and furniture) come back tightened onto the line work drawn there, or null;
     `blank` says for each whether nothing at all is drawn where it was read.
     `exterior_px` is the measured thickness of the outside walls where they are drawn filled, else null.
@@ -417,8 +422,12 @@ def trace_rooms(data: bytes):
             best[i], how[i], arcs[i] = (0.0, fit[0]), "fitted", fit[1]
 
     out_rooms = [b and b[1] for b in best]
+    drawn = [r and edges_drawn(np.array(r, float), bw, k, h, w) for r in out_rooms]
+    # Only walls drawn filled solid: closing the ink over hatching to take hatched walls too was tried on the dataset and
+    # turns insulation hatching into blocks and close-set lines (a sauna's benches, stairs) into solid wall.
+    mass = wall_mass(thick, [o or r.tolist() for o, r in zip(out_rooms, rooms) if o or len(r) >= 3], k, h, w) if walls_thick else None
     boxes, blank = refine_boxes(req.get("boxes", [])[:400], bw, k, h, w)
-    return {"rooms": out_rooms, "match": [b and round(b[0], 3) for b in best], "how": how, "arcs": arcs,
+    return {"rooms": out_rooms, "match": [b and round(b[0], 3) for b in best], "how": how, "arcs": arcs, "drawn": drawn, "poche": mass and mass[0], "poche_share": mass and mass[1],
             "boxes": boxes, "blank": blank,
             "exterior_px": exterior_thickness(out_rooms, thick, k, h, w) if walls_thick else None}
 
@@ -821,6 +830,116 @@ def fit_edges(poly: np.ndarray, mask: np.ndarray, k: int, h: int, w: int, solid_
         out.append(c.tolist() if np.hypot(*(c - poly[i])) <= 3 * reach else poly[i].tolist())
         i += 1
     return [[float(x), float(y)] for x, y in out], arcs
+
+
+def wall_mass(thick: np.ndarray, rooms, k: int, h: int, w: int, max_points: int = 6000):
+    """The filled walls of the plan as polygons with holes, and how much of the rooms' outline they run along.
+
+    From the thick strokes, a piece is wall when it runs along room outlines: it lies beside them, not inside a
+    room (bold lettering, a filled symbol, a solid piece of furniture) and not off the plan (a title, a north arrow,
+    a scale bar)."""
+    polys = [np.round(np.array(r, float)).astype(np.int32) for r in rooms if len(r) >= 3]
+    if not polys:
+        return None
+    R = int(max(4 * k, 0.02 * max(h, w)))
+    band = np.zeros((h, w), np.uint8)
+    cv2.polylines(band, polys, True, 255, 2 * R + 1)
+    inside = np.zeros((h, w), np.uint8)
+    cv2.fillPoly(inside, polys, 255)
+    inside = cv2.erode(inside, np.ones((4 * k + 1, 4 * k + 1), np.uint8))
+    n, labels, stats, _ = cv2.connectedComponentsWithStats((thick > 0).astype(np.uint8), connectivity=8)
+    keep = np.zeros(n, bool)
+    for c in range(1, n):
+        x, y, cw, ch, area = stats[c]
+        if area < 9 * k * k:
+            continue
+        m = labels[y:y + ch, x:x + cw] == c
+        # inside a room it is lettering or a filled symbol, unless it is long: then the room was read too wide
+        if (band[y:y + ch, x:x + cw][m] > 0).mean() >= 0.2 and ((inside[y:y + ch, x:x + cw][m] > 0).mean() < 0.5 or max(cw, ch) >= 0.08 * max(h, w)):
+            keep[c] = True
+    mass = (keep[labels] * 255).astype(np.uint8)
+    if not mass.any():
+        return None
+    # how much of the outlines has wall beside it
+    near = cv2.dilate(mass, np.ones((4 * k + 5, 4 * k + 5), np.uint8))
+    hit = total = 0
+    for p in polys:
+        for a, b in zip(p, np.roll(p, -1, axis=0)):
+            L = float(np.hypot(*(b - a)))
+            if L < 2:
+                continue
+            t = np.arange(0.0, L, 3.0)
+            pts = a + (b - a) * (t / L)[:, None]
+            on = _sample(near, pts, h, w)
+            hit += int(on.sum())
+            total += len(t)
+    share = hit / total if total else 0.0
+    eps = max(1.0, 0.35 * k)
+    for _ in range(4):                                        # coarser until the outline fits in what a plan can carry
+        cs, hier = cv2.findContours(mass, cv2.RETR_CCOMP, cv2.CHAIN_APPROX_SIMPLE)
+        out, count = [], 0
+        for i, c in enumerate(cs):
+            if hier[0][i][3] != -1:
+                continue                                      # a hole: taken with its outer ring below
+            ring = cv2.approxPolyDP(c, eps, True).reshape(-1, 2)
+            if len(ring) < 3:
+                continue
+            rings = [ring]
+            j = hier[0][i][2]
+            while j != -1:
+                if cv2.contourArea(cs[j]) >= 4 * k * k:
+                    hole = cv2.approxPolyDP(cs[j], eps, True).reshape(-1, 2)
+                    if len(hole) >= 3:
+                        rings.append(hole)
+                j = hier[0][j][0]
+            count += sum(len(r) for r in rings)
+            out.append([[[float(x), float(y)] for x, y in r] for r in rings])
+        if count <= max_points:
+            break
+        eps *= 1.6
+    return out, round(share, 3)
+
+
+def edges_drawn(poly: np.ndarray, ink: np.ndarray, k: int, h: int, w: int):
+    """For each edge of an outline, the stretches along which a line is drawn beside it: [[from, to], ...] as fractions
+    of the edge's length. A reading gives every room a closed outline, also where the plan is open (a kitchen open to
+    the living room, a hall running into it); there nothing is drawn, and nothing should be built."""
+    n, reach, out = len(poly), int(max(2 * k + 2, 0.012 * max(h, w))), []
+    offs = np.arange(-reach, reach + 1)
+    for i in range(n):
+        a, b = poly[i], poly[(i + 1) % n]
+        L = float(np.hypot(*(b - a)))
+        if L < 4:
+            out.append([[0.0, 1.0]])                          # too short to tell: left as it is
+            continue
+        u = (b - a) / L
+        nrm = np.array([u[1], -u[0]])
+        t = np.arange(0.0, L, 1.0)
+        hit = _sample(ink, a + u * t[:, None, None] + nrm * offs[None, :, None], h, w)   # (along, across)
+        # A line along the edge keeps its distance from it; a label, a symbol or a line crossing it does not. So the
+        # edge is drawn where, at some one distance (give or take a pixel), ink runs on for a real length: dashes
+        # are bridged, letters and crossings are too short to count.
+        gap, need = k + 1, min(12 * k, max(3, int(0.6 * len(t))))
+        on = np.zeros(len(t), bool)
+        band = hit[:, :-2] | hit[:, 1:-1] | hit[:, 2:]
+        for o in range(band.shape[1]):
+            col = band[:, o]
+            if col.sum() < need:
+                continue
+            d = np.diff(np.concatenate([[0], col.astype(np.int8), [0]]))
+            runs = [[int(s0), int(e0)] for s0, e0 in zip(np.nonzero(d == 1)[0], np.nonzero(d == -1)[0])]
+            merged = []
+            for r in runs:
+                if merged and r[0] - merged[-1][1] <= gap:
+                    merged[-1][1] = r[1]
+                else:
+                    merged.append(r)
+            for s0, e0 in merged:
+                if e0 - s0 >= need and col[s0:e0].mean() >= 0.6:   # a row of letters is mostly gaps; a dashed line is not
+                    on[s0:e0] = True
+        d = np.diff(np.concatenate([[0], on.astype(np.int8), [0]]))
+        out.append([[round(int(s0) / len(t), 4), round(int(e0) / len(t), 4)] for s0, e0 in zip(np.nonzero(d == 1)[0], np.nonzero(d == -1)[0])])
+    return out
 
 
 def refine_boxes(boxes, bw: np.ndarray, k: int, h: int, w: int):

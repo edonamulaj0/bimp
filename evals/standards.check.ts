@@ -1,7 +1,7 @@
 // Run: npm test. Checks the drawing-convention and standards logic (Metric Handbook rules) on known cases.
 import { parseDimension, nearestPreferredScale, checkPlan } from '../apps/shared/standards';
-import { regularize, snapPolygon, parseLevel, parseCeiling, buildPlan, dominantAxis, seatOpenings, alignEdges, traceRequest, fixtureInRoom, withArcs } from '../apps/api/src/extract';
-import { placeFixture, dist, type Room, type Pt } from '../apps/shared/plan';
+import { regularize, snapPolygon, parseLevel, parseCeiling, buildPlan, dominantAxis, seatOpenings, alignEdges, traceRequest, fixtureInRoom, withArcs, openWalls, seatInPoche } from '../apps/api/src/extract';
+import { placeFixture, dist, type Room, type Pt, type Wall } from '../apps/shared/plan';
 import { quickAnswer } from '../apps/api/src/quick';
 import { costUsd, forModel, joinStream, meter } from '../apps/api/src/gemini';
 import { evidenceFor } from '../apps/shared/plan';
@@ -498,6 +498,23 @@ eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
   const built = buildPlan(raw2, an2, 'f1', 'b'.repeat(64), { rooms: [[[200, 200], ...arcPx, [200, 1000]]], how: ['fitted'], arcs: [[[1, 9, 1200, 600, 400]]], boxes: [null, null], blank: [true, false] });
   eq('builder: a curved wall from the drawing is kept as an arc, and said so', [built.rooms[0].arcs?.length, built.walls.some((w) => w.curve), built.assumptions.some((a) => /1 curved wall measured/.test(a))], [1, true, true]);
   eq('builder: a fitting read where nothing is drawn is left out, and said so', [built.fixtures!.map((f) => f.kind), built.assumptions.some((a) => /1 fitting the language model reported where nothing is drawn/.test(a))], [['table'], true]);
+}
+
+// Walls only where the drawing has them; the drawing's own filled walls; openings in real gaps.
+{
+  const wall: Wall = { id: 'w1', a: [0, 0], b: [10, 0], thickness: 0.12 };
+  const cut = openWalls([wall], [{ a: [0, 0.06], b: [10, 0.06], drawn: [[0, 0.3], [0.33, 0.6]] }]);
+  eq('open walls: a stretch with nothing drawn beside it is taken out; a gap under half a metre is not', cut.map((w) => [w.a[0], w.b[0]]), [[0, 6.1]]);
+  eq('open walls: drawn on the other side of the wall, it stays', openWalls([wall], [{ a: [0, 0.06], b: [10, 0.06], drawn: [] }, { a: [10, -0.06], b: [0, -0.06], drawn: [[0, 1]] }]).length, 1);
+  eq('open walls: a wall no measured edge runs along stays, and so does a curved one', [openWalls([wall], [{ a: [0, 3], b: [10, 3], drawn: [] }]).length,
+    openWalls([{ ...wall, curve: { id: 'c', center: [5, 5], radius: 5 } }], [{ a: [0, 0.06], b: [10, 0.06], drawn: [] }]).length], [1, 1]);
+  // a wall 0.4 thick from x = 0 to 10 with a doorway from 4 to 5, as two filled pieces
+  const mass: Pt[][][] = [[[[0, 0], [4, 0], [4, 0.4], [0, 0.4]]], [[[5, 0], [10, 0], [10, 0.4], [5, 0.4]]]];
+  const door = seatInPoche({ kind: 'door' as const, a: [4.05, 0.1] as Pt, b: [4.95, 0.1] as Pt }, mass);
+  eq('drawn walls: a door in the gap sits in the middle of the wall and takes its thickness', [door?.a[1], door?.t], [0.2, 0.4]);
+  eq('drawn walls: a door read where the wall is solid is left out; a window there stays (it is cut in)', [seatInPoche({ kind: 'door' as const, a: [1, 0.2] as Pt, b: [2, 0.2] as Pt }, mass),
+    !!seatInPoche({ kind: 'window' as const, a: [1, 0.2] as Pt, b: [2, 0.2] as Pt }, mass)], [null, true]);
+  eq('drawn walls: an opening with no wall beyond either jamb is left out', seatInPoche({ kind: 'door' as const, a: [4, 3] as Pt, b: [5, 3] as Pt }, mass), null);
 }
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');

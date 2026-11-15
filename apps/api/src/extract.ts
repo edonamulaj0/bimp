@@ -9,7 +9,7 @@ import type { Env } from './util';
 
 const PROMPT_VERSION = 'read-v7';
 const P = { type: 'ARRAY', items: { type: 'NUMBER' } }; // [y, x] normalised 0-1000
-const SCHEMA = {
+export const SCHEMA = {
   type: 'OBJECT',
   properties: {
     scale_evidence: {
@@ -47,7 +47,7 @@ const SCHEMA = {
 };
 
 // Reading conventions follow standard drawing practice (Metric Handbook Ch. 1, BS 8541-2 / BS 1192 conventions).
-const PROMPT = `You are reading an architectural floor plan (any language, any drawing style).
+export const PROMPT = `You are reading an architectural floor plan (any language, any drawing style).
 Return its rooms, openings and fixtures as JSON. Every point is [y, x], normalised 0-1000 over the full image, origin top-left.
 How to read the drawing:
 - Walls are the thick (often hatched or filled) double lines. Rooms are the spaces they enclose.
@@ -128,9 +128,9 @@ export function parseCeiling(text: string | null): number | null {
 }
 
 const OPENINGS_VERSION = 'openings-v1';
-const OPENINGS_SCHEMA = { type: 'OBJECT', properties: { openings: SCHEMA.properties.openings }, required: ['openings'] };
+export const OPENINGS_SCHEMA = { type: 'OBJECT', properties: { openings: SCHEMA.properties.openings }, required: ['openings'] };
 // A second reading that looks for nothing but doors and windows: asked for everything at once, the model drops openings first.
-const OPENINGS_PROMPT = `You are reading an architectural floor plan (any language, any drawing style).
+export const OPENINGS_PROMPT = `You are reading an architectural floor plan (any language, any drawing style).
 Find EVERY door and EVERY window on the main floor plan and nothing else. Every point is [y, x], normalised 0-1000 over the
 full image, origin top-left.
 - A door is a gap in a wall, usually with a leaf line and a quarter-circle swing arc; sliding doors are drawn as offset parallel
@@ -325,6 +325,100 @@ export function alignEdges(polys: Pt[][], axis: number, tol: number): Pt[][] {
 }
 
 /**
+ * A door or window put into the wall as drawn (`poche`): just beyond each jamb the drawn wall is crossed, which gives
+ * its two faces there; the opening is moved onto the middle between them and takes the wall's thickness. null when
+ * no drawn wall stands beyond either jamb, or the wall runs solid through a door's middle: the drawing has no
+ * opening there.
+ */
+export function seatInPoche<T extends { a: Pt; b: Pt; kind?: 'door' | 'window' }>(o: T, poche: Pt[][][]): (T & { t: number }) | null {
+  const L = dist(o.a, o.b);
+  if (L < 1e-6) return null;
+  const u: Pt = [(o.b[0] - o.a[0]) / L, (o.b[1] - o.a[1]) / L], n: Pt = [-u[1], u[0]];
+  // the wall's faces on the line through p across the wall: the stretch of drawn wall around p, as offsets along n
+  const faces = (p: Pt): [number, number] | null => {
+    let best: [number, number] | null = null;
+    for (const rings of poche) {
+      const ts: number[] = [];
+      for (const ring of rings) for (let i = 0; i < ring.length; i++) {
+        const a = ring[i], b = ring[(i + 1) % ring.length];
+        const da = (a[0] - p[0]) * u[0] + (a[1] - p[1]) * u[1], db = (b[0] - p[0]) * u[0] + (b[1] - p[1]) * u[1];
+        if (da > 0 === db > 0) continue; // this edge does not cross the line
+        const f = da / (da - db), x: Pt = [a[0] + (b[0] - a[0]) * f, a[1] + (b[1] - a[1]) * f];
+        ts.push((x[0] - p[0]) * n[0] + (x[1] - p[1]) * n[1]);
+      }
+      ts.sort((x, y) => x - y);
+      for (let i = 0; i + 1 < ts.length; i += 2) if (ts[i] <= 0.08 && ts[i + 1] >= -0.08 && ts[i + 1] - ts[i] >= 0.04 && ts[i + 1] - ts[i] <= 2.5) {
+        if (!best || ts[i + 1] - ts[i] < best[1] - best[0]) best = [ts[i], ts[i + 1]];
+      }
+    }
+    return best;
+  };
+  const found: [number, number][] = [];
+  for (const [end, dir] of [[o.a, -1], [o.b, 1]] as [Pt, number][]) for (const reach of [0.08, 0.25, 0.5]) {
+    const f = faces([end[0] + u[0] * dir * reach, end[1] + u[1] * dir * reach]);
+    if (f) { found.push(f); break; }
+  }
+  if (!found.length) return null;
+  // ...and a doorway is a gap in the wall: a door whose middle is solid wall was read where there is none. (A window is
+  // drawn as lines across the wall, which count as wall here; it is cut into the wall when it is drawn.)
+  const mid0: Pt = [(o.a[0] + o.b[0]) / 2, (o.a[1] + o.b[1]) / 2];
+  if (o.kind !== 'window' && faces(mid0)) return null;
+  const lo = found.reduce((s, f) => s + f[0], 0) / found.length, hi = found.reduce((s, f) => s + f[1], 0) / found.length, mid = (lo + hi) / 2;
+  const shift = (p: Pt): Pt => [round(p[0] + n[0] * mid, 3), round(p[1] + n[1] * mid, 3)];
+  return { ...o, a: shift(o.a), b: shift(o.b), t: round(hi - lo, 3) };
+}
+
+/** An edge of a measured room outline (metres) and the stretches of it, as fractions, along which the drawing shows a line. */
+export type SeenEdge = { a: Pt; b: Pt; drawn: [number, number][] };
+
+/**
+ * Walls only where the drawing has them. Every room is read with a closed outline, also where the plan is open, and
+ * every edge of an outline gets a wall; a stretch of wall beside which the drawing shows nothing at all, on every
+ * room edge that runs along it, is taken out. Stretches under half a metre stay (a gap in a scan is not an opening),
+ * walls beside no measured edge stay, curved walls stay.
+ */
+export function openWalls(walls: Wall[], edges: SeenEdge[], minGap = 0.5): Wall[] {
+  if (!edges.length) return walls;
+  const out: Wall[] = [];
+  for (const w of walls) {
+    const L = dist(w.a, w.b);
+    if (w.curve || L < 0.05) { out.push(w); continue; }
+    const u: Pt = [(w.b[0] - w.a[0]) / L, (w.b[1] - w.a[1]) / L];
+    const along = (p: Pt) => (p[0] - w.a[0]) * u[0] + (p[1] - w.a[1]) * u[1], off = (p: Pt) => Math.abs((p[0] - w.a[0]) * -u[1] + (p[1] - w.a[1]) * u[0]);
+    const known: [number, number][] = [], drawn: [number, number][] = [];
+    for (const e of edges) {
+      const Le = dist(e.a, e.b);
+      if (Le < 0.05 || Math.abs(((e.b[0] - e.a[0]) * u[1] - (e.b[1] - e.a[1]) * u[0]) / Le) > 0.17) continue; // not along this wall
+      const mid: Pt = [(e.a[0] + e.b[0]) / 2, (e.a[1] + e.b[1]) / 2];
+      if (off(mid) > w.thickness / 2 + 0.25) continue; // not beside it
+      const p = (f: number) => along([e.a[0] + (e.b[0] - e.a[0]) * f, e.a[1] + (e.b[1] - e.a[1]) * f]);
+      const span = (f0: number, f1: number): [number, number] => { const x = p(f0), y = p(f1); return [Math.min(x, y), Math.max(x, y)]; };
+      known.push(span(0, 1));
+      for (const [f0, f1] of e.drawn) drawn.push(span(f0, f1));
+    }
+    if (!known.length) { out.push(w); continue; }
+    // open = seen by some edge and drawn by none; found on a fine grid along the wall
+    const step = 0.05, n = Math.max(1, Math.round(L / step)), has = (xs: [number, number][], t: number) => xs.some(([x, y]) => t >= x - 0.1 && t <= y + 0.1);
+    const open = Array.from({ length: n }, (_, i) => { const t = ((i + 0.5) * L) / n; return has(known, t) && !has(drawn, t); });
+    for (let i = 0; i < n;) { // stretches too short to be an opening are wall after all
+      if (!open[i]) { i++; continue; }
+      let j = i; while (j < n && open[j]) j++;
+      if (((j - i) * L) / n < minGap) for (let q = i; q < j; q++) open[q] = false;
+      i = j;
+    }
+    let piece = 0;
+    for (let i = 0; i < n;) {
+      if (open[i]) { i++; continue; }
+      let j = i; while (j < n && !open[j]) j++;
+      const t0 = (i * L) / n, t1 = (j * L) / n;
+      if (t1 - t0 >= 0.2 || (i === 0 && j === n)) out.push(i === 0 && j === n ? w : { ...w, id: `${w.id}p${++piece}`, a: [round(w.a[0] + u[0] * t0, 3), round(w.a[1] + u[1] * t0, 3)], b: [round(w.a[0] + u[0] * t1, 3), round(w.a[1] + u[1] * t1, 3)] });
+      i = j;
+    }
+  }
+  return out.map((w, i) => ({ ...w, id: `w${i + 1}` }));
+}
+
+/**
  * A fitting's box (corners a, b in metres) cut back to the room it stands in, when part of it reaches past the room's
  * outline (into a wall, or through it): the bounds of what lies inside the room it mostly stands in. null when the
  * box is inside a room already, stands in none (a column on a terrace edge), or would lose most of itself.
@@ -379,6 +473,7 @@ export function withArcs(poly: Pt[], arcs: Arc[]): { polygon: Pt[]; arcs: Arc[] 
   return { polygon, arcs: out };
 }
 
+const segDist = (p: Pt, a: Pt, b: Pt) => { const L2 = (b[0] - a[0]) ** 2 + (b[1] - a[1]) ** 2 || 1, t = Math.max(0, Math.min(1, ((p[0] - a[0]) * (b[0] - a[0]) + (p[1] - a[1]) * (b[1] - a[1])) / L2)); return dist(p, [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t]); };
 type Op = { kind: 'door' | 'window'; a: Pt; b: Pt };
 /**
  * Seats openings in the walls and drops repeats. Each opening is projected onto the centre line of the nearest wall
@@ -405,8 +500,9 @@ export function seatOpenings(ops: Op[], walls: Wall[], reach = 0.6, rooms: Room[
       if (!best || cost < best.cost) best = { cost, w, u, along };
     }
     let s: Op = o;
-    // no wall near it, and it lies across the floor of a room: a door or window is in a wall, so this was misread
-    if (!best && rooms.some((r) => inside(m, r.polygon))) continue;
+    // no wall near it, and it lies across the floor of a room or along a boundary with no wall: a door or window is in a
+    // wall, so this was misread
+    if (!best && rooms.some((r) => inside(m, r.polygon) || r.polygon.some((p, i) => segDist(m, p, r.polygon[(i + 1) % r.polygon.length]) < 1.5))) continue;
     if (best) {
       const { w, u } = best, on = (p: Pt) => (p[0] - w.a[0]) * u[0] + (p[1] - w.a[1]) * u[1], at = (t: number): Pt => [round(w.a[0] + u[0] * t, 3), round(w.a[1] + u[1] * t, 3)];
       // read across the wall (the model gave the door leaf): keep its width, centred where it was read
@@ -460,7 +556,7 @@ export function traceRequest(raw: Raw, an: Pick<Analysis, 'width' | 'height' | '
  * boxes[i] the box of raw.fixtures[i] tightened onto its lines, exterior_px the thickness of the outside walls.
  * null wherever the drawing gave no clear answer: then what the model read stands.
  */
-export type Measured = { rooms: (number[][] | null)[]; how?: (string | null)[]; /** arcs[i]: the curved walls of rooms[i], each [first corner, corners, centre x, centre y, radius] */ arcs?: (number[][] | null)[]; boxes?: (number[] | null)[]; /** blank[i]: nothing is drawn where raw.fixtures[i] was read */ blank?: boolean[]; exterior_px?: number | null };
+export type Measured = { rooms: (number[][] | null)[]; how?: (string | null)[]; /** the filled walls as drawn, [[outer ring, hole, ...], ...] in render pixels, and the share of room outline they run along */ poche?: number[][][][] | null; poche_share?: number | null; /** drawn[i][k]: along which stretches of edge k of rooms[i] anything is drawn, as fractions of the edge */ drawn?: (number[][][] | null)[]; /** arcs[i]: the curved walls of rooms[i], each [first corner, corners, centre x, centre y, radius] */ arcs?: (number[][] | null)[]; boxes?: (number[] | null)[]; /** blank[i]: nothing is drawn where raw.fixtures[i] was read */ blank?: boolean[]; exterior_px?: number | null };
 
 export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: string, renderSha: string, measuredOn?: Measured | (number[][] | null)[]): Plan {
   const seen: Measured | undefined = Array.isArray(measuredOn) ? { rooms: measuredOn } : measuredOn;
@@ -484,7 +580,8 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     const curved = start.map((_, k) => arcs.some((c) => k >= c[0] && k < c[0] + c[1]));
     const res = snapPolygon(start, an.segments, tol);
     corners += start.length; snapped += res.snapped;
-    return { ...r, poly: res.poly.map((p, k) => (curved[k] ? start[k] : p)), loose: raster || res.snapped < start.length, arcs, curved };
+    const drawn = exact && seen?.drawn?.[i]?.length === start.length ? seen.drawn[i]! : null;
+    return { ...r, poly: res.poly.map((p, k) => (curved[k] ? start[k] : p)), loose: raster || res.snapped < start.length, arcs, curved, drawn };
   });
   // One set of axes for the whole plan, so neighbouring rooms stay parallel; a room that mostly runs another way
   // (a wing at an angle) is straightened along its own.
@@ -611,7 +708,20 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     if (k >= 0) assumptions[k] = `Wall thickness measured on the drawing: outside walls ${exteriorT.toFixed(2)} m, walls between rooms where they face each other; otherwise interior 0.12 m (assumed)`;
   }
   const { walls: faceWalls, paired } = wallsFromFaces(rooms, exteriorT);
-  const walls = paired ? faceWalls : wallsFromRooms(rooms);
+  // What the drawing shows along each edge of each measured room (before curves were laid out again: same corners).
+  const seenEdges: SeenEdge[] = rooms0.flatMap((r) => (r.drawn ?? []).map((spans, k) => {
+    const a = toM(r.poly[k]), b = toM(r.poly[(k + 1) % r.poly.length]);
+    return r.curved[k] && r.curved[(k + 1) % r.poly.length] ? null : { a, b, drawn: spans.filter((x) => x?.length === 2) as [number, number][] };
+  }).filter((e): e is SeenEdge => !!e));
+  const built = paired ? faceWalls : wallsFromRooms(rooms);
+  // Where the drawing has its walls filled along most of the rooms' outline, the walls shown are the drawing's own.
+  const poche: Pt[][][] | undefined = seen?.poche?.length && (seen.poche_share ?? 0) >= 0.6
+    ? seen.poche.map((rings) => rings.filter((r) => r?.length >= 3).map((r) => r.map((p) => toM([p[0], p[1]])))).filter((rings) => rings.length) : undefined;
+  if (poche?.length) assumptions.push('Walls are shown exactly as the drawing has them (its filled walls, traced), not rebuilt from the room outlines');
+  // Without that, a boundary along which nothing is drawn is not a wall. (With it, the walls shown are right already.)
+  const walls = poche?.length ? built : openWalls(built, seenEdges);
+  const lengthOf = (ws: Wall[]) => ws.reduce((t, x) => t + dist(x.a, x.b), 0), opened = lengthOf(built) - lengthOf(walls);
+  if (opened >= 0.5) assumptions.push(`${round(opened, 1)} m of room boundary has nothing drawn along it (open plan, doorways): no wall is drawn there`);
   // Scans and images: doors and windows the symbol detector found. Its boxes lie across the wall at each opening, so the
   // ones neither reading reported are added along the wall they sit in.
   const read0 = openings0.map((o): Op => ({ kind: o.kind, a: toM(o.a), b: toM(o.b) }));
@@ -643,7 +753,10 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
   };
   for (const r of rooms) r.src = src(r.polygon, 0.15);
   const n = { door: 0, window: 0 };
-  const openings: Opening[] = seated.map((o) => ({ id: `${o.kind[0]}${++n[o.kind]}`, kind: o.kind, a: o.a, b: o.b, src: src([o.a, o.b], 0.5) }));
+  // In the drawing's own walls, a door or window sits where the wall is: centred in its thickness, and as deep.
+  const inDrawn: (Op & { t?: number })[] = poche?.length ? seated.map((o) => seatInPoche(o, poche)).filter((o): o is Op & { t: number } => !!o) : seated;
+  if (poche?.length && inDrawn.length < seated.length) assumptions.push(`${seated.length - inDrawn.length} door${seated.length - inDrawn.length === 1 ? '' : 's'} or window${seated.length - inDrawn.length === 1 ? '' : 's'} read where the drawing has no wall ${seated.length - inDrawn.length === 1 ? 'is' : 'are'} left out`);
+  const openings: Opening[] = inDrawn.map((o) => ({ id: `${o.kind[0]}${++n[o.kind]}`, kind: o.kind, a: o.a, b: o.b, src: src([o.a, o.b], 0.5), ...(o.t ? { t: o.t } : {}) }));
   const bb = bounds([...rooms.flatMap((r) => r.polygon), ...walls.flatMap((w) => [w.a, w.b])]);
   // Fittings and furniture, each as a box in render pixels. Where it stands comes from the best source there is:
   // the symbol detector for what it was trained on (toilets, sinks, showers and bathtubs), else the lines the service
@@ -735,6 +848,7 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     rooms,
     walls,
     openings,
+    ...(poche?.length ? { poche } : {}),
     fixtures,
     ...(detected ? { detected } : {}),
     levels: { floor, ceiling: ceilingOk,

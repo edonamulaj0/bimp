@@ -15,7 +15,7 @@ export interface Room { id: string; name: string; type: RoomType; polygon: Pt[];
 /** curve: this wall is one piece of a curved wall; all pieces of that wall carry the same curve id. */
 export interface Wall { id: string; a: Pt; b: Pt; thickness: number; curve?: { id: string; center: Pt; radius: number } }
 /** a = hinge for doors; the leaf swings toward swing × leftNormal(a→b) (swing defaults to 1). */
-export interface Opening { id: string; kind: 'door' | 'window'; a: Pt; b: Pt; swing?: 1 | -1; src?: Src }
+export interface Opening { id: string; kind: 'door' | 'window'; a: Pt; b: Pt; swing?: 1 | -1; src?: Src; /** thickness of the drawn wall it sits in, when that was measured on the drawing */ t?: number }
 
 /** Fittings and furniture drawn on the plan. Read from the drawing, never invented. */
 export const FIXTURE_KINDS = ['wc', 'sink', 'bathtub', 'shower', 'sauna_stove', 'stove', 'fridge', 'washer', 'bed', 'sofa', 'table', 'desk', 'wardrobe',
@@ -65,6 +65,12 @@ export interface Plan {
   walls: Wall[];
   openings: Opening[];
   fixtures?: Fixture[];
+  /**
+   * The walls exactly as the drawing shows them, where it draws them filled: polygons in metres, each an outer ring
+   * followed by its holes. When present it is what the canvas draws for walls (any thickness, any shape, curves
+   * included); `walls` stays the measured model behind it (lengths, thicknesses, what a door sits in).
+   */
+  poche?: Pt[][][];
   /** Scans and images only: symbols counted by the detector. When present, counts of these kinds come from here. */
   detected?: Detected;
   /** Floor level (FFL, m) and clear ceiling height (m) when read from the drawing; null = not stated. */
