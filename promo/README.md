@@ -9,7 +9,7 @@ frame can be changed in code.
 | `render.mjs` | Steps through the frames with Playwright and pipes them to ffmpeg. |
 | `audio.py` | Synthesises the soundtrack with numpy (no samples). 96 bpm; scene cuts sit on beats. |
 | `wordmark-entry.ts` → `wordmark.js` | The app's own wordmark animation (`apps/web/src/brand/wordmark.ts`), bundled for the page. |
-| `assets/` | Workspace screenshots captured from the live app (pilot house, with a real bimp AI answer). |
+| `assets/` | Workspace screenshots captured from the live app (pilot house, with real bimp AI answers). |
 
 It also reads the fonts from `node_modules` and the self-drawing plan from `apps/web/partials/plan-drawing.html`.
 

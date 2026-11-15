@@ -117,30 +117,6 @@
 <line x1="1168" y1="710" x2="1238" y2="710" stroke="${W}0.085)" stroke-width="1.5"/><path d="M 1238 710 A 70 70 0 0 0 1168 640" stroke="${W}0.075)" stroke-width="1.2" stroke-dasharray="5 5"/><circle class="sp-dot" cx="1168" cy="710" r="3" fill="${ORANGE}" opacity="0"/>
 <path d="M 440 114 L 1160 114 M 440 786 L 1160 786" stroke="${W}0.035)" stroke-width="1" stroke-dasharray="6 8"/>
 ${[[182, 466], [1414, 412]].map(([x, y]) => `<g class="sp-datum" transform="translate(${x}, ${y})" opacity="0"><circle cx="0" cy="0" r="9" stroke="${W}0.085)" stroke-width="1"/><path d="M 0 0 L 0 -9 A 9 9 0 0 1 9 0 Z" fill="rgba(248,106,36,0.22)"/><path d="M 0 0 L 0 9 A 9 9 0 0 1 -9 0 Z" fill="rgba(248,106,36,0.22)"/><line x1="-14" y1="0" x2="14" y2="0" stroke="${W}0.085)" stroke-width="1"/><line x1="0" y1="-14" x2="0" y2="14" stroke="${W}0.085)" stroke-width="1"/></g>`).join("")}`;
-  var SPLASH_HTML = `
-<svg class="sp-bg" viewBox="0 0 1600 900" preserveAspectRatio="xMidYMid slice" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-  <defs>
-    <pattern id="sp-grid" width="80" height="80" patternUnits="userSpaceOnUse"><path d="M 80 0 L 0 0 0 80" fill="none" stroke="${W}0.022)" stroke-width="1"/></pattern>
-    <radialGradient id="sp-clear" cx="50%" cy="50%" r="46%"><stop offset="0%" stop-color="#1d1d1d" stop-opacity="0.96"/><stop offset="58%" stop-color="#1d1d1d" stop-opacity="0.55"/><stop offset="100%" stop-color="#1d1d1d" stop-opacity="0"/></radialGradient>
-  </defs>
-  <rect width="1600" height="900" fill="url(#sp-grid)"/>
-  <g class="sp-plan" fill="none" stroke-linecap="round" stroke-linejoin="round">${PLAN}</g>
-  <ellipse cx="800" cy="450" rx="510" ry="300" fill="url(#sp-clear)"/>
-</svg>
-<div class="sp-stage">
-  ${wordmarkSvg("sp")}
-  <svg class="sp-rule" viewBox="0 0 240 24" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">
-    <g fill="none" stroke-linecap="round">
-      <line x1="16" y1="12" x2="224" y2="12" stroke="${W}0.13)" stroke-width="1"/>
-      <line x1="68" y1="9" x2="68" y2="15" stroke="${W}0.16)" stroke-width="1"/><line x1="120" y1="8" x2="120" y2="16" stroke="${W}0.18)" stroke-width="1"/><line x1="172" y1="9" x2="172" y2="15" stroke="${W}0.16)" stroke-width="1"/>
-      <line x1="16" y1="6" x2="16" y2="18" stroke="${W}0.22)" stroke-width="1"/><line x1="224" y1="6" x2="224" y2="18" stroke="${W}0.22)" stroke-width="1"/>
-      <line x1="12" y1="16" x2="20" y2="8" stroke="${W}0.35)" stroke-width="1.2"/><line x1="220" y1="16" x2="228" y2="8" stroke="${W}0.35)" stroke-width="1.2"/>
-      <line class="sp-active" x1="16" y1="12" x2="224" y2="12" stroke="#ffffff" stroke-width="1.6"/>
-      <circle cx="16" cy="12" r="2.4" fill="${ORANGE}"/>
-      <line class="sp-head" x1="16" y1="7.5" x2="16" y2="16.5" stroke="${ORANGE}" stroke-width="1.5"/>
-    </g>
-  </svg>
-</div>`;
 
   // promo/wordmark-entry.ts
   window.BIMP = { wordmarkSvg, wordmarkFrame };
