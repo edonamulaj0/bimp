@@ -1,5 +1,6 @@
 import { Hono } from 'hono';
 import { requireUser } from './auth';
+import { noDemo } from './access';
 import { type AppEnv, type Env, fail, now, uid } from './util';
 
 export async function myTeams(env: Env, userId: string) {
@@ -28,6 +29,7 @@ teams.get('/', async (c) => {
   return c.json({ teams: results });
 });
 teams.post('/', async (c) => {
+  noDemo(c.get('user'), 'create teams');
   const name = teamName(((await c.req.json().catch(() => ({}))) as { name?: unknown }).name);
   const mine = await c.env.DB.prepare("SELECT COUNT(*) AS n FROM teams WHERE created_by = ?").bind(c.get('user').id).first<{ n: number }>();
   if ((mine?.n ?? 0) >= 20) throw fail(429, 'You can create up to 20 teams.');

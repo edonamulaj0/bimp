@@ -1,6 +1,6 @@
 import { computed, signal } from '@preact/signals';
 
-export type User = { id: string; email: string };
+export type User = { id: string; email: string; /** a throwaway account from "See the demo" */ demo?: boolean };
 export type TeamRef = { id: string; name: string; role: 'owner' | 'member' };
 export const user = signal<User | null | undefined>(undefined); // undefined = still checking
 export const teams = signal<TeamRef[]>([]);

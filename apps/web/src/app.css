@@ -75,6 +75,10 @@ kbd { font: 500 11px/1 var(--font); padding: 2px 5px; border: 1px solid var(--li
 .login-go { width: 100%; min-height: 48px; font-size: var(--t-base); }
 .login-switch { margin-top: var(--s4); }
 .login-legal { margin: var(--s3) 0 0; }
+.login-demo { display: grid; gap: var(--s3); margin-top: var(--s4); }
+.login-demo p { margin: 0; }
+.login-or { display: flex; align-items: center; gap: var(--s3); color: var(--muted); font-size: var(--t-xs); }
+.login-or::before, .login-or::after { content: ''; flex: 1; height: 1px; background: var(--line); }
 .login-legal .link { font: inherit; text-decoration: underline; text-underline-offset: 3px; }
 .login-links { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); }
 @media (max-width: 899px) {

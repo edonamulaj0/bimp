@@ -25,7 +25,9 @@ export function Sidebar() {
   }, [drawerOpen.value]);
   const out = async () => { await api('/auth/logout', { method: 'POST' }).catch(() => {}); user.value = null; go('#/'); };
   const ctx = r.page === 'projects' && r.team ? r.team : r.page === 'team' ? r.id : 'personal';
-  const email = user.value?.email ?? '';
+  const demo = !!user.value?.demo, email = demo ? 'Demo' : user.value?.email ?? '';
+  // a demo account is thrown away when its visitor leaves it, to sign up or just to go
+  const leave = (to: string) => async () => { await api('/me', { method: 'DELETE', json: {} }).catch(() => {}); user.value = null; go(to); };
 
   return (
     <>
@@ -55,8 +57,9 @@ export function Sidebar() {
         </ul>
         <div class="sb-foot">
           <Menu label="Account" align="up" class="sb-user" items={[{ label: 'Light / dark', onSelect: toggleTheme }, { label: 'Privacy Policy', onSelect: () => window.open('/privacy/', '_blank', 'noopener') },
-            { label: 'Terms of Service', onSelect: () => window.open('/terms/', '_blank', 'noopener') }, 'sep', { label: 'Sign out', onSelect: out },
-            { label: 'Delete account…', danger: true, onSelect: () => (closingAccount.value = true) }]}
+            { label: 'Terms of Service', onSelect: () => window.open('/terms/', '_blank', 'noopener') }, 'sep',
+            ...(demo ? [{ label: 'Create an account', onSelect: leave('#signup') }, { label: 'Leave the demo', onSelect: leave('#/') }]
+              : [{ label: 'Sign out', onSelect: out }, { label: 'Delete account…', danger: true, onSelect: () => (closingAccount.value = true) }])]}
             text={<><span class="avatar" aria-hidden="true">{email.slice(0, 1).toUpperCase()}</span><span class="sb-email">{email}</span></>} />
         </div>
       </nav>

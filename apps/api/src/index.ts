@@ -10,9 +10,9 @@ import { briefText, planFacts } from './brief';
 import { ask } from './agent';
 import { comments } from './comments';
 import { teams, myTeams } from './teams';
-import { type Access, chatQuota, projectAccess } from './access';
-import { checkLogin, createUser, endSession, requireUser, sameOrigin, signupThrottle, startSession, validate } from './auth';
-import { type AppEnv, type Env, fail, failJob, now, sha256, uid } from './util';
+import { type Access, chatQuota, noDemo, projectAccess, questionsFor } from './access';
+import { checkLogin, createDemoUser, createUser, endSession, requireUser, sameOrigin, signupThrottle, startSession, validate } from './auth';
+import { type AppEnv, type Env, fail, failJob, isDemo, now, sha256, uid } from './util';
 
 const MAX_UPLOAD = 50 * 1024 * 1024; // the model gets the container's render, not the original
 const MIMES = new Set(['application/pdf', 'image/png', 'image/jpeg', 'image/webp', 'application/dxf']);
@@ -33,9 +33,23 @@ app.post('/auth/signup', async (c) => {
   const { email, password } = validate(await c.req.json().catch(() => null));
   await signupThrottle(c.env, c.req.header('cf-connecting-ip') ?? 'local');
   const user = await createUser(c.env, email, password);
-  await createProject(c.env, user.id, 'Pilot house', housePlan());
+  // if the house cannot be marked as given (the sample_version column is not there yet), the account still gets it
+  await ensurePilotHouse(c.env, user.id).catch(() => createProject(c.env, user.id, 'Pilot house', housePlan()));
   await startSession(c, user.id);
   return c.json({ user });
+});
+/**
+ * "See the demo": a throwaway account with the pilot house, signed in for a day. It can do everything on the plan and
+ * ask a few questions; it cannot upload drawings, make images or create teams.
+ */
+app.post('/auth/demo', async (c) => {
+  if (c.env.ALLOW_DEMO === 'false') throw fail(403, 'The demo is closed. Create an account to try bimp.');
+  const user = await createDemoUser(c.env, c.req.header('cf-connecting-ip') ?? 'local');
+  // if the house cannot be marked as given (the sample_version column is not there yet), the account still gets it
+  await ensurePilotHouse(c.env, user.id).catch(() => createProject(c.env, user.id, 'Pilot house', housePlan()));
+  const project = await c.env.DB.prepare('SELECT id FROM projects WHERE user_id = ? ORDER BY created_at LIMIT 1').bind(user.id).first<{ id: string }>();
+  await startSession(c, user.id, 24 * 3600 * 1000);
+  return c.json({ user: { ...user, demo: true }, project_id: project?.id ?? null });
 });
 app.post('/auth/login', async (c) => {
   const { email, password } = validate(await c.req.json().catch(() => null));
@@ -45,8 +59,9 @@ app.post('/auth/login', async (c) => {
 });
 app.post('/auth/logout', async (c) => { await endSession(c); return c.json({ ok: true }); });
 app.get('/me', requireUser, async (c) => {
-  await refreshSamples(c.env, c.get('user').id).catch(() => {}); // never block sign-in on it
-  return c.json({ user: c.get('user'), ai: !!c.env.GEMINI_API_KEY, visuals: visualsOn(c.env), teams: await myTeams(c.env, c.get('user').id) });
+  await ensurePilotHouse(c.env, c.get('user').id).catch((e) => console.error(e)); // never block sign-in on it
+  const me = c.get('user');
+  return c.json({ user: { ...me, ...(isDemo(me) ? { demo: true } : {}) }, ai: !!c.env.GEMINI_API_KEY, visuals: visualsOn(c.env), teams: await myTeams(c.env, c.get('user').id) });
 });
 
 /**
@@ -58,6 +73,7 @@ app.get('/me', requireUser, async (c) => {
 app.delete('/me', requireUser, async (c) => {
   const me = c.get('user');
   const { password } = ((await c.req.json().catch(() => null)) ?? {}) as { password?: unknown };
+  if (isDemo(me)) { await c.env.DB.prepare('DELETE FROM users WHERE id = ?').bind(me.id).run(); await endSession(c); return c.json({ ok: true }); } // a demo has no password and nothing outside the database
   if (typeof password !== 'string' || !password) throw fail(400, 'Enter your password to delete your account.');
   try { await checkLogin(c.env, me.email, password.slice(0, 256), c.req.header('cf-connecting-ip') ?? 'local'); }
   catch (e) { if (e instanceof HTTPException && e.status === 401) throw fail(403, 'That password is incorrect.'); throw e; }
@@ -90,27 +106,35 @@ app.delete('/me', requireUser, async (c) => {
 });
 
 /**
- * Brings a person's untouched sample project up to the current pilot house, the one drawn on the home page.
- * Only projects they own, with no uploaded drawings, whose latest plan is an older sample. The new house is added as
- * the next revision, so the earlier sample, and any comments on it, stay in the project's history.
+ * Every account has the current pilot house, the one drawn on the home page. Done once per account for each version
+ * of the house (users.sample_version), so someone who deletes it afterwards is not handed it again until it changes:
+ *  - a sample project they own with no uploaded drawings gets the new house as its next revision, so the earlier
+ *    sample, and any comments on it, stay in the project's history;
+ *  - an account with no such project (it was deleted, or drawings were uploaded into it) gets a new "Pilot house".
  */
-async function refreshSamples(env: Env, userId: string) {
+async function ensurePilotHouse(env: Env, userId: string) {
+  const current = JSON.stringify(housePlan()), version = (await sha256(current)).slice(0, 16);
+  const u = await env.DB.prepare('SELECT sample_version FROM users WHERE id = ?').bind(userId).first<{ sample_version: string | null }>();
+  if (!u || u.sample_version === version) return;
   const { results } = await env.DB.prepare(
     `SELECT p.id, (SELECT data FROM plans x WHERE x.project_id = p.id ORDER BY x.created_at DESC LIMIT 1) AS plan
      FROM projects p WHERE p.user_id = ? AND NOT EXISTS (SELECT 1 FROM files f WHERE f.project_id = p.id)`,
   ).bind(userId).all<{ id: string; plan: string | null }>();
-  const current = JSON.stringify(housePlan());
+  let has = false;
   for (const r of results) {
-    if (!r.plan || r.plan === current || !r.plan.includes('"method":"sample"')) continue;
+    if (!r.plan || !r.plan.includes('"method":"sample"')) continue;
+    has = true;
+    if (r.plan === current) continue;
     const t = now();
     await env.DB.batch([
       env.DB.prepare('INSERT INTO plans (id, project_id, file_id, data, note, created_at) VALUES (?,?,?,?,?,?)').bind(uid(), r.id, null, current, 'New pilot house', t),
       env.DB.prepare('UPDATE projects SET updated_at = ? WHERE id = ?').bind(t, r.id),
     ]);
   }
+  if (!has) await createProject(env, userId, 'Pilot house', housePlan());
+  await env.DB.prepare('UPDATE users SET sample_version = ? WHERE id = ?').bind(version, userId).run();
 }
 
-// --- projects
 async function createProject(env: Env, userId: string, name: string, plan?: Plan, teamId: string | null = null) {
   const id = uid(), t = now();
   const stmts = [env.DB.prepare('INSERT INTO projects (id, user_id, name, team_id, created_at, updated_at) VALUES (?,?,?,?,?,?)').bind(id, userId, name, teamId, t, t)];
@@ -288,6 +312,7 @@ projects.patch('/:id/revisions/:rid/fixtures/:fid', async (c) => {
 
 projects.post('/:id/files', async (c) => {
   const project = await projectAccess(c, c.req.param('id'));
+  noDemo(c.get('user'), 'read uploaded drawings');
   let filename: string;
   try { filename = decodeURIComponent(c.req.header('x-filename') ?? 'drawing'); } catch { throw fail(400, 'The file name could not be read. Rename the file and try again.'); }
   filename = filename.replace(/[\u0000-\u001f\u007f]/g, '').slice(0, 200) || 'drawing';
@@ -450,7 +475,7 @@ projects.post('/:id/chat', async (c) => {
   const turns = region ? [] : history;
   const cacheKey = quick ? null : await sha256(JSON.stringify([c.env.GEMINI_MODEL ?? '', await sha256(JSON.stringify(scope)), q.toLowerCase().replace(/\s+/g, ' '), turns]));
   const kept = cacheKey ? await c.env.DB.prepare('SELECT answer FROM answer_cache WHERE key = ?').bind(cacheKey).first<{ answer: string }>().catch(() => null) : null;
-  if (!quick && !kept) await chatQuota(c.env, c.get('user').id);
+  if (!quick && !kept) await chatQuota(c.env, c.get('user').id, questionsFor(c.get('user')));
   const found = quick ? { ...quick, verified: true, issues: [] } : kept ? (JSON.parse(kept.answer) as Awaited<ReturnType<typeof ask>>) : await ask(c.env, scope, q, turns, context, used);
   if (cacheKey && !kept && found.verified && !found.issues.length)
     await c.env.DB.prepare('INSERT OR REPLACE INTO answer_cache (key, answer, created_at) VALUES (?,?,?)').bind(cacheKey, JSON.stringify(found), now()).run().catch(() => {});

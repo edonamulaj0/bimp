@@ -23,9 +23,14 @@ export interface Env {
   MEASURE_ON_DRAWING?: string;
   /** 'off' skips the second, zoomed-in reading of fittings and furniture (a few more model calls per page). */
   ZOOM_FURNITURE?: string;
+  /** 'false' turns the "See the demo" button's accounts off. */
+  ALLOW_DEMO?: string;
   INGEST_WORKFLOW: Workflow<import('./workflow').IngestParams>;
 }
 export type User = { id: string; email: string };
+/** Demo accounts (the "See the demo" button) are told apart by their address: nobody can sign up with it. */
+export const DEMO_DOMAIN = '@demo.bimp.invalid';
+export const isDemo = (u: { email: string }) => u.email.endsWith(DEMO_DOMAIN);
 export type AppEnv = { Bindings: Env; Variables: { user: User } };
 
 export const fail = (status: 400 | 401 | 403 | 404 | 409 | 413 | 415 | 422 | 429 | 502 | 503, message: string) => new HTTPException(status, { message });

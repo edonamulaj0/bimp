@@ -45,6 +45,21 @@ export function Login() {
       setBusy(false);
     }
   }
+  /** Skips the form: a throwaway account that opens straight on the pilot house. */
+  async function demo() {
+    setErr({ field: null, text: '' });
+    setBusy(true);
+    try {
+      const d = await api('/auth/demo', { method: 'POST' });
+      go(d.project_id ? `#/p/${d.project_id}` : '#/');
+      user.value = d.user;
+      loadMe().catch(() => {});
+    } catch (e) {
+      setErr({ field: null, text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
   const desc = (f: 'email' | 'pw' | 'pw2', hint?: string) => [err.field === f && 'login-err', hint].filter(Boolean).join(' ') || undefined;
 
   return (
@@ -83,6 +98,11 @@ export function Login() {
             <p class="err" role="alert" id="login-err">{err.text}</p>
             <button class="btn login-go" disabled={busy}>{busy ? 'One moment…' : mode === 'login' ? 'Sign in' : 'Create account'}</button>
           </form>
+          <div class="login-demo">
+            <span class="login-or" aria-hidden="true">or</span>
+            <button type="button" class="btn ghost login-go" onClick={demo} disabled={busy}>See the demo</button>
+            <p class="muted small">No account needed. Opens the pilot house so you can try the plan tools and ask a few questions; a demo cannot upload drawings and is deleted after two days.</p>
+          </div>
           <p class="muted small login-switch">
             {mode === 'login'
               ? <>New here? <button type="button" class="link" onClick={() => switchTo('signup')}>Create an account</button></>

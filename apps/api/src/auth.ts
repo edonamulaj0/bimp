@@ -1,6 +1,6 @@
 import type { Context, MiddlewareHandler } from 'hono';
 import { getCookie, setCookie, deleteCookie } from 'hono/cookie';
-import { type AppEnv, type Env, fail, now, sha256, uid } from './util';
+import { type AppEnv, type Env, DEMO_DOMAIN, fail, now, sha256, uid } from './util';
 
 // Workers cap PBKDF2 at 100k iterations.
 const ITER = 100_000;
@@ -29,7 +29,7 @@ export function validate(body: unknown) {
   const { email, password } = (body ?? {}) as { email?: unknown; password?: unknown };
   if (typeof email !== 'string' || typeof password !== 'string') throw fail(400, 'Email and password are required.');
   const e = email.trim().toLowerCase();
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) || e.length > 254) throw fail(400, 'Enter a valid email address.');
+  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(e) || e.length > 254 || e.endsWith(DEMO_DOMAIN)) throw fail(400, 'Enter a valid email address.');
   if (password.length > 256) throw fail(400, 'Password is too long.');
   return { email: e, password };
 }
@@ -47,6 +47,25 @@ export async function createUser(env: Env, email: string, password: string) {
     if (!String(e).includes('UNIQUE')) throw e;
     throw fail(409, 'An account with this email already exists. Sign in instead.');
   }
+  return { id, email };
+}
+
+/**
+ * A demo account: no email of anyone's and no usable password, so it can only be reached through the session started
+ * with it. At most 10 per IP per hour. Demo accounts older than two days are removed here, with their projects (they
+ * cannot upload or make images, so there is nothing of theirs outside the database).
+ */
+export async function createDemoUser(env: Env, ip: string) {
+  const key = `demo:${ip}`;
+  const row = await env.DB.prepare('SELECT COUNT(*) AS n FROM login_failures WHERE key = ? AND at > ?').bind(key, now() - 3600_000).first<{ n: number }>();
+  if ((row?.n ?? 0) >= 10) throw fail(429, 'Too many demos started from this network. Try again in an hour, or create an account.');
+  const id = uid(), email = `demo-${id.replace(/-/g, '').slice(0, 10)}${DEMO_DOMAIN}`;
+  const rnd = () => b64(crypto.getRandomValues(new Uint8Array(32)));
+  await env.DB.batch([
+    env.DB.prepare('DELETE FROM users WHERE email LIKE ? AND created_at < ?').bind(`demo-%${DEMO_DOMAIN}`, now() - 2 * 24 * 3600_000),
+    env.DB.prepare('INSERT INTO login_failures (key, at) VALUES (?, ?)').bind(key, now()),
+    env.DB.prepare('INSERT INTO users (id, email, pw_hash, pw_salt, pw_iter, created_at) VALUES (?,?,?,?,?,?)').bind(id, email, rnd(), rnd(), ITER, now()),
+  ]);
   return { id, email };
 }
 
@@ -83,13 +102,13 @@ export async function signupThrottle(env: Env, ip: string) {
   await env.DB.prepare('INSERT INTO login_failures (key, at) VALUES (?, ?)').bind(key, now()).run();
 }
 
-export async function startSession(c: Context<AppEnv>, userId: string) {
+export async function startSession(c: Context<AppEnv>, userId: string, ms = SESSION_MS) {
   const token = b64(crypto.getRandomValues(new Uint8Array(32)));
   await c.env.DB.batch([
-    c.env.DB.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').bind(await sha256(token), userId, now() + SESSION_MS),
+    c.env.DB.prepare('INSERT INTO sessions (token_hash, user_id, expires_at) VALUES (?, ?, ?)').bind(await sha256(token), userId, now() + ms),
     c.env.DB.prepare('DELETE FROM sessions WHERE expires_at < ?').bind(now()), // housekeeping on each sign-in
   ]);
-  setCookie(c, COOKIE, token, { httpOnly: true, secure: true, sameSite: 'Lax', path: '/', maxAge: SESSION_MS / 1000 });
+  setCookie(c, COOKIE, token, { httpOnly: true, secure: true, sameSite: 'Lax', path: '/', maxAge: ms / 1000 });
 }
 
 export async function endSession(c: Context<AppEnv>) {

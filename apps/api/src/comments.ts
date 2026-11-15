@@ -1,7 +1,7 @@
 import { Hono } from 'hono';
 import { type Plan, type Pt, area, dist, round } from '../../shared/plan';
 import { inside } from '../../shared/rooms';
-import { chatQuota, projectAccess } from './access';
+import { chatQuota, projectAccess, questionsFor } from './access';
 import { type Answer, ask } from './agent';
 import type { Part } from './gemini';
 import { type AppEnv, type Env, fail, now, toBase64, uid } from './util';
@@ -56,9 +56,10 @@ async function spotContext(env: Env, projectId: string, plan: Plan, x: number, y
 }
 
 /** bimp answers in a thread, using the whole thread as the conversation. */
-async function answerThread(env: Env, projectId: string, root: Row, question: string, userId: string) {
+async function answerThread(env: Env, projectId: string, root: Row, question: string, user: { id: string; email: string }) {
+  const userId = user.id;
   if (root.x == null || root.y == null) throw fail(400, 'This comment has no pin.');
-  await chatQuota(env, userId);
+  await chatQuota(env, userId, questionsFor(user));
   const { id: planId, plan } = await planRow(env, projectId, root.plan_id);
   const { results: thread } = await env.DB.prepare('SELECT author, body FROM comments WHERE id = ? OR parent_id = ? ORDER BY created_at').bind(root.id, root.id).all<{ author: string; body: string }>();
   const history: { role: 'user' | 'model'; text: string }[] = [];
@@ -104,7 +105,7 @@ comments.post('/', async (c) => {
   const comment = await one(c.env, project.id, id);
   root ??= comment;
   if (!b.ask_ai) return c.json({ comment: out(comment), reply: null });
-  try { return c.json({ comment: out(comment), reply: await answerThread(c.env, project.id, root, body, me) }); }
+  try { return c.json({ comment: out(comment), reply: await answerThread(c.env, project.id, root, body, c.get('user')) }); }
   catch (e) { return c.json({ comment: out(comment), reply: null, ai_error: (e as Error).message }); }
 });
 comments.post('/:cid/ask', async (c) => {
@@ -115,7 +116,7 @@ comments.post('/:cid/ask', async (c) => {
   let q = typeof question === 'string' ? question.trim().slice(0, 2000) : '';
   if (!q) q = (await c.env.DB.prepare("SELECT body FROM comments WHERE (id = ? OR parent_id = ?) AND author = 'user' ORDER BY created_at DESC LIMIT 1").bind(root.id, root.id).first<{ body: string }>())?.body ?? '';
   if (!q) throw fail(400, 'Ask a question.');
-  return c.json({ reply: await answerThread(c.env, project.id, root, q, c.get('user').id) });
+  return c.json({ reply: await answerThread(c.env, project.id, root, q, c.get('user')) });
 });
 comments.patch('/:cid', async (c) => {
   const project = await projectAccess(c, c.req.param('id')!);
