@@ -97,6 +97,8 @@ export type Raw = {
   fixtures?: { kind: string; box: number[] }[];
   /** Doors and windows from the second, openings-only reading; merged with `openings` when the plan is built. */
   more_openings?: { kind: 'door' | 'window'; a: number[]; b: number[] }[];
+  /** How many enlarged pieces were read again for fittings and furniture, and how many of the fittings come from them. */
+  zoom?: { tiles: number; found: number };
   /** What the reading cost: model calls made (cached readings are free), tokens, and US dollars at list price. */
   usage?: { calls: number; tokens_in: number; tokens_out: number; usd: number };
 };
@@ -140,6 +142,89 @@ full image, origin top-left.
 Each opening is the segment from one jamb to the other along its wall (the full width, not the door leaf or swing arc); both
 points lie on the wall, also when the wall is drawn at an angle. Work systematically: go once round the outside of the building,
 then through the interior room by room. Report each opening once. Do not report furniture, stairs, dimension lines or text.`;
+
+const FIXTURES_VERSION = 'fixtures-v1';
+export const FIXTURES_SCHEMA = { type: 'OBJECT', properties: { fixtures: SCHEMA.properties.fixtures }, required: ['fixtures'] };
+// A third reading, of enlarged pieces of the plan, that looks for nothing but fittings and furniture: on the whole
+// sheet a chair or a bedside table is a few pixels, and asked for everything at once the model leaves small things out.
+export const FIXTURES_PROMPT = `This is an enlarged PART of an architectural floor plan (any language, any drawing style).
+Find EVERY fitting, appliance and piece of furniture drawn in it, and nothing else. Give each the closest kind:
+  sanitary: toilet bowls (wc), bidet, urinal, wash basins and kitchen sinks (sink; a double-bowl sink is one), bathtub, shower,
+    sauna stoves (sauna_stove, "kiuas");
+  kitchen and services: cookers/hobs (stove), oven (a tall or separate oven), fridge (also fridge-freezers, often "JK", "JK/PK", "F"),
+    dishwasher ("APK", "DW"), washing machine (washer, "PK", "PKK", "WM"), dryer ("KR", "TD"), water_heater ("LVV", "WH"), radiator,
+    fireplace (also stoves for heating), counter (kitchen worktops and base units without an appliance in them);
+  furniture: bed, bedside (bedside tables), sofa, armchair, chair (every chair, also each one at a table or desk), table (dining and
+    coffee tables), desk, wardrobe (cupboards, closets, tall storage), bookshelf (open shelving), tv (TV or media unit), plant;
+  structure: column (a free-standing column or pier).
+Letter codes written in or beside a symbol tell you what it is; use them. A symbol that is clearly an object but that you
+cannot name is kind "unknown": report it, do not leave it out and do not guess.
+box = [ymin, xmin, ymax, xmax], normalised 0-1000 over THIS image, origin top-left, tight around the symbol itself.
+One entry per item. Go through the image room by room. Report an item also when the edge of the image cuts it.
+Do not report walls, doors, windows, stairs, dimension lines, room labels or other text. Skip anything you cannot see.`;
+
+/** One enlarged piece of the render (`box` = what it covers, render pixels) and the fittings read in it (boxes 0-1000 over the piece). */
+export type TileReading = { box: [number, number, number, number]; fixtures: { kind: string; box: number[] }[] };
+
+/** The part of the render that holds the plan: the bounds of the rooms as read, with a margin, in render pixels. null without rooms. */
+export function planRegion(raw: Pick<Raw, 'rooms'>, an: Pick<Analysis, 'width' | 'height'>): [number, number, number, number] | null {
+  const pts = raw.rooms.flatMap((r) => r.polygon ?? []).filter((p) => p?.length === 2 && p.every(Number.isFinite));
+  if (pts.length < 3) return null;
+  const ys = pts.map((p) => (p[0] / 1000) * an.height), xs = pts.map((p) => (p[1] / 1000) * an.width);
+  const pad = 0.03 * Math.max(an.width, an.height);
+  return [Math.max(0, Math.min(...xs) - pad), Math.max(0, Math.min(...ys) - pad), Math.min(an.width, Math.max(...xs) + pad), Math.min(an.height, Math.max(...ys) + pad)];
+}
+
+/** Reads the fittings in each enlarged piece (cached per render and piece). A piece that fails is read as empty: the first reading still stands. */
+export async function readFixtures(env: Env, tiles: { png: string; box: number[] }[], renderSha: string, m: Meter): Promise<TileReading[]> {
+  return Promise.all(tiles.map(async (t): Promise<TileReading> => {
+    const box = t.box.map(Math.round) as [number, number, number, number];
+    const got = await ask<{ fixtures?: TileReading['fixtures'] }>(env, [{ inlineData: { mimeType: 'image/png', data: t.png } }, { text: FIXTURES_PROMPT }], FIXTURES_SCHEMA, `${FIXTURES_VERSION}:${renderSha}:${box.join(',')}`, m)
+      .catch((e) => { console.warn('fixtures pass', (e as Error).message); return { fixtures: [] }; });
+    return { box, fixtures: (got.fixtures ?? []).filter((f) => f?.box?.length === 4 && f.box.every(Number.isFinite)) };
+  }));
+}
+
+/**
+ * The fittings of the whole plan from the first reading and the enlarged pieces, boxes 0-1000 over the full render.
+ * What a piece saw is placed more exactly, so it comes first and wins where both report the same thing; a thing cut
+ * by a piece's inner edge is left to the neighbouring piece that holds it whole; a thing two pieces both saw is kept
+ * once; what only the first reading has stays.
+ */
+export function mergeFixtures(base: NonNullable<Raw['fixtures']>, tiles: TileReading[], an: Pick<Analysis, 'width' | 'height'>): NonNullable<Raw['fixtures']> {
+  if (!tiles.length) return base;
+  const rx0 = Math.min(...tiles.map((t) => t.box[0])), ry0 = Math.min(...tiles.map((t) => t.box[1])), rx1 = Math.max(...tiles.map((t) => t.box[2])), ry1 = Math.max(...tiles.map((t) => t.box[3]));
+  type B = { kind: string; px: [number, number, number, number]; edge: number };
+  const seen: B[] = [];
+  for (const t of tiles) {
+    const [tx0, ty0, tx1, ty1] = t.box, tw = tx1 - tx0, th = ty1 - ty0;
+    for (const f of t.fixtures) {
+      const y0 = ty0 + (Math.min(f.box[0], f.box[2]) / 1000) * th, y1 = ty0 + (Math.max(f.box[0], f.box[2]) / 1000) * th;
+      const x0 = tx0 + (Math.min(f.box[1], f.box[3]) / 1000) * tw, x1 = tx0 + (Math.max(f.box[1], f.box[3]) / 1000) * tw;
+      if (x1 - x0 < 2 || y1 - y0 < 2) continue;
+      // cut by an edge of the piece that is not the edge of the plan: the neighbour has it whole
+      const e = 0.015, cut = (x0 - tx0 < e * tw && tx0 > rx0 + 1) || (tx1 - x1 < e * tw && tx1 < rx1 - 1) || (y0 - ty0 < e * th && ty0 > ry0 + 1) || (ty1 - y1 < e * th && ty1 < ry1 - 1);
+      if (cut) continue;
+      seen.push({ kind: f.kind, px: [x0, y0, x1, y1], edge: Math.min(x0 - tx0, tx1 - x1, y0 - ty0, ty1 - y1) });
+    }
+  }
+  const over = (p: B['px'], q: B['px']) => {
+    const ix = Math.min(p[2], q[2]) - Math.max(p[0], q[0]), iy = Math.min(p[3], q[3]) - Math.max(p[1], q[1]);
+    return ix > 0 && iy > 0 ? (ix * iy) / Math.min((p[2] - p[0]) * (p[3] - p[1]), (q[2] - q[0]) * (q[3] - q[1])) : 0;
+  };
+  // seen by two pieces: the one farther from its piece's edge is the better view
+  seen.sort((a, b) => b.edge - a.edge);
+  const once = seen.filter((f, i) => !seen.some((g, j) => j < i && over(f.px, g.px) > 0.5));
+  const norm = (b: B['px']) => [(b[1] / an.height) * 1000, (b[0] / an.width) * 1000, (b[3] / an.height) * 1000, (b[2] / an.width) * 1000];
+  const basePx = (f: { box: number[] }): B['px'] => [(Math.min(f.box[1], f.box[3]) / 1000) * an.width, (Math.min(f.box[0], f.box[2]) / 1000) * an.height, (Math.max(f.box[1], f.box[3]) / 1000) * an.width, (Math.max(f.box[0], f.box[2]) / 1000) * an.height];
+  // the first reading's item is the same thing when a piece has that kind there, or anything of about its size on it;
+  // a chair at a desk or a sink in a worktop overlaps its neighbour without being it
+  const size = (b: B['px']) => (b[2] - b[0]) * (b[3] - b[1]);
+  const sameThing = (f: { kind: string; box: number[] }, g: B) => { const p = basePx(f), o = over(p, g.px), r = size(p) / size(g.px);
+    return (g.kind === f.kind && o > 0.3) || (o > 0.6 && r > 0.5 && r < 2); };
+  const only = base.filter((f) => f?.box?.length === 4 && !once.some((g) => sameThing(f, g)));
+  return [...once.map((f) => ({ kind: f.kind, box: norm(f.px) })), ...only];
+}
 
 async function ask<T>(env: Env, parts: unknown[], schema: unknown, key: string, m: Meter): Promise<T> {
   const body = (hi: boolean) => ({
@@ -804,6 +889,7 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
   // ...also when the two readings disagree on what it is (one box, a toilet and a sink): the better-placed one is believed
   const same = (f: Fx, g: Fx) => (g.kind === f.kind && overlap(f.box, g.box) > 0.6) || (overlap(f.box, g.box) > 0.8 && sameSize(f.box, g.box));
   const once = fx.filter((f, i) => !fx.some((g, j) => j !== i && same(f, g) && (rank[g.by] < rank[f.by] || (rank[g.by] === rank[f.by] && j < i))));
+  if (raw.zoom?.tiles) assumptions.push(`Fittings and furniture were read a second time on ${raw.zoom.tiles} enlarged piece${raw.zoom.tiles === 1 ? '' : 's'} of the plan (${raw.zoom.found} found there)`);
   if (notDrawn) assumptions.push(`${notDrawn} fitting${notDrawn === 1 ? '' : 's'} the language model reported where nothing is drawn ${notDrawn === 1 ? 'is' : 'are'} left out`);
   let clipped = 0;
   const fixtures: Fixture[] = once.map((f, i) => {

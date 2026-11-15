@@ -21,6 +21,8 @@ export interface Env {
   INGEST_URL?: string;
   /** "off" skips measuring walls and fittings on the drawing: plans are built from the language model's reading alone. */
   MEASURE_ON_DRAWING?: string;
+  /** 'off' skips the second, zoomed-in reading of fittings and furniture (a few more model calls per page). */
+  ZOOM_FURNITURE?: string;
   INGEST_WORKFLOW: Workflow<import('./workflow').IngestParams>;
 }
 export type User = { id: string; email: string };

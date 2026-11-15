@@ -158,6 +158,15 @@ with tempfile.TemporaryDirectory() as tmp:
     check("curved wall, enclosed room: traced from the contour with its arc", out["how"] == ["traced"] and len(out["arcs"][0]) == 1 and abs(out["arcs"][0][0][4] - 244) <= 3, out["arcs"])
     out = service.trace_rooms(json.dumps({"png": bow(True, bay=True), "rooms": [[[210, 215], [790, 195], [990, 310], [1005, 590], [805, 715], [195, 690]]], "close": []}).encode())
     check("a bay of straight walls is not a curve", out["arcs"] == [[]], out["arcs"])
+    # zoomed-in pieces: they cover the part asked for, overlap, and are enlarged
+    an = service.analyze_image(Path(tmp, "plan-scan.png").read_bytes())
+    box = [100, 80, 100 + 1500, 80 + 900]
+    cut = service.cut_tiles(json.dumps({"png": an["render_png"], "box": box}).encode())["tiles"]
+    xs, ys = sorted({(t["box"][0], t["box"][2]) for t in cut}), sorted({(t["box"][1], t["box"][3]) for t in cut})
+    check("pieces: 3 x 2 for a 1500 x 900 px part, covering it edge to edge", (len(xs), len(ys), xs[0][0], xs[-1][1], ys[0][0], ys[-1][1]) == (3, 2, 100, 1600, 80, 980), (xs, ys))
+    check("pieces: neighbours overlap by about a fifth", all(0.15 <= (a[1] - b[0]) / (a[1] - a[0]) <= 0.25 for a, b in zip(xs, xs[1:])), xs)
+    piece = cv2.imdecode(np.frombuffer(base64.b64decode(cut[0]["png"]), np.uint8), cv2.IMREAD_COLOR)
+    check("pieces: each is enlarged to about 1400 px on its long side", 1350 <= max(piece.shape[:2]) <= 1450, piece.shape)
     # pages
     two = pymupdf.open()
     two.insert_pdf(pymupdf.open(Path(tmp, "plan-vector.pdf")))

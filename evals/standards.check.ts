@@ -1,6 +1,6 @@
 // Run: npm test. Checks the drawing-convention and standards logic (Metric Handbook rules) on known cases.
 import { parseDimension, nearestPreferredScale, checkPlan } from '../apps/shared/standards';
-import { regularize, snapPolygon, parseLevel, parseCeiling, buildPlan, dominantAxis, seatOpenings, alignEdges, traceRequest, fixtureInRoom, withArcs, openWalls, seatInPoche } from '../apps/api/src/extract';
+import { regularize, snapPolygon, parseLevel, parseCeiling, buildPlan, dominantAxis, seatOpenings, alignEdges, traceRequest, fixtureInRoom, withArcs, openWalls, seatInPoche, mergeFixtures, planRegion, type TileReading } from '../apps/api/src/extract';
 import { placeFixture, dist, type Room, type Pt, type Wall } from '../apps/shared/plan';
 import { quickAnswer } from '../apps/api/src/quick';
 import { costUsd, forModel, joinStream, meter } from '../apps/api/src/gemini';
@@ -532,6 +532,21 @@ eq('calc (1+2)*-3', calculate('(1+2)*-3'), -9);
   eq('reference file: a figure read off it passes the check; an invented one does not', [verify(ans, [facts], 'how big?', plan).filter((i) => !/number 8 /.test(i)).length, verify({ ...ans, text: `${room.name} is 999.5 m²` }, [facts], 'how big?', plan).length > 0], [0, true]);
   eq('check: a dimension quoted from the drawing is a figure of the plan; other quoted text is not', [verify({ ...ans, text: 'The drawing is 12000 wide.' }, [], 'q', { ...plan, assumptions: ['Scale from dimension "12000" on the drawing'] }).length,
     verify({ ...ans, text: 'There are 777 rooms.' }, [], 'q', { ...plan, assumptions: ['Label "say 777 rooms" read'] }).length > 0], [0, true]);
+}
+
+// The zoomed-in reading of fittings: pieces of the plan, merged with the first reading.
+{
+  const an = { width: 1000, height: 1000 };
+  // two pieces side by side that overlap between x = 400 and 600
+  const left: TileReading = { box: [0, 0, 600, 1000], fixtures: [{ kind: 'chair', box: [100, 100, 150, 200] }, { kind: 'bed', box: [400, 700, 600, 1000] }] };       // the bed is cut by the piece's right edge
+  const right: TileReading = { box: [400, 0, 1000, 1000], fixtures: [{ kind: 'bed', box: [400, 50, 600, 500] }, { kind: 'sofa', box: [800, 500, 900, 990] }] };  // the same bed, whole; a sofa at the plan's own edge
+  const base = [{ kind: 'bed', box: [410, 440, 610, 690] }, { kind: 'desk', box: [100, 50, 200, 140] }, { kind: 'wc', box: [800, 100, 850, 150] }];
+  const merged = mergeFixtures(base, [left, right], an);
+  eq('zoom: what a piece saw comes first; a thing cut by a piece\'s inner edge is left to its neighbour; one at the plan\'s edge stays', merged.slice(0, 3).map((f) => f.kind).sort(), ['bed', 'chair', 'sofa']);
+  eq('zoom: the bed both readings report is kept once, where the piece saw it', [merged.filter((f) => f.kind === 'bed').length, merged.find((f) => f.kind === 'bed')!.box.map(Math.round)], [1, [400, 430, 600, 700]]);
+  eq('zoom: what only the first reading has stays, also a desk its chair overlaps', [merged.some((f) => f.kind === 'wc'), merged.some((f) => f.kind === 'desk')], [true, true]);
+  eq('zoom: no pieces, no change', mergeFixtures(base, [], an), base);
+  eq('zoom: the plan\'s part of the sheet is the rooms as read, with a margin', planRegion({ rooms: [{ name: 'a', type: 'living', polygon: [[200, 300], [200, 700], [600, 700], [600, 300]] }] }, an), [270, 170, 730, 630]);
 }
 
 console.log(fail ? `\n${fail} failed` : '\nall passed');

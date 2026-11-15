@@ -13,6 +13,7 @@ POST /analyze (body = file bytes, Content-Type = mime) returns, in one pixel spa
             onnxruntime is not installed. Counting symbols is the detector's job, not the language model's.
 POST /analyze takes the page of a PDF to read in the x-page header (1-based; default 1) and returns `page` and `pages`.
 POST /trace returns exact room outlines traced from the wall lines of a render (see trace_rooms).
+POST /tiles returns zoomed-in pieces of a render for a second reading of small things (see cut_tiles).
 The model never measures; this service and the Worker do.
 
 Every parse runs in a child process with memory, CPU and wall-clock limits, and counts entities, points, drawing items
@@ -1135,6 +1136,45 @@ def exterior_thickness(rooms, thick: np.ndarray, k: int, h: int, w: int):
     return float(np.median(found)) if len(found) >= 12 else None
 
 
+def cut_tiles(data: bytes):
+    """Zoomed-in pieces of a render, for a second look at small things (furniture, fittings).
+
+    Body: JSON {png (base64 render), box: [x0, y0, x1, y1]} = the part of the render that holds the plan. Answers
+    {tiles: [{png, box}]}: overlapping pieces of that part, each enlarged so its long side is about 1400 px, with the
+    box it covers in render pixels. Pieces are at most ~700 render pixels on a side and overlap by a fifth, so a
+    symbol cut by one piece's edge is whole in its neighbour; at most 3 x 3 of them. A plan that already fills fewer
+    than 700 pixels comes back as one enlarged piece."""
+    import json
+    req = json.loads(data)
+    img = cv2.imdecode(np.frombuffer(base64.b64decode(req["png"]), np.uint8), cv2.IMREAD_COLOR)
+    if img is None:
+        raise ValueError("unreadable render")
+    h, w = img.shape[:2]
+    if h * w > MAX_PIXELS:
+        raise TooLarge("the render has too many pixels")
+    x0, y0, x1, y1 = [float(v) for v in req.get("box") or [0, 0, w, h]]
+    x0, y0, x1, y1 = max(0, int(x0)), max(0, int(y0)), min(w, int(math.ceil(x1))), min(h, int(math.ceil(y1)))
+    if x1 - x0 < 16 or y1 - y0 < 16:
+        raise ValueError("nothing to cut")
+    side, overlap, out = 700, 0.2, []
+
+    def spans(a: int, b: int):
+        n = min(3, max(1, math.ceil((b - a) / side)))
+        if n == 1:
+            return [(a, b)]
+        size = (b - a) / (n - (n - 1) * overlap)             # n pieces that overlap by a fifth cover a..b exactly
+        return [(int(round(a + i * size * (1 - overlap))), int(round(min(b, a + i * size * (1 - overlap) + size)))) for i in range(n)]
+
+    for ty0, ty1 in spans(y0, y1):
+        for tx0, tx1 in spans(x0, x1):
+            piece = img[ty0:ty1, tx0:tx1]
+            f = min(4.0, 1400 / max(piece.shape[:2]))
+            if f > 1.05:
+                piece = cv2.resize(piece, None, fx=f, fy=f, interpolation=cv2.INTER_CUBIC)
+            out.append({"png": png_b64(piece), "box": [tx0, ty0, tx1, ty1]})
+    return {"tiles": out}
+
+
 PARSERS = {"application/pdf": "analyze_pdf", "application/dxf": "analyze_dxf"}
 
 
@@ -1207,6 +1247,17 @@ async def trace(request: Request):
     return JSONResponse(out)
 
 
+async def tiles(request: Request):
+    if int(request.headers.get("content-length") or 0) > MAX_BODY:
+        return JSONResponse({"error": "Files up to 50 MB."}, 413)
+    data = await request.body()
+    async with PARSE:
+        kind, out = await asyncio.to_thread(run_limited, "cut_tiles", data)
+    if kind == "err":
+        return JSONResponse({"error": out}, 422)
+    return JSONResponse(out)
+
+
 async def health(_: Request):
     return JSONResponse({"ok": True})
 
@@ -1216,4 +1267,4 @@ PARSE = asyncio.Semaphore(1)
 CTX = mp.get_context("forkserver")
 if __name__ != "__mp_main__":
     CTX.set_forkserver_preload([__name__])
-app = Starlette(routes=[Route("/analyze", analyze, methods=["POST"]), Route("/trace", trace, methods=["POST"]), Route("/health", health), Route("/ping", health)])
+app = Starlette(routes=[Route("/analyze", analyze, methods=["POST"]), Route("/trace", trace, methods=["POST"]), Route("/tiles", tiles, methods=["POST"]), Route("/health", health), Route("/ping", health)])
