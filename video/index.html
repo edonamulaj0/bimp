@@ -1,0 +1,509 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>bimp demo film</title>
+<style>
+@font-face{font-family:Jost;src:url(node_modules/@fontsource-variable/jost/files/jost-latin-wght-normal.woff2) format('woff2');font-weight:100 900}
+@font-face{font-family:Plex;src:url(node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-400-normal.woff2) format('woff2');font-weight:400}
+@font-face{font-family:Plex;src:url(node_modules/@fontsource/ibm-plex-mono/files/ibm-plex-mono-latin-500-normal.woff2) format('woff2');font-weight:500}
+:root{--paper:#f4f1ea;--paper-2:#ebe6dc;--paper-3:#fbfaf7;--ink:#1e1d1b;--ink-2:#4a4843;--muted:#6b665d;--line:#d6cfc2;--line-strong:#8f897d;--accent:#ff682b;--tint:#fff4ec;--tint-line:#f3c8b0;--dark:#171614}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{width:1920px;height:1080px;overflow:hidden;background:var(--dark);font-family:Jost,sans-serif;color:var(--ink);-webkit-font-smoothing:antialiased}
+.mono{font-family:Plex,monospace;font-variant-numeric:tabular-nums}
+.h{opacity:0}
+#stage{position:absolute;inset:0;overflow:hidden;background:var(--dark)}
+#grid{position:absolute;inset:-200px;background-image:linear-gradient(rgba(244,241,234,.045) 1px,transparent 1px),linear-gradient(90deg,rgba(244,241,234,.045) 1px,transparent 1px),linear-gradient(rgba(244,241,234,.022) 1px,transparent 1px),linear-gradient(90deg,rgba(244,241,234,.022) 1px,transparent 1px);background-size:160px 160px,160px 160px,32px 32px,32px 32px}
+#glow{position:absolute;left:560px;top:140px;width:800px;height:800px;border-radius:50%;background:radial-gradient(circle,rgba(255,104,43,.2),transparent 62%)}
+#cam{position:absolute;left:0;top:0;width:1920px;height:1080px;transform-origin:0 0}
+
+/* ---------- title cards ---------- */
+.card{position:absolute;inset:0;display:flex;flex-direction:column;align-items:center;justify-content:center;color:var(--paper);text-align:center}
+#logo1 svg,#logo2 svg{height:300px;color:var(--paper);display:block}
+#logo2 svg{height:230px}
+.tag{font-size:50px;font-weight:400;letter-spacing:-.01em;margin-top:26px}
+.tag span,.big span{display:inline-block}
+.tag b{color:var(--accent);font-weight:500}
+.kick{font-family:Plex;font-size:21px;letter-spacing:.18em;text-transform:uppercase;color:var(--accent);margin-bottom:30px}
+.big{font-size:88px;font-weight:500;letter-spacing:-.025em;line-height:1.08;max-width:1500px}
+.big em{font-style:normal;color:var(--accent)}
+.big s{text-decoration:none;position:relative;color:#a39d92}
+.big s i{position:absolute;left:-6px;right:-6px;top:54%;height:7px;background:var(--accent);transform-origin:left;border-radius:4px}
+.chips{display:flex;gap:16px;margin-top:44px}
+.chip{font-family:Plex;font-size:21px;border:1.5px solid rgba(244,241,234,.35);padding:11px 20px;border-radius:99px;color:var(--paper)}
+.chip i{display:inline-block;width:10px;height:10px;border-radius:50%;background:var(--accent);margin-right:11px}
+.sub2{font-family:Plex;font-size:22px;color:#a39d92;margin-top:34px;letter-spacing:.04em}
+
+/* ---------- caption ---------- */
+#scrim{position:absolute;left:0;top:0;width:1920px;height:200px;background:linear-gradient(#171614 132px,rgba(23,22,20,.85) 150px,rgba(23,22,20,0))}
+.cap{position:absolute;left:160px;top:38px;display:flex;align-items:center;gap:26px;color:var(--paper)}
+.cap .no{font-family:Plex;font-weight:500;font-size:24px;color:var(--ink);background:var(--accent);width:62px;height:62px;border-radius:50%;display:grid;place-items:center}
+.cap h2{font-size:48px;font-weight:500;letter-spacing:-.02em;line-height:1}
+.cap p{font-size:25px;color:#bdb6a9;margin-top:9px}
+#brandtag{position:absolute;right:160px;top:50px;color:var(--paper)}
+#brandtag svg{height:50px;color:var(--paper)}
+
+/* ---------- app window ---------- */
+#win{position:absolute;left:160px;top:140px;width:1600px;height:900px;background:var(--paper);border-radius:14px;overflow:hidden;box-shadow:0 0 0 1px rgba(244,241,234,.14),0 50px 120px -20px rgba(0,0,0,.75);transform-origin:50% 60%}
+#top{height:44px;border-bottom:1px solid var(--line);display:flex;align-items:center;padding:0 16px;gap:12px;font-size:15px;color:var(--muted)}
+#top b{color:var(--ink);font-weight:500}
+.btn{border:1px solid var(--line-strong);border-radius:5px;padding:5px 12px;font-size:14px;color:var(--ink);background:var(--paper-3);display:inline-flex;gap:7px;align-items:center;white-space:nowrap}
+#left{position:absolute;left:0;top:44px;width:380px;bottom:0;border-right:1px solid var(--line);background:var(--paper)}
+#right{position:absolute;right:0;top:44px;width:300px;bottom:0;border-left:1px solid var(--line);background:var(--paper)}
+#canvas{position:absolute;left:380px;right:300px;top:44px;bottom:0;background:#fff;overflow:hidden}
+.ph{height:36px;display:flex;align-items:center;padding:0 14px;font-size:14px;font-weight:500;border-bottom:1px solid var(--line)}
+.tree{padding:6px 0;font-size:14.5px;height:176px;border-bottom:1px solid var(--line)}
+.tree div{height:27px;display:flex;align-items:center;gap:8px;padding-right:14px;color:var(--ink-2)}
+.tree .n{margin-left:auto;font-family:Plex;font-size:12px;color:var(--muted)}
+.tree .sel{background:var(--paper-2);box-shadow:inset 3px 0 0 var(--accent)}
+.ico{width:14px;height:14px;border:1.5px solid var(--ink-2);border-radius:2px;flex:none}
+#chathead{height:38px;display:flex;align-items:center;gap:9px;padding:0 14px;font-weight:500;font-size:15px;border-bottom:1px solid var(--line)}
+#chat{position:absolute;left:0;right:0;top:252px;bottom:62px;overflow:hidden}
+.ex{position:absolute;left:14px;right:14px;top:14px}
+.q{margin-left:auto;width:fit-content;max-width:300px;background:var(--ink);color:var(--paper);padding:9px 14px;border-radius:8px;font-size:15.5px;line-height:1.35}
+.a{margin-top:14px;background:var(--paper-3);border:1px solid var(--line);border-left:3px solid var(--accent);border-radius:6px;padding:13px 14px;font-size:15.5px;line-height:1.5}
+.a .ln{margin-bottom:5px}
+.a code{font-family:Plex;font-size:13px;border:1px solid var(--line);border-radius:4px;padding:1px 5px;background:#fff}
+.a .it{font-style:italic;color:var(--muted);font-size:14px}
+.cite{display:block;width:fit-content;border:1px solid var(--line-strong);border-radius:99px;padding:3px 12px 3px 10px;font-size:13px;margin-top:7px;background:#fff}
+.cite i{display:inline-block;width:8px;height:8px;border:2px solid var(--accent);border-radius:50%;margin-right:8px}
+.think{margin-top:14px;display:flex;gap:9px;align-items:center;color:var(--muted);font-size:14.5px}
+.hero{font-size:44px;font-weight:600;letter-spacing:-.02em;line-height:1;margin:2px 0 8px}
+.hero small{font-size:17px;font-weight:400;color:var(--muted);letter-spacing:0;margin-left:6px}
+#ask{position:absolute;left:12px;right:12px;bottom:12px;height:40px;border:1px solid var(--line-strong);border-radius:20px;background:#fff;display:flex;align-items:center;padding:0 46px 0 16px;font-size:15.5px}
+#ask .ph2{color:var(--muted)}
+#send{position:absolute;right:4px;top:3px;width:32px;height:32px;border-radius:50%;background:var(--accent);display:grid;place-items:center;font-size:18px}
+.caret{display:inline-block;width:1.5px;height:19px;background:var(--ink);margin-left:1px;vertical-align:-4px}
+#tools{position:absolute;left:14px;top:10px;display:flex;gap:8px}
+.seg{display:flex;border:1px solid var(--line-strong);border-radius:5px;overflow:hidden;font-size:14px}
+.seg span{padding:6px 13px;border-right:1px solid var(--line);position:relative}
+.seg span:last-child{border:0}
+.seg .on{background:var(--ink);color:var(--paper)}
+#status{position:absolute;right:14px;top:14px;font-size:13.5px;font-family:Plex;color:var(--muted);display:flex;gap:8px;align-items:center}
+#mode{position:absolute;left:14px;top:58px;display:flex;gap:14px;align-items:center;border:1px solid var(--line);padding:5px 10px;border-radius:5px;font-size:13.5px;background:#fff}
+#drop{position:absolute;left:210px;top:270px;width:500px;height:230px;border:2px dashed var(--line-strong);border-radius:12px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;color:var(--muted);font-size:20px}
+#drop b{color:var(--ink);font-weight:500;font-size:25px}
+#plan{position:absolute;left:50px;top:150px;width:1140px;height:690px;transform-origin:0 0;transform:scale(.7193)}
+#plan img{position:absolute;inset:0;width:1140px;height:690px}
+#plan > svg{position:absolute;inset:0;overflow:visible}
+#scan{position:absolute;top:-20px;left:0;width:150px;height:730px;margin-left:-150px;background:linear-gradient(90deg,transparent,rgba(255,104,43,.28) 92%,#ff682b 100%)}
+#legend{position:absolute;left:0;right:0;bottom:0;height:40px;background:var(--paper);border-top:1px solid var(--line);display:flex;align-items:center;gap:15px;padding:0 14px;font-size:13.5px}
+#legend i{display:inline-block;width:11px;height:11px;border:1px solid var(--line-strong);margin-right:6px;vertical-align:-1px}
+#scale{position:absolute;left:50px;top:672px;font-family:Plex;font-size:12px;color:var(--ink-2)}
+#scale div{width:92px;height:5px;border:1px solid var(--ink);background:linear-gradient(90deg,var(--ink) 25%,#fff 25% 50%,var(--ink) 50% 75%,#fff 75%);margin-bottom:3px}
+.tabs{height:42px;display:flex;gap:20px;padding:0 16px;align-items:center;border-bottom:1px solid var(--line);font-size:14.5px;color:var(--muted);position:relative}
+#tabline{position:absolute;bottom:-1px;left:204px;width:70px;height:2.5px;background:var(--accent)}
+.pane{position:absolute;left:0;right:0;top:42px;bottom:0;padding:16px}
+.pane h3{font-size:17px;font-weight:500;margin-bottom:10px}
+.row{display:flex;justify-content:space-between;font-size:14px;padding:5px 0;color:var(--ink-2)}
+.row span:last-child{font-family:Plex;font-size:13px;color:var(--ink)}
+.rm{display:flex;justify-content:space-between;align-items:center;font-size:14px;padding:6px 0;border-top:1px solid var(--line)}
+.rm i{display:inline-block;width:11px;height:11px;border:1px solid var(--line-strong);margin-right:8px}
+.rm span:last-child{font-family:Plex;font-size:12.5px}
+.chk{border-top:1px solid var(--line);padding:10px 0;font-size:14px;line-height:1.4}
+.chk small{display:block;font-size:11.5px;color:var(--muted);margin-top:3px}
+.chk b{color:var(--accent);margin-right:6px}
+.cm{border:1px solid var(--line);border-radius:6px;background:var(--paper-3);padding:11px 12px;font-size:14.5px;line-height:1.42;margin-top:10px}
+.cm .who{font-size:12.5px;color:var(--muted);margin-bottom:3px;display:flex;align-items:center;gap:7px}
+.cm.ai{border-left:3px solid var(--accent)}
+.pinno{display:inline-grid;place-items:center;width:22px;height:22px;border-radius:50%;background:var(--accent);font-family:Plex;font-size:12px;font-weight:500;color:var(--ink)}
+/* overlays in plan coordinates (drawn 0.72×, so sizes are larger) */
+.note{position:absolute;background:#fff;border:1.5px solid var(--ink);border-radius:8px;padding:14px 18px;font-size:21px;line-height:1.35;box-shadow:0 14px 40px -10px rgba(30,29,27,.4);transform-origin:0 0}
+.note .v{font-family:Plex;font-size:17px;color:var(--muted);margin-top:4px}
+.note b{font-weight:600}
+#pin{position:absolute;left:453px;top:183px;width:0;height:0}
+#pin div{position:absolute;left:-19px;top:-50px;width:38px;height:38px;border-radius:50% 50% 50% 0;rotate:-45deg;background:var(--accent);border:2.5px solid var(--ink);display:grid;place-items:center}
+#pin span{rotate:45deg;font-family:Plex;font-weight:500;font-size:18px}
+#composer{position:absolute;left:486px;top:96px;width:400px;background:#fff;border:1.5px solid var(--ink);border-radius:8px;padding:14px;box-shadow:0 14px 40px -10px rgba(30,29,27,.45);transform-origin:0 50%}
+#composer .ta{border:1px solid var(--line-strong);border-radius:5px;min-height:84px;padding:9px 11px;font-size:20px;line-height:1.3}
+#composer .ft{display:flex;align-items:center;justify-content:space-between;margin-top:11px;font-size:18px}
+.cbx{display:inline-block;width:19px;height:19px;border:1.5px solid var(--ink);border-radius:3px;margin-right:8px;vertical-align:-3px;background:var(--accent);text-align:center;line-height:16px;font-size:15px}
+.post{background:var(--accent);padding:6px 16px;border-radius:5px;font-weight:500}
+.qpin{position:absolute;width:30px;height:30px;border-radius:50%;background:var(--accent);border:2px solid var(--ink);display:grid;place-items:center;font-family:Plex;font-weight:500;font-size:18px}
+.pulse{position:absolute;width:30px;height:30px;border-radius:50%;border:2.5px solid var(--accent)}
+.lab{position:absolute;font-family:Plex;font-size:14px;font-weight:500;background:var(--ink);color:var(--paper);padding:4px 9px;border-radius:4px;white-space:nowrap}
+.lab::before{content:'✓ ';color:var(--accent)}
+#namepop{position:absolute;left:306px;top:330px;width:420px;background:#fff;border:1.5px solid var(--ink);border-radius:8px;padding:14px;box-shadow:0 14px 40px -10px rgba(30,29,27,.45);font-size:17px;transform-origin:0 0}
+#namepop .inp{border:1px solid var(--line-strong);border-radius:5px;height:38px;padding:6px 10px;font-size:18px;margin:9px 0}
+#namepop .ft{display:flex;justify-content:flex-end;margin-top:11px}
+#namepop .cbx{background:#fff}
+#learn{position:absolute;left:330px;top:612px;background:var(--ink);color:var(--paper);border-radius:8px;padding:13px 20px;font-size:19px;display:flex;gap:14px;align-items:center;box-shadow:0 14px 40px -10px rgba(30,29,27,.5);white-space:nowrap}
+#learn .mono{color:var(--accent);font-size:17px}
+#next{position:absolute;left:640px;top:346px;width:340px;background:var(--paper-3);border:1.5px solid var(--ink);border-radius:8px;padding:14px 16px;box-shadow:0 14px 40px -10px rgba(30,29,27,.45);font-size:17px;transform-origin:0 0}
+#next .k{font-family:Plex;font-size:12.5px;letter-spacing:.1em;text-transform:uppercase;color:var(--muted)}
+#next .r{display:flex;align-items:center;gap:13px;margin-top:10px}
+#next svg{flex:none}
+#cursor{position:absolute;left:0;top:0;width:30px;height:30px;translate:2100px 1200px;z-index:50;filter:drop-shadow(0 3px 5px rgba(0,0,0,.4))}
+.rip{position:absolute;width:56px;height:56px;margin:-28px;border-radius:50%;border:3px solid var(--accent);opacity:0;z-index:49}
+#file{position:absolute;left:0;top:0;translate:2100px 1200px;background:#fff;border:1.5px solid var(--ink);border-radius:7px;padding:10px 16px;font-family:Plex;font-size:15px;display:flex;gap:10px;align-items:center;box-shadow:0 18px 40px -8px rgba(0,0,0,.5);z-index:48;rotate:-4deg}
+#fade{position:absolute;inset:0;background:#000;opacity:0;z-index:99}
+</style></head>
+<body>
+<div id="stage">
+  <div id="grid"></div><div id="glow" class="h"></div>
+
+  <div id="cam">
+    <div id="win" class="h">
+      <div id="top"><span style="font-size:18px;color:var(--ink)">☰</span> Personal / <b>Pilot house</b><span style="flex:1"></span><span class="btn">↥ Add drawings</span></div>
+      <div id="left">
+        <div class="ph">Files</div>
+        <div class="tree">
+          <div style="padding-left:14px"><span class="ico"></span><b style="font-weight:500;color:var(--ink)">Pilot house</b></div>
+          <div style="padding-left:30px"><span class="ico"></span>Drawings<span class="n" id="n-dr">0</span></div>
+          <div style="padding-left:62px" class="sel h mono" id="t-file"><span style="font-size:13px">plan-swiss-3575.webp</span><span class="n">51 kB</span></div>
+          <div style="padding-left:30px" class="h" id="t-rev"><span class="ico" style="border-radius:50%"></span>Revisions<span class="n">1</span></div>
+          <div style="padding-left:30px" class="h" id="t-model"><span class="ico"></span>Model</div>
+          <div style="padding-left:46px" class="h" id="t-rooms"><span class="ico"></span>Rooms<span class="n" id="n-rooms">0</span></div>
+        </div>
+        <div id="chathead"><svg width="20" height="20" viewBox="-47 -47 94 94"><circle r="34" fill="#f4f1ea"/><path d="M0 0L0-34A34 34 0 0 1 34 0Z" fill="#ff682b"/><path d="M0 0L0 34A34 34 0 0 1-34 0Z" fill="#ff682b"/><circle r="34" fill="none" stroke="#1e1d1b" stroke-width="6.5"/><path d="M0-45V45M-45 0H45" stroke="#1e1d1b" stroke-width="6.5" stroke-linecap="round"/></svg>bimp AI</div>
+        <div id="chat">
+          <div class="ex" id="ex0" style="top:150px;text-align:center;color:var(--muted);font-size:15.5px;line-height:1.5"><b style="display:block;color:var(--ink);font-size:19px;font-weight:500;margin-bottom:6px">Ask about this plan</b>“What is the area of the kitchen?”<br>“How many windows are there?”</div>
+          <div class="ex" id="ex1">
+            <div class="q h" id="q1">can you highlight the corridors?</div>
+            <div class="think h" id="th1">● ● ●&nbsp; bimp is measuring the plan…</div>
+            <div class="a h" id="a1" style="margin-top:-22px">
+              <div class="ln h">There are <b>3 corridors</b> on the plan, <b>25.29 m²</b> in total. They are highlighted on the sheet:</div>
+              <div class="ln h">• <b>Korridor 0.07</b> <code>r3</code> — <b>10.09 m²</b> <span class="mono" style="font-size:13px">4.37 × 2.31 m</span></div>
+              <div class="ln h">• <b>Korridor 0.05</b> <code>r7</code> — <b>11.30 m²</b> <span class="mono" style="font-size:13px">4.31 × 2.65 m</span></div>
+              <div class="ln h">• <b>Korridor 0.08</b> <code>r10</code> — <b>3.90 m²</b> <span class="mono" style="font-size:13px">2.20 × 1.77 m</span></div>
+              <div class="ln h"><span class="cite"><i></i>Korridor 0.07 (r3) · 10.09 m²</span><span class="cite"><i></i>Korridor 0.05 (r7) · 11.30 m²</span><span class="cite"><i></i>Korridor 0.08 (r10) · 3.90 m²</span></div>
+            </div>
+          </div>
+          <div class="ex" id="ex2">
+            <div class="q h" id="q2">how many 0.5 × 0.5 m tiles to cover Schlafzimmer 0.11?</div>
+            <div class="think h" id="th2">● ● ●&nbsp; bimp is measuring the room…</div>
+            <div class="a h" id="a2" style="margin-top:-22px">
+              <div class="ln h">For <b>Schlafzimmer 0.11</b> <code>r11</code>, 19.26 m²:</div>
+              <div class="ln h"><div class="hero"><span id="tilecount">0</span><small>tiles</small></div></div>
+              <div class="ln h">by floor area <code>19.26 m² ÷ 0.25 m² = 77.04</code>, rounded up.</div>
+              <div class="ln h"><b>80 tiles</b> on a full grid <code>8 × 10</code> if offcuts are not reused.</div>
+              <div class="ln h it">How this was worked out ▾ &nbsp;net floor area · tile area · grid per side</div>
+              <div class="ln h"><span class="cite"><i></i>Schlafzimmer 0.11 · 4.93 × 3.90 m</span></div>
+            </div>
+          </div>
+        </div>
+        <div id="ask"><span id="asktext"><span class="ph2">Ask about the plan…</span></span><span id="send">→</span></div>
+      </div>
+
+      <div id="canvas">
+        <div id="tools">
+          <div class="seg"><span id="tl-select" class="on">➤ Select</span><span id="tl-comment">◉ Comment</span><span>⬚ Markup</span><span>◇ Measure</span></div>
+          <span class="btn">Overlay</span><span class="btn">View</span><span class="btn">Layers</span>
+        </div>
+        <div id="status"><span id="statustext"></span></div>
+        <div id="mode" class="h"><span class="mono" id="ratio">1:84</span><div class="seg" style="font-size:13px"><span class="on">Plan</span><span>Dimensioned</span></div><u>Fit</u><u>Escape</u><u>Print…</u></div>
+        <div id="drop"><span style="font-size:34px">↥</span><b>Drop drawings here</b>PDF, DXF, PNG, JPG, WebP · up to 50 MB</div>
+        <div id="plan" class="h">
+          <img src="plan.png">
+          <svg viewBox="0 0 1140 690" width="1140" height="690" id="ov">
+            <g id="rooms"></g>
+            <g id="corr"></g>
+            <g id="tiles"></g>
+            <g id="door" class="h">
+              <rect x="424" y="170" width="58" height="22" fill="rgba(255,104,43,.3)" stroke="#ff682b" stroke-width="2.5"/>
+              <path d="M428 210H478M428 203V217M478 203V217" stroke="#ff682b" stroke-width="2.5" fill="none"/>
+              <rect x="416" y="218" width="74" height="24" rx="4" fill="#1e1d1b"/><text x="453" y="235" text-anchor="middle" font-family="Plex" font-size="15" fill="#f4f1ea">0.90 m</text>
+            </g>
+            <g id="unk"></g>
+            <path id="route" d="M230 480L335 400L335 262L540 262L640 262L736 268L850 268L905 268" fill="none" stroke="#ff682b" stroke-width="5" stroke-linecap="round" stroke-linejoin="round" pathLength="100" stroke-dasharray="100" stroke-dashoffset="100"/>
+            <g id="routeend" class="h"><circle cx="230" cy="480" r="9" fill="#ff682b" stroke="#1e1d1b" stroke-width="2.5"/><circle cx="905" cy="268" r="9" fill="#1e1d1b"/>
+              <rect x="560" y="212" width="170" height="30" rx="4" fill="#1e1d1b"/><text x="645" y="233" text-anchor="middle" font-family="Plex" font-size="16" fill="#f4f1ea">19.13 m to exit</text></g>
+          </svg>
+          <div id="scan"></div>
+          <div class="note h" id="note1" style="left:310px;top:336px;width:330px"><b>Korridor 0.07</b> (r3) is a circulation room, <b>10.09 m²</b><div class="v">4.37 × 2.31 m · on the sheet</div></div>
+          <div class="note h" id="note2" style="left:846px;top:420px;width:250px"><b>8 × 10</b> grid of 0.5 m tiles<div class="v">78 by area · 80 uncut</div></div>
+          <div id="pin" class="h"><div><span>1</span></div></div>
+          <div id="composer" class="h"><div class="ta"><span id="cmtext"></span><span class="caret" id="cmcaret"></span></div><div class="ft"><span><span class="cbx">✓</span>Ask bimp</span><span class="post">Post</span></div></div>
+          <div id="qs"></div>
+          <div id="namepop" class="h"><b>What is this?</b><div class="inp"><span id="nmtext"></span><span class="caret" id="nmcaret"></span></div><span><span class="cbx" id="simbox"><span id="simtick" class="h">✓</span></span>Also the 1 other unknown symbol of this size</span><div class="ft"><span class="post">Save</span></div></div>
+          <div id="learn" class="h"><svg width="22" height="22" viewBox="-47 -47 94 94"><circle r="34" fill="#1e1d1b"/><path d="M0 0L0-34A34 34 0 0 1 34 0Z" fill="#ff682b"/><path d="M0 0L0 34A34 34 0 0 1-34 0Z" fill="#ff682b"/><circle r="34" fill="none" stroke="#f4f1ea" stroke-width="6.5"/><path d="M0-45V45M-45 0H45" stroke="#f4f1ea" stroke-width="6.5" stroke-linecap="round"/></svg><span>Remembered: <b>Chimney flue</b></span><span class="mono">symbols known <span id="symcount">29</span></span></div>
+          <div id="next" class="h"><div class="k">Next drawing you upload</div><div class="r"><svg width="46" height="46" viewBox="0 0 46 46"><rect x="5" y="5" width="36" height="36" fill="#d9d9d9" stroke="#1e1d1b" stroke-width="3"/><path d="M5 5L41 41M41 5L5 41" stroke="#1e1d1b" stroke-width="2"/></svg><div><b>Chimney flue</b><div style="color:var(--muted);font-size:15px">recognised automatically</div></div><span style="margin-left:auto;font-size:26px;color:var(--accent)" class="h" id="nextok">✓</span></div></div>
+        </div>
+        <div id="scale" class="h"><div></div>0 &nbsp; &nbsp; &nbsp; &nbsp; 2 m</div>
+        <div id="legend"><b style="font-weight:500" id="lg-checks">Checks</b><span><i style="background:#ffd9c7"></i>Living</span><span><i style="background:#ffeadf"></i>Bedroom</span><span><i style="background:#ff9a6e"></i>Kitchen</span><span><i style="background:#cfc9bd"></i>Bathroom</span><span><i style="background:#f1ede4"></i>Circulation</span><span><i style="background:#8f897d"></i>Stair</span><span><i style="background:#e3e3e3"></i>Outdoor</span><span class="mono" style="color:var(--muted);font-size:12.5px;margin-left:auto" id="dims"></span></div>
+      </div>
+
+      <div id="right">
+        <div class="tabs"><span id="tb-c">Comments</span><span>Revisions</span><span id="tb-o" style="color:var(--ink)">Overview</span><i id="tabline"></i></div>
+        <div class="pane" id="p-empty"><div style="color:var(--muted);font-size:14.5px;margin-top:6px">No drawing yet. Drop one on the canvas and bimp reads it.</div></div>
+        <div class="pane h" id="p-over">
+          <h3>Overview</h3>
+          <div class="row"><span>Rooms</span><span id="o-rooms">0</span></div>
+          <div class="row"><span>Net floor area</span><span><span id="o-area">0.0</span> m²</span></div>
+          <div class="row"><span>Overall</span><span>17.27 × 9.93 m</span></div>
+          <div class="row"><span>Ceiling height</span><span>2.70 m (assumed)</span></div>
+          <h3 style="margin-top:18px">Rooms</h3>
+          <div id="rmlist"></div>
+        </div>
+        <div class="pane h" id="p-comm">
+          <h3>Comments <span class="mono" style="font-size:12.5px;color:var(--muted)">1</span></h3>
+          <div class="cm h" id="cm1"><div class="who"><span class="pinno">1</span> You · Bad 0.01</div>Is this door wide enough for a wheelchair?</div>
+          <div class="think h" id="th3" style="font-size:13.5px">● ● ●&nbsp; bimp is looking at the drawing around the pin…</div>
+          <div class="cm ai h" id="cm2" style="margin-top:-20px"><div class="who"><svg width="16" height="16" viewBox="-47 -47 94 94"><path d="M0 0L0-34A34 34 0 0 1 34 0Z" fill="#ff682b"/><path d="M0 0L0 34A34 34 0 0 1-34 0Z" fill="#ff682b"/><circle r="34" fill="none" stroke="#1e1d1b" stroke-width="7"/><path d="M0-45V45M-45 0H45" stroke="#1e1d1b" stroke-width="7"/></svg> bimp</div><b>Yes.</b> The door into Bad 0.01 is <b>0.90 m</b> wide; a wheelchair needs 0.85 m clear. It is marked on the sheet.<span class="cite"><i></i>Door to Bad 0.01 · 0.90 m</span></div>
+        </div>
+        <div class="pane h" id="p-chk">
+          <h3>Checks against design standards</h3>
+          <div class="chk h"><b>i</b>Schlafzimmer 0.04: no window found. Habitable rooms need daylight; check the drawing.<small>Metric Handbook, 4th ed. Ch. 39</small></div>
+          <div class="chk h"><b>i</b>Stair 0.03: 0.86 m wide; accessible stairs need 1000 mm clear between handrails.<small>Metric Handbook, 4th ed. Ch. 42</small></div>
+          <div class="chk h"><b>i</b>Furthest point (Wohnen 0.09) is about 19.13 m from an exit door.<small>Metric Handbook, 4th ed. Ch. 41</small></div>
+          <div class="chk h" style="color:var(--muted)">Feng shui · <span style="color:#a33a12">△ Bad 0.01: the toilet faces the door directly.</span></div>
+        </div>
+      </div>
+    </div>
+    <div id="file"><span class="ico"></span>plan-swiss-3575.webp</div>
+    <svg id="cursor" viewBox="0 0 24 24"><path d="M4 2L4 20L9 15.5L12.2 22.5L15 21.2L11.8 14.5L18.5 14.5Z" fill="#1e1d1b" stroke="#fff" stroke-width="1.6" stroke-linejoin="round"/></svg>
+  </div>
+
+  <div id="scrim" class="h"></div>
+  <div id="brandtag" class="h"></div>
+  <div class="cap h" id="cap1"><span class="no">01</span><div><h2>Drop in any drawing</h2><p>PDF, DXF, scans and photos, in any language. bimp reads and measures it.</p></div></div>
+  <div class="cap h" id="cap2"><span class="no">02</span><div><h2>Ask in plain words</h2><p>The answer is highlighted on the sheet, so you can verify it in seconds.</p></div></div>
+  <div class="cap h" id="cap3"><span class="no">03</span><div><h2>Comment right on the sheet</h2><p>Pin a question to a spot. bimp answers in the thread and marks the place.</p></div></div>
+  <div class="cap h" id="cap4"><span class="no">04</span><div><h2>It learns your symbols</h2><p>If bimp can't name a symbol, it asks. Tell it once and it remembers.</p></div></div>
+  <div class="cap h" id="cap5"><span class="no">05</span><div><h2>Checked against design standards</h2><p>Daylight, stair widths, escape distance: flagged with the source.</p></div></div>
+
+  <div class="card" id="c-intro"><div id="logo1" class="h"></div><div class="tag" id="tag1"></div></div>
+  <div class="card h" id="c-prob1"><div class="kick">The problem</div><div class="big" id="pb1"></div></div>
+  <div class="card h" id="c-prob2"><div class="big" id="pb2"><div class="h" id="pb2a">General AI <s>guesses<i id="strike"></i></s>.</div><div class="h" id="pb2b"><em>bimp</em> measures, and shows you where.</div></div></div>
+  <div class="card h" id="c-outro"><div id="logo2"></div><div class="tag h" id="tag2">Ask your drawings. <b>See the answer on the sheet.</b></div>
+    <div class="chips"><span class="chip h"><i></i>No source, no answer</span><span class="chip h"><i></i>The model reads, the tools measure</span><span class="chip h"><i></i>Show the work</span></div>
+    <div class="sub2 h" id="sub2">bimp · your BIM Pilot</div></div>
+  <div id="fade"></div>
+</div>
+
+<script>
+const TOTAL = 64;
+const $ = (s) => document.querySelector(s), $$ = (s) => [...document.querySelectorAll(s)];
+const OUT = 'cubic-bezier(.16,1,.3,1)', INOUT = 'cubic-bezier(.65,0,.35,1)', BACK = 'cubic-bezier(.34,1.56,.64,1)';
+const anims = [], fns = [];
+function A(el, t, d, kf, ease = OUT) {
+  if (typeof el === 'string') el = $(el);
+  const a = el.animate(kf, { delay: t * 1000, duration: Math.max(d, .001) * 1000, fill: 'forwards', easing: ease });
+  a.pause(); anims.push(a); return a;
+}
+const show = (el, t, d = .6, dy = 14) => A(el, t, d, [{ opacity: 0, translate: `0 ${dy}px` }, { opacity: 1, translate: '0 0' }]);
+const hide = (el, t, d = .35, dy = 0) => A(el, t, d, { opacity: 0, translate: `0 ${dy}px` }, 'ease-in');
+const pop = (el, t, d = .5) => A(el, t, d, [{ opacity: 0, scale: .8 }, { opacity: 1, scale: 1 }], BACK);
+const clamp = (x) => Math.max(0, Math.min(1, x));
+const type = (el, text, t0, t1, placeholder = '') => fns.push((t) => {
+  el = typeof el === 'string' ? $(el) : el;
+  if (t < t0) { if (placeholder !== null) el.innerHTML = placeholder; return; }
+  el.textContent = text.slice(0, Math.round(clamp((t - t0) / (t1 - t0)) * text.length));
+});
+const count = (el, a, b, t0, t1, dp = 0) => fns.push((t) => {
+  const p = clamp((t - t0) / (t1 - t0)), e = 1 - Math.pow(1 - p, 3);
+  $(el).textContent = (a + (b - a) * e).toFixed(dp);
+});
+const words = (el, html) => { el.innerHTML = html.split(' ').map((w) => `<span class="h">${w}&nbsp;</span>`).join(''); return [...el.children]; };
+
+// plan → stage coordinates
+const K = .7193, PX = 590, PY = 334, P = (x, y) => [PX + x * K, PY + y * K];
+const cam = $('#cam');
+const camTo = (t, d, cx, cy, s) => A(cam, t, d, { transform: `translate(${960 - s * cx}px,${540 - s * cy}px) scale(${s})` }, INOUT);
+const cur = $('#cursor');
+const move = (t, d, x, y) => A(cur, t, d, { translate: `${x}px ${y}px` }, INOUT);
+const click = (t, x, y) => {
+  const r = document.createElement('div'); r.className = 'rip'; r.style.left = x + 'px'; r.style.top = y + 'px'; cam.appendChild(r);
+  A(r, t, .55, [{ opacity: .9, scale: .2 }, { opacity: 0, scale: 1.3 }]);
+  A(cur, t - .08, .08, { scale: .82 }, 'ease-in'); A(cur, t, .2, { scale: 1 });
+};
+
+// ---------- data ----------
+const logo = fetch('logo.svg').then((r) => r.text());
+const ROOMS = [
+  ['Schlafzimmer 0.04', '14.0', '#ffeadf', 75, 68, 215, 240], ['Bad 0.01', '7.82', '#cfc9bd', 302, 68, 256, 110], ['Korridor 0.07', '10.09', '#f1ede4', 302, 186, 256, 136],
+  ['Korridor 0.05', '11.30', '#f1ede4', 567, 68, 156, 255], ['Abstell 0.02', '2.0', '#e3e3e3', 734, 68, 46, 130], ['Treppe 0.03', '2.1', '#8f897d', 788, 68, 48, 130],
+  ['Korridor 0.08', '3.90', '#f1ede4', 734, 200, 102, 128], ['Balkon 0.06', '19.3', '#e3e3e3', 875, 55, 220, 297], ['Wohnen 0.09', '25.1', '#ffd9c7', 75, 325, 317, 287],
+  ['Küche 0.10', '16.5', '#ff9a6e', 405, 335, 193, 293], ['Schlafzimmer 0.11', '19.26', '#ffeadf', 610, 343, 226, 300],
+];
+const NS = 'http://www.w3.org/2000/svg';
+const svg = (tag, attrs, parent) => { const e = document.createElementNS(NS, tag); for (const k in attrs) e.setAttribute(k, attrs[k]); parent.appendChild(e); return e; };
+
+async function build() {
+  const lg = await logo;
+  $('#logo1').innerHTML = lg; $('#logo2').innerHTML = lg; $('#brandtag').innerHTML = lg;
+  await document.fonts.ready; await $('#plan img').decode();
+
+  // ===== 0–4.4 intro =====
+  A('#glow', 0, 2.5, { opacity: 1 }); A('#grid', 0, TOTAL, [{ translate: '0 0' }, { translate: '-160px -96px' }], 'linear');
+  A('#logo1', .3, 1.5, [{ opacity: 0, clipPath: 'inset(0 100% 0 0)', scale: .94 }, { opacity: 1, clipPath: 'inset(0 0% 0 0)', scale: 1 }]);
+  A('#logo1', .3, 4.2, [{ translate: '0 0' }, { translate: '0 -6px' }], 'linear');
+  words($('#tag1'), 'Ask your drawings. <b>See</b> <b>the</b> <b>answer</b> <b>on</b> <b>the</b> <b>sheet.</b>').forEach((w, i) => A(w, 1.5 + i * .11, .6, [{ opacity: 0, translate: '0 22px' }, { opacity: 1, translate: '0 0' }]));
+  A('#c-intro', 4.0, .45, { opacity: 0, scale: 1.06 }, 'ease-in');
+
+  // ===== 4.4–9.6 problem =====
+  A('#c-prob1', 4.4, .01, { opacity: 1 });
+  words($('#pb1'), 'Site engineers lose <em>hours</em> <em>every</em> <em>day</em> hunting through drawings.').forEach((w, i) => A(w, 4.5 + i * .09, .6, [{ opacity: 0, translate: '0 30px' }, { opacity: 1, translate: '0 0' }]));
+  A('#c-prob1 .kick', 4.4, .5, [{ opacity: 0 }, { opacity: 1 }]);
+  A('#c-prob1', 6.9, .35, { opacity: 0, translate: '0 -30px' }, 'ease-in');
+  A('#c-prob2', 7.2, .01, { opacity: 1 });
+  show('#pb2a', 7.25, .6, 30); A('#strike', 7.25, .01, { scale: '0 1' }); A('#strike', 7.9, .35, { scale: '1 1' });
+  show('#pb2b', 8.2, .7, 30);
+  A('#c-prob2', 9.45, .4, { opacity: 0, scale: 1.05 }, 'ease-in');
+  A('#glow', 9.4, 1, { opacity: .45 });
+
+  // ===== 9.8 app enters; 01 upload =====
+  A('#win', 9.75, 1.1, [{ opacity: 0, translate: '0 90px', scale: .9 }, { opacity: 1, translate: '0 0', scale: 1 }]);
+  show('#scrim', 9.9, .6, 0); show('#brandtag', 10.2, .6, -10); show('#cap1', 10.2, .7, -16);
+  const drop = [1000, 570];
+  A('#file', 10.5, 1.1, [{ translate: '1500px 1150px' }, { translate: `${drop[0] - 120}px ${drop[1] - 10}px` }], INOUT);
+  A(cur, 10.5, 1.1, [{ translate: '1620px 1170px' }, { translate: `${drop[0]}px ${drop[1]}px` }], INOUT);
+  A('#drop', 11.2, .3, { borderColor: '#ff682b', backgroundColor: '#fff4ec', scale: 1.03 });
+  A('#file', 11.65, .3, { opacity: 0, scale: .6 }, 'ease-in'); click(11.65, ...drop);
+  A('#drop', 11.7, .3, { opacity: 0, scale: .96 }, 'ease-in');
+  show('#t-file', 11.8, .4, -8); fns.push((t) => { $('#n-dr').textContent = t > 11.8 ? 1 : 0; });
+  A('#plan', 11.9, .7, [{ opacity: 0 }, { opacity: 1 }]);
+  fns.push((t) => { $('#statustext').textContent = t < 11.8 ? '' : t < 14.25 ? 'Reading the drawing…' : 'Read and measured · 11 rooms'; $('#dims').textContent = t < 14.25 ? '' : '11 rooms · 17.27 × 9.93 m'; });
+  A('#scan', 12.2, 2.0, [{ translate: '0 0', opacity: 1 }, { translate: '1300px 0', opacity: 1 }], 'cubic-bezier(.4,0,.6,1)'); A('#scan', 14.2, .2, { opacity: 0 });
+  move(11.9, 1.0, 1250, 880);
+  const rl = $('#rmlist');
+  ROOMS.forEach(([name, area, col, x, y, w, h], i) => {
+    const r = svg('rect', { x, y, width: w, height: h, fill: col, 'fill-opacity': 0, stroke: '#ff682b', 'stroke-width': 2.5, 'stroke-opacity': 0 }, $('#rooms'));
+    const tt = 12.2 + ((x + w / 2) / 1300) * 2.0;
+    A(r, tt, .45, [{ fillOpacity: 0, strokeOpacity: 0 }, { fillOpacity: .75, strokeOpacity: 1 }]);
+    A(r, tt + .6, .9, { fillOpacity: .34, strokeOpacity: 0 }, 'ease-in-out');
+    A(r, 16.9, .6, { fillOpacity: .16 });
+    if (i < 9) { const d = document.createElement('div'); d.className = 'rm h'; d.innerHTML = `<span><i style="background:${col}"></i>${name}</span><span>${area} m²</span>`; rl.appendChild(d); show(d, 13.2 + i * .1, .45, 10); }
+  });
+  hide('#p-empty', 12.6, .3); show('#p-over', 12.9, .5);
+  count('#o-rooms', 0, 11, 12.4, 14.2); count('#o-area', 0, 131.4, 12.4, 14.3, 1); count('#n-rooms', 0, 11, 12.4, 14.2);
+  ['#t-rev', '#t-model', '#t-rooms'].forEach((s, i) => show(s, 13.0 + i * .18, .4, -8));
+  show('#mode', 13.4, .5, -8); show('#scale', 13.6, .5);
+  A('#status', 14.25, .5, [{ scale: 1.12, color: '#1e1d1b' }, { scale: 1, color: '#1e1d1b' }]);
+
+  // ===== 14.6 — 02 ask: corridors =====
+  hide('#cap1', 14.5, .3, -10); show('#cap2', 14.8, .7, -16);
+  const askPt = [330, 1008];
+  move(14.7, .9, askPt[0], askPt[1] + 4); click(15.65, askPt[0], askPt[1] + 4);
+  A('#ask', 15.65, .2, { borderColor: '#1e1d1b', boxShadow: '0 0 0 3px rgba(255,104,43,.3)' });
+  const Q1 = 'can you highlight the corridors?';
+  type('#asktext', Q1, 15.8, 17.2, '<span class="ph2">Ask about the plan…</span>');
+  move(17.2, .35, 520, 1008); click(17.6, 520, 1008); A('#send', 17.55, .25, [{ scale: .8 }, { scale: 1 }], BACK);
+  fns.push((t) => { if (t >= 17.6 && t < 23.6) $('#asktext').innerHTML = '<span class="ph2">Ask about the plan…</span>'; });
+  hide('#ex0', 17.5, .25); show('#q1', 17.6, .45, 20); show('#th1', 17.9, .3); A('#th1', 17.9, 1.0, [{ opacity: .4 }, { opacity: 1 }, { opacity: .4 }, { opacity: 1 }], 'linear'); hide('#th1', 18.8, .15);
+  A('#a1', 18.9, .4, [{ opacity: 0 }, { opacity: 1 }]);
+  $$('#a1 .ln').forEach((l, i) => show(l, 19.0 + i * .28, .45, 10));
+  camTo(18.6, 1.3, 815, 575, 1.24);
+  const corr = [[302, 186, 256, 136, 19.3], [567, 68, 156, 255, 19.6], [734, 200, 102, 128, 19.9]];
+  const ants = corr.map(([x, y, w, h, t]) => {
+    const r = svg('rect', { x, y, width: w, height: h, fill: '#ff682b', 'fill-opacity': 0, stroke: '#ff682b', 'stroke-width': 4, 'stroke-dasharray': '12 8', opacity: 0 }, $('#corr'));
+    A(r, t, .5, [{ opacity: 0, fillOpacity: .7 }, { opacity: 1, fillOpacity: .2 }]);
+    A(r, 23.2, .4, { opacity: 0 });
+    return r;
+  });
+  fns.push((t) => ants.forEach((r) => r.setAttribute('stroke-dashoffset', (-t * 26).toFixed(2))));
+  pop('#note1', 20.5); hide('#note1', 23.1, .3);
+  move(18.0, 1.4, 900, 520);
+
+  // ===== 23.4 — tiles question =====
+  camTo(23.0, 1.0, 815, 575, 1.12);
+  move(22.9, .7, askPt[0], askPt[1] + 4); click(23.6, askPt[0], askPt[1] + 4);
+  const Q2 = 'how many 0.5 × 0.5 m tiles to cover Schlafzimmer 0.11?';
+  type('#asktext', Q2, 23.7, 25.5, null);
+  move(25.5, .3, 520, 1008); click(25.85, 520, 1008); A('#send', 25.8, .25, [{ scale: .8 }, { scale: 1 }], BACK);
+  fns.push((t) => { if (t >= 25.85) $('#asktext').innerHTML = '<span class="ph2">Ask about the plan…</span>'; });
+  A('#ask', 25.9, .3, { borderColor: '#8f897d', boxShadow: '0 0 0 0 rgba(255,104,43,0)' });
+  hide('#ex1', 25.7, .3, -30); show('#q2', 25.9, .45, 20); show('#th2', 26.2, .3); A('#th2', 26.2, .8, [{ opacity: .4 }, { opacity: 1 }, { opacity: .4 }, { opacity: 1 }], 'linear'); hide('#th2', 26.95, .15);
+  A('#a2', 27.05, .4, [{ opacity: 0 }, { opacity: 1 }]);
+  $$('#a2 .ln').forEach((l, i) => show(l, 27.1 + i * .3, .45, 10));
+  count('#tilecount', 0, 78, 27.4, 29.3);
+  camTo(26.9, 1.2, 840, 600, 1.3);
+  move(26.2, 1.2, 1180, 760);
+  const [rx, ry, rw, rh] = [610, 343, 226, 300], tw = rw / 7.8, th = rh / 9.86;
+  svg('clipPath', { id: 'clip11' }, $('#tiles')).innerHTML = `<rect x="${rx}" y="${ry}" width="${rw}" height="${rh}"/>`;
+  const tg = svg('g', { 'clip-path': 'url(#clip11)' }, $('#tiles'));
+  const outline = svg('rect', { x: rx, y: ry, width: rw, height: rh, fill: 'none', stroke: '#ff682b', 'stroke-width': 4, opacity: 0 }, $('#tiles'));
+  A(outline, 27.2, .4, { opacity: 1 });
+  for (let j = 0; j < 10; j++) for (let i = 0; i < 8; i++) {
+    const r = svg('rect', { x: rx + i * tw + 1, y: ry + j * th + 1, width: tw - 2, height: th - 2, fill: '#ff682b', 'fill-opacity': .22, stroke: '#ff682b', 'stroke-width': 1.2, opacity: 0 }, tg);
+    r.style.transformBox = 'fill-box'; r.style.transformOrigin = 'center';
+    A(r, 27.5 + (j * 8 + i) * .0225, .35, [{ opacity: 0, scale: .3 }, { opacity: 1, scale: 1 }], BACK);
+  }
+  pop('#note2', 29.5);
+  A('#tiles', 31.3, .4, { opacity: 0 }); hide('#note2', 31.2, .3);
+
+  // ===== 31.6 — 03 comments =====
+  hide('#cap2', 31.2, .3, -10); show('#cap3', 31.8, .7, -16);
+  camTo(31.3, 1.2, 1170, 545, 1.28);
+  const tc = [160 + 380 + 14 + 128, 140 + 44 + 26];
+  move(31.4, .9, tc[0], tc[1] + 6); click(32.35, tc[0], tc[1] + 6);
+  A('#tl-select', 32.35, .15, { backgroundColor: 'rgba(0,0,0,0)', color: '#1e1d1b' }); A('#tl-comment', 32.35, .15, { backgroundColor: '#1e1d1b', color: '#f4f1ea' });
+  A('#tabline', 32.4, .5, { left: '16px', width: '70px' }); hide('#p-over', 32.4, .25); show('#p-comm', 32.6, .4);
+  A('#tb-c', 32.4, .2, { color: '#1e1d1b' }); A('#tb-o', 32.4, .2, { color: '#6b665d' });
+  const dp = P(453, 183);
+  move(32.6, .9, dp[0], dp[1]); click(33.55, dp[0], dp[1]);
+  A('#pin', 33.55, .55, [{ opacity: 0, translate: '0 -60px' }, { opacity: 1, translate: '0 0' }], 'cubic-bezier(.34,1.8,.64,1)');
+  pop('#composer', 33.8, .45);
+  type('#cmtext', 'Is this door wide enough for a wheelchair?', 34.1, 35.8, '');
+  fns.push((t) => { $('#cmcaret').style.opacity = Math.floor(t * 2.2) % 2 || (t > 34.1 && t < 35.8) ? 1 : 0; });
+  const post = P(486 + 400 - 46, 96 + 150);
+  move(35.7, .6, post[0], post[1] + 2); click(36.35, post[0], post[1] + 2);
+  A('#composer', 36.4, .3, { opacity: 0, scale: .9 }, 'ease-in');
+  show('#cm1', 36.5, .5, 16); show('#th3', 36.9, .3); A('#th3', 36.9, 1.2, [{ opacity: .4 }, { opacity: 1 }, { opacity: .4 }, { opacity: 1 }], 'linear'); hide('#th3', 38.05, .15);
+  show('#cm2', 38.15, .55, 16);
+  camTo(37.5, 1.3, 1255, 520, 1.5);
+  pop('#door', 38.4, .5); A('#door', 38.9, 2.4, [{ opacity: 1 }, { opacity: .55 }, { opacity: 1 }, { opacity: .55 }, { opacity: 1 }], 'ease-in-out');
+  move(36.7, 1.2, 1560, 560);
+  hide('#door', 41.3, .3); hide('#pin', 41.3, .3);
+
+  // ===== 41.6 — 04 symbols =====
+  hide('#cap3', 41.3, .3, -10); show('#cap4', 41.9, .7, -16);
+  A('#tl-comment', 41.5, .15, { backgroundColor: 'rgba(0,0,0,0)', color: '#1e1d1b' }); A('#tl-select', 41.5, .15, { backgroundColor: '#1e1d1b', color: '#f4f1ea' });
+  const sc = P(445, 318);
+  camTo(41.4, 1.4, sc[0], sc[1], 1.72);
+  const U = [[258, 281], [581, 293]];
+  const boxes = U.map(([x, y], i) => {
+    const r = svg('rect', { x, y, width: 34, height: 34, fill: '#ff682b', 'fill-opacity': .12, stroke: '#ff682b', 'stroke-width': 3, 'stroke-dasharray': '6 5', opacity: 0, rx: 2 }, $('#unk'));
+    A(r, 42.3 + i * .25, .4, { opacity: 1 });
+    const q = document.createElement('div'); q.className = 'qpin h'; q.textContent = '?'; q.style.left = x + 26 + 'px'; q.style.top = y - 22 + 'px'; $('#qs').appendChild(q);
+    pop(q, 42.4 + i * .25, .45);
+    for (let k = 0; k < 2; k++) { const p = document.createElement('div'); p.className = 'pulse h'; p.style.left = x + 26 + 'px'; p.style.top = y - 22 + 'px'; $('#qs').appendChild(p); A(p, 42.8 + i * .25 + k * .9, .9, [{ opacity: .9, scale: 1 }, { opacity: 0, scale: 2.6 }]); }
+    const l = document.createElement('div'); l.className = 'lab h'; l.textContent = 'Chimney flue'; l.style.left = x - 30 + 'px'; l.style.top = y - 34 + 'px'; $('#qs').appendChild(l);
+    A(r, 47.0 + i * .3, .4, { strokeDasharray: '200 0', fillOpacity: .3 });
+    A(q, 47.0 + i * .3, .25, { opacity: 0, scale: .4 }, 'ease-in'); pop(l, 47.15 + i * .3, .45);
+    return r;
+  });
+  const s1 = P(275, 298);
+  move(42.0, 1.1, s1[0], s1[1]); click(43.3, s1[0], s1[1]);
+  pop('#namepop', 43.4, .45);
+  type('#nmtext', 'Chimney flue', 43.9, 44.9, '');
+  fns.push((t) => { $('#nmcaret').style.opacity = Math.floor(t * 2.2) % 2 || (t > 43.9 && t < 44.9) ? 1 : 0; });
+  const cb = P(306 + 25, 330 + 108), sv = P(306 + 420 - 46, 330 + 158);
+  move(44.9, .55, cb[0], cb[1]); click(45.5, cb[0], cb[1]); pop('#simtick', 45.5, .3); A('#simbox', 45.5, .2, { backgroundColor: '#ff682b' });
+  move(45.7, .6, sv[0], sv[1]); click(46.4, sv[0], sv[1]);
+  A('#namepop', 46.5, .3, { opacity: 0, scale: .9 }, 'ease-in');
+  A('#learn', 47.6, .6, [{ opacity: 0, translate: '0 30px', scale: .9 }, { opacity: 1, translate: '0 0', scale: 1 }], BACK);
+  fns.push((t) => { $('#symcount').textContent = t < 48.3 ? '29' : '29 → 30'; });
+  A('#symcount', 48.3, .4, [{ scale: 1.5 }, { scale: 1 }], BACK);
+  move(46.6, 1.0, s1[0] + 250, s1[1] + 190);
+  pop('#next', 49.0, .5); pop('#nextok', 49.8, .4);
+  hide('#learn', 51.6, .3); hide('#next', 51.6, .3); hide('#qs', 51.7, .4); A('#unk', 51.7, .4, { opacity: 0 });
+
+  // ===== 52 — 05 checks =====
+  hide('#cap4', 51.6, .3, -10); show('#cap5', 52.2, .7, -16);
+  camTo(51.7, 1.3, 1140, 575, 1.16);
+  A('#tabline', 52.0, .5, { left: '204px', width: '70px' }); hide('#p-comm', 52.0, .25); show('#p-chk', 52.3, .4);
+  A('#tb-o', 52.0, .2, { color: '#1e1d1b' }); A('#tb-c', 52.0, .2, { color: '#6b665d' });
+  $$('#p-chk .chk').forEach((c, i) => show(c, 52.5 + i * .45, .5, 14));
+  A('#route', 53.3, 1.9, { strokeDashoffset: 0 }, INOUT); pop('#routeend', 54.9, .45);
+  move(52.0, 1.5, 1400, 830);
+  A('#lg-checks', 52.4, .3, { color: '#ff682b' });
+
+  // ===== 56.6 outro =====
+  camTo(56.3, 1.0, 960, 540, 1);
+  hide('#cap5', 56.3, .3, -10); hide('#brandtag', 56.3, .3); hide('#scrim', 56.5, .4);
+  A('#win', 56.5, .8, { opacity: 0, scale: .86, translate: '0 60px' }, 'cubic-bezier(.5,0,.75,0)'); hide(cur, 56.4, .2);
+  A('#glow', 56.6, 1.2, { opacity: 1 });
+  A('#c-outro', 57.2, .01, { opacity: 1 });
+  A('#logo2', 57.2, 1.2, [{ opacity: 0, clipPath: 'inset(0 100% 0 0)', scale: .94 }, { opacity: 1, clipPath: 'inset(0 0% 0 0)', scale: 1 }]);
+  show('#tag2', 58.1, .8, 24);
+  $$('#c-outro .chip').forEach((c, i) => show(c, 58.9 + i * .22, .6, 20));
+  show('#sub2', 59.9, .8, 10);
+  A('#c-outro', 57.2, 6.8, [{ scale: 1 }, { scale: 1.035 }], 'linear');
+  A('#fade', 63.0, 1.0, { opacity: 1 }, 'ease-in');
+
+  window.seek = (t) => { for (const a of anims) a.currentTime = t * 1000; for (const f of fns) f(t); };
+  window.seek(0); window.ready = true;
+  const m = location.hash.match(/t=([\d.]+)/); if (m) window.seek(+m[1]);
+  if (location.hash === '#play') { const t0 = performance.now(); (function loop() { const t = (performance.now() - t0) / 1000; window.seek(Math.min(t, TOTAL)); if (t < TOTAL) requestAnimationFrame(loop); })(); }
+}
+build();
+</script>
+</body></html>
