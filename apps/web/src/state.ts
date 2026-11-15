@@ -55,6 +55,8 @@ export const projectsVersion = signal(0);
 /** Linked selection across the chat, the file tree and the plan. */
 export const hoverRoom = signal<string | null>(null);
 export const selectedRooms = signal<string[]>([]);
+/** A kind of thing picked in the model tree, all of which are outlined on the plan: doors and windows, or fittings and furniture. */
+export const highlighted = signal<'openings' | 'fixtures' | null>(null);
 
 /** The latest answer, shown as a note beside the part of the plan it is about (2D). null = none, or dismissed. */
 export const answerNote = signal<import('./canvas/note').AnswerNote | null>(null);

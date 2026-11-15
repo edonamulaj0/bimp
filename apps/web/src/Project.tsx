@@ -10,7 +10,7 @@ import { ALL_LAYERS, type CanvasTool, type Layers, type MenuAt, type PinMark, Pl
 import { ROOM_COLORS } from './canvas/colors';
 import { signal } from '@preact/signals';
 import type { ComponentChildren } from 'preact';
-import { answerNote, chatPrompt, hoverRoom, pendingDrawing, projectsVersion, queueFiles, region, say, selectedRooms, tourStep, tutorialOpen, toggleTheme, visualsOpen } from './state';
+import { answerNote, chatPrompt, highlighted, hoverRoom, pendingDrawing, projectsVersion, queueFiles, region, say, selectedRooms, tourStep, tutorialOpen, toggleTheme, visualsOpen } from './state';
 import { InfoPanel } from './InfoPanel';
 import { PageHeader } from './Shell';
 import { Spinner } from './brand';
@@ -79,7 +79,7 @@ export function ProjectPage({ id }: { id: string }) {
   const setTab = (t: Tab) => { setTabState(t); store('bimp.tab', t); setRightOpen(true); if (phone) setMPane(t); };
   const load = () => api<ProjectData>(`/projects/${id}`).then((d) => { if (d.plan && d.plan_id) plans.current.set(d.plan_id, d.plan); setData(d); }).catch((e) => setErr(e.message));
   useEffect(() => {
-    hoverRoom.value = null; selectedRooms.value = []; chatPrompt.value = null; region.value = null; visualsOpen.value = false;
+    hoverRoom.value = null; selectedRooms.value = []; highlighted.value = null; chatPrompt.value = null; region.value = null; visualsOpen.value = false;
     load();
     api<{ comments: Comment[] }>(`/projects/${id}/comments`).then((d) => setComments(d.comments)).catch(() => setComments([]));
     return () => { region.value = null; };
@@ -87,6 +87,8 @@ export function ProjectPage({ id }: { id: string }) {
   useEffect(() => { document.title = `${data?.project.name ?? 'Project'} · bimp`; }, [data?.project.name]);
   // a question from the canvas or the overview goes to the chat: on a phone, open the chat sheet
   useEffect(() => { if (chatPrompt.value) { if (phone) setMPane('chat'); else setLeftOpen(true); } }, [chatPrompt.value]);
+  // a kind picked in the model tree is outlined on the plan: on a phone, put the files sheet away so the plan shows
+  useEffect(() => { if (highlighted.value && phone) setMPane('plan'); }, [highlighted.value]);
   // the welcome tour, once, the first time a workspace opens on this device
   useEffect(() => { if (data && !stored('bimp.toured', false, () => true, () => true)) { store('bimp.toured', '1'); tourStep.value = 0; } }, [!!data]);
 

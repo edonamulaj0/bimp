@@ -455,6 +455,9 @@ details { margin-top: var(--s2); } details summary { cursor: pointer; } details 
 .name-pop p { margin: 0; }
 .name-actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--s3); }
 /* the answer note: the area it is about is outlined on the plan, the note stands beside it, a leader joins them */
+/* everything of one kind, picked in the model tree: a solid outline on each (windows a little lighter than doors) */
+.plan2d .hl-items rect { fill: var(--accent); fill-opacity: .22; stroke: var(--accent); stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.plan2d .hl-items rect.window { fill-opacity: .1; }
 .plan2d .note-area polygon, .plan2d .note-area rect { fill: var(--accent); fill-opacity: .1; stroke: var(--accent); stroke-width: 2.5px; stroke-dasharray: 7 4; vector-effect: non-scaling-stroke; }
 .note-lead { position: absolute; inset: 0; width: 100%; height: 100%; z-index: 4; pointer-events: none; overflow: visible; }
 .note-lead line { stroke: var(--accent); stroke-width: 1.5; }

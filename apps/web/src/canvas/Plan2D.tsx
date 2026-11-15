@@ -5,7 +5,7 @@ import { doorLinks, escapeRoutes } from '../../../shared/escape';
 import { type Footprint, labelPoint, wallFootprints } from '../../../shared/walls';
 import { type Fixture, type FixtureKind, type Plan, type Pt, FIXTURE_KINDS, FIXTURE_LABEL, area, centroid, dist, round } from '../../../shared/plan';
 import { basisOf, describe } from '../../../shared/measure';
-import { hoverRoom, selectedRooms } from '../state';
+import { highlighted, hoverRoom, selectedRooms } from '../state';
 import { ROOM_COLORS } from './colors';
 import { type AnswerNote, noteArea, placeNote } from './note';
 import { Icon } from '../icons';
@@ -405,6 +405,18 @@ export function Plan2D({ plan, compact, onRelabel, note, onNoteClose, regionCard
         <g class="note-area" pointer-events="none" aria-hidden="true">
           {noteAt.polys.map((q, i) => <polygon key={`p${i}`} points={q.map((p) => p.join(',')).join(' ')} />)}
           {noteAt.marks.map((b, i) => <rect key={`m${i}`} x={b[0]} y={b[1]} width={b[2] - b[0]} height={b[3] - b[1]} rx={0.08} />)}
+        </g>
+      )}
+      {!compact && highlighted.value && (
+        <g class="hl-items" pointer-events="none" aria-hidden="true">
+          {highlighted.value === 'openings' && plan.openings.map((o) => {
+            // a box along the opening, as deep as its wall plus a margin
+            const len = dist(o.a, o.b) || 1, t = Math.max(openingT.get(o.id) ?? 0.2, 0.25) + 0.24, deg = (Math.atan2(o.b[1] - o.a[1], o.b[0] - o.a[0]) * 180) / Math.PI;
+            return <rect key={o.id} class={o.kind} x={-0.1} y={-t / 2} width={len + 0.2} height={t} rx={0.06} transform={`translate(${o.a[0]} ${o.a[1]}) rotate(${deg})`} />;
+          })}
+          {highlighted.value === 'fixtures' && (plan.fixtures ?? []).map((f) => (
+            <rect key={f.id} x={-f.size[0] / 2 - 0.06} y={-f.size[1] / 2 - 0.06} width={f.size[0] + 0.12} height={f.size[1] + 0.12} rx={0.06} transform={`translate(${f.center[0]} ${f.center[1]}) rotate(${(f.angle * 180) / Math.PI})`} />
+          ))}
         </g>
       )}
       {!compact && pxPerM > 0 && (region || rubber) && <RegionMark r={rubber ? normRegion(rubber[0], rubber[1]) : region!} live={!!rubber} u={1 / pxPerM} />}

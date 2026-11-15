@@ -2,7 +2,14 @@ import type { ComponentChildren } from 'preact';
 import { useMemo, useRef, useState } from 'preact/hooks';
 import { type Plan, type RoomType, area, round } from '../../shared/plan';
 import { ROOM_COLORS } from './canvas/colors';
-import { hoverRoom, queueFiles, selectedRooms, uploadQueue, visualsOn, visualsOpen } from './state';
+import { highlighted, hoverRoom, queueFiles, say, selectedRooms, uploadQueue, visualsOn, visualsOpen } from './state';
+
+/** Picks a kind of thing to outline on the plan; picking it again puts the outlines away. */
+const show = (kind: 'openings' | 'fixtures', what: string) => {
+  const on = highlighted.value !== kind;
+  highlighted.value = on ? kind : null;
+  say(on ? `${what} highlighted on the plan` : 'Highlight removed');
+};
 import { Icon } from './icons';
 import { Dialog, when } from './ui';
 import type { Revision } from './types';
@@ -71,13 +78,15 @@ export function FileTree({ projectId, name, files, revisions, plan, latestId, vi
         ...(plan && visualsOn.value ? [{ id: 'images', label: 'Presentation images', text: 'Presentation images', icon: 'sparkle', onOpen: () => (visualsOpen.value = true) } as Node] : []),
         ...(plan ? [{ id: 'model', label: 'Model', text: 'Model', icon: 'cube', children: [
           { id: 'rooms', label: 'Rooms', text: 'Rooms', icon: 'folder', meta: rooms.length, children: groups },
-          { id: 'openings', label: 'Doors and windows', text: 'Doors and windows', icon: 'door', meta: <>{plan.openings.filter((o) => o.kind === 'door').length} · {plan.openings.filter((o) => o.kind === 'window').length}</> },
-          { id: 'fixtures', label: 'Fittings and furniture', text: 'Fittings and furniture', icon: 'sofa', meta: fx.length },
+          { id: 'openings', label: 'Doors and windows', text: 'Doors and windows', icon: 'door', meta: <>{plan.openings.filter((o) => o.kind === 'door').length} · {plan.openings.filter((o) => o.kind === 'window').length}</>,
+            current: highlighted.value === 'openings', onOpen: () => show('openings', `${plan.openings.length} doors and windows`) },
+          { id: 'fixtures', label: 'Fittings and furniture', text: 'Fittings and furniture', icon: 'sofa', meta: fx.length,
+            current: highlighted.value === 'fixtures', onOpen: () => show('fixtures', `${fx.length} fittings and pieces of furniture`) },
           { id: 'extent', label: 'Extent', text: 'Extent', icon: 'ruler', meta: <span class="mono">{plan.width} × {plan.height} m</span> },
         ] } as Node] : []),
       ],
     };
-  }, [name, files, revisions, plan, latestId, viewedId, preview, uploadQueue.value, selectedRooms.value, visualsOn.value]);
+  }, [name, files, revisions, plan, latestId, viewedId, preview, uploadQueue.value, selectedRooms.value, visualsOn.value, highlighted.value]);
 
   // visible nodes in order, for the keyboard
   const flat: { n: Node; level: number; parent: string | null }[] = [];
