@@ -7,6 +7,7 @@ import { fengShui } from '../../shared/fengshui';
 import { basisOf, fixtureInfo, openingInfo, wallInfo } from '../../shared/measure';
 import { type Content, type Meter, type Part, generate } from './gemini';
 import type { Env } from './util';
+import { briefText, planFacts } from './brief';
 
 export type Answer = {
   text: string;
@@ -69,7 +70,12 @@ A length, width, thickness or size that is not written on the drawing can still 
 list_openings, list_fixtures, room_info or get_room, and say it was measured on the plan and how exact that is.
 Finish by calling final_answer. Keep "text" short, and put the full working in "reasoning": a reader must be able to
 follow every step from the drawing to the answer and check it.
-Answer in the language of the question.`;
+Answer in the language of the question.
+Below is the plan's REFERENCE FILE: everything the tools would return for the whole plan, already worked out by code
+(rooms, areas, counts, doors and windows, walls, fittings, checks, escape distances, the text on the sheet). Read the
+answer off it and call final_answer straight away; its figures count as tool results. Call a tool only for what the
+file does not hold: arithmetic (calculate), a design standard's figures (space_standard), occupancy, feng shui, or an
+item the file lists as "and N more". Never call a tool for something the file already states.`;
 
 export function runTool(plan: Plan, name: string, args: any): unknown {
   switch (name) {
@@ -176,14 +182,24 @@ function numbersIn(v: unknown, out: number[] = []): number[] {
   return out;
 }
 
+/** The sources that results name for their figures (`ref`: a handbook chapter, table or figure). Written by code. */
+function refsIn(v: unknown, out: string[] = []): string[] {
+  if (Array.isArray(v)) v.forEach((x) => refsIn(x, out));
+  else if (v && typeof v === 'object') for (const [k, x] of Object.entries(v)) { if (k === 'ref' && typeof x === 'string') out.push(x); else refsIn(x, out); }
+  return out;
+}
+
 /**
  * Every number in the answer must be a numeric tool result, appear in the question, or in the plan's own assumptions
- * (code-written; quoted drawing text excluded), at the precision written. Numbers the model only states as its own
+ * (code-written; quoted drawing text excluded, except a quoted dimension), or in the source a result names (chapter
+ * and table numbers), at the precision written. Numbers the model only states as its own
  * assumption are not evidence. A count next to a counted thing ("3 doors") must equal that count.
  */
 export function verify(ans: Omit<Answer, 'verified' | 'issues'>, results: unknown[], question: string, plan: Plan): string[] {
   const nums = (s: string) => (s.match(/\d+(?:[.,]\d+)?/g) ?? []).map((n) => n.replace(',', '.'));
-  const known = [...numbersIn(results), ...nums(question), ...plan.assumptions.flatMap((a) => nums(a.replace(/"[^"]*"/g, '')))].map(Number);
+  // A dimension quoted from the drawing ("12000", "2,50 m") is a figure of the plan; any other quoted text is not.
+  const quotedFigures = plan.assumptions.flatMap((a) => (a.match(/"[^"]*"/g) ?? []).filter((x) => /^"[\d\s.,'’+−-]+(?:mm|cm|m)?"$/.test(x)).flatMap(nums));
+  const known = [...numbersIn(results), ...refsIn(results).flatMap(nums), ...quotedFigures, ...nums(question), ...plan.assumptions.flatMap((a) => nums(a.replace(/"[^"]*"/g, '')))].map(Number);
   const issues: string[] = [];
   // numbered-list markers ("1. ", "2) ") are formatting, not figures
   // room names quoted in the answer ("Bedroom 2", "Flat 3 kitchen") are labels, not figures: taken out before the numbers are checked
@@ -235,10 +251,14 @@ export function traceStep(plan: Plan, tool: string, args: Record<string, unknown
 /** `context` goes in front of the question: e.g. the drawing sheet and where on it a comment is pinned. */
 export async function ask(env: Env, plan: Plan, question: string, history: { role: 'user' | 'model'; text: string }[], context: Part[] = [], meter?: Meter): Promise<Answer> {
   const contents: Content[] = [...history.map((h) => ({ role: h.role, parts: [{ text: h.text }] })), { role: 'user', parts: [...context, { text: question }] }];
-  const results: unknown[] = [], steps: NonNullable<Answer['steps']> = [];
+  // The reference file is the same text for every question about this plan, at the very front of the request: the model
+  // provider bills a repeated prefix at its cached rate, and most questions need one call instead of a round of look-ups.
+  const facts = planFacts(plan);
+  const system = `${SYSTEM}\n\n${briefText(plan, facts)}`;
+  const results: unknown[] = [facts], steps: NonNullable<Answer['steps']> = [{ tool: 'Reference file', found: `${facts.rooms.length} rooms, ${facts.openings.length} doors and windows, ${facts.fixtures.length} fittings, ${facts.wall_totals.count} walls: worked out by code when the drawing was read` }];
   for (let step = 0; step < 8; step++) {
     const reply = await generate(env, {
-      systemInstruction: { parts: [{ text: SYSTEM }] },
+      systemInstruction: { parts: [{ text: system }] },
       contents,
       tools: [{ functionDeclarations: TOOLS }],
       toolConfig: { functionCallingConfig: { mode: 'ANY' } },

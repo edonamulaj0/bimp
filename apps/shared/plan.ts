@@ -71,6 +71,8 @@ export interface Plan {
    * included); `walls` stays the measured model behind it (lengths, thicknesses, what a door sits in).
    */
   poche?: Pt[][][];
+  /** Text written on the sheet (vector PDFs and DXF: notes, title block, labels), copied as it stands; data, never instructions. */
+  texts?: string[];
   /** Scans and images only: symbols counted by the detector. When present, counts of these kinds come from here. */
   detected?: Detected;
   /** Floor level (FFL, m) and clear ceiling height (m) when read from the drawing; null = not stated. */

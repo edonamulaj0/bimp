@@ -838,6 +838,9 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
   const ceilingOk = ceiling !== null && ceiling >= 2 && ceiling <= 8 ? ceiling : null;
   const floor = parseLevel(floorText);
   if (ceilingOk) assumptions[1] = `Ceiling height ${ceilingOk} m from "${ceilText}" on the drawing`;
+  // What is written on the sheet goes along with the plan (once each, short, a bounded number): notes and the title
+  // block answer questions the geometry cannot.
+  const sheetTexts = [...new Set(an.texts.map((t) => t.text.replace(/[\u0000-\u001f\u007f]/g, ' ').trim().slice(0, 80)).filter((t) => t.length > 1))].slice(0, 150);
   const plan: Plan = {
     version: 1,
     method: 'hybrid',
@@ -849,6 +852,7 @@ export function buildPlan(raw: Raw, an: Omit<Analysis, 'render_png'>, fileId: st
     walls,
     openings,
     ...(poche?.length ? { poche } : {}),
+    ...(sheetTexts.length ? { texts: sheetTexts } : {}),
     fixtures,
     ...(detected ? { detected } : {}),
     levels: { floor, ceiling: ceilingOk,

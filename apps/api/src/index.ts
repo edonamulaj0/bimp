@@ -6,6 +6,7 @@ import { type Fixture, type Plan, FIXTURE_KINDS, area, evidenceFor, sourceBox } 
 import { costUsd, meter } from './gemini';
 import { visuals, visualsOn } from './visuals';
 import { quickAnswer } from './quick';
+import { briefText, planFacts } from './brief';
 import { ask } from './agent';
 import { comments } from './comments';
 import { teams, myTeams } from './teams';
@@ -190,6 +191,14 @@ projects.get('/:id/revisions/:rid', async (c) => {
   if (!revision) throw fail(404, 'Revision not found.');
   const row = await c.env.DB.prepare('SELECT data FROM plans WHERE id = ?').bind(revision.id).first<{ data: string }>();
   return c.json({ revision, plan: JSON.parse(row!.data) });
+});
+/** The plan's reference file as Markdown: what the chat answers from, for a person to read or download. */
+projects.get('/:id/revisions/:rid/reference', async (c) => {
+  const project = await projectAccess(c, c.req.param('id'));
+  const row = await c.env.DB.prepare('SELECT data FROM plans WHERE id = ? AND project_id = ?').bind(c.req.param('rid'), project.id).first<{ data: string }>();
+  if (!row) throw fail(404, 'Revision not found.');
+  const plan = JSON.parse(row.data) as Plan;
+  return new Response(briefText(plan, planFacts(plan), project.name), { headers: { 'content-type': 'text/markdown; charset=utf-8', 'cache-control': 'private, no-store', 'x-content-type-options': 'nosniff' } });
 });
 projects.patch('/:id/revisions/:rid', async (c) => {
   const project = await projectAccess(c, c.req.param('id'));
@@ -390,13 +399,20 @@ projects.post('/:id/chat', async (c) => {
   const context = region ? [{ text: regionBrief(plan, region) }] : [];
   // Recognised questions are answered by code from the stored plan: no model call, nothing to pay, nothing to verify.
   const t0 = now(), used = meter(), quick = quickAnswer(q, scope);
-  if (!quick) await chatQuota(c.env, c.get('user').id);
-  const found = quick ? { ...quick, verified: true, issues: [] } : await ask(c.env, scope, q, region ? [] : history, context, used);
+  // An answer the model already gave to this question, about this very plan, after these same turns, is given again
+  // as it stands: only answers that passed the check are kept, and any change to the plan changes the key.
+  const turns = region ? [] : history;
+  const cacheKey = quick ? null : await sha256(JSON.stringify([c.env.GEMINI_MODEL ?? '', await sha256(JSON.stringify(scope)), q.toLowerCase().replace(/\s+/g, ' '), turns]));
+  const kept = cacheKey ? await c.env.DB.prepare('SELECT answer FROM answer_cache WHERE key = ?').bind(cacheKey).first<{ answer: string }>().catch(() => null) : null;
+  if (!quick && !kept) await chatQuota(c.env, c.get('user').id);
+  const found = quick ? { ...quick, verified: true, issues: [] } : kept ? (JSON.parse(kept.answer) as Awaited<ReturnType<typeof ask>>) : await ask(c.env, scope, q, turns, context, used);
+  if (cacheKey && !kept && found.verified && !found.issues.length)
+    await c.env.DB.prepare('INSERT OR REPLACE INTO answer_cache (key, answer, created_at) VALUES (?,?,?)').bind(cacheKey, JSON.stringify(found), now()).run().catch(() => {});
   const answer = {
     ...found,
     // each citation carries its crop of the source sheet: the boxes of the rooms and items it rests on
     claims: found.claims.map((cl) => { const evidence = evidenceFor(plan, cl.room_ids ?? [], cl.item_ids); return evidence ? { ...cl, evidence } : cl; }),
-    cost: { by: quick ? 'code' : 'model', usd: costUsd(c.env, used), calls: used.calls, tokens_in: used.tokens_in, tokens_out: used.tokens_out, ms: now() - t0 },
+    cost: { by: quick ? 'code' : kept ? 'cache' : 'model', usd: costUsd(c.env, used), calls: used.calls, tokens_in: used.tokens_in, tokens_out: used.tokens_out, ms: now() - t0 },
   };
   const t = now();
   await c.env.DB.batch([
