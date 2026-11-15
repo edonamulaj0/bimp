@@ -1,4 +1,4 @@
-// Run: npm run eval -- --sample 500 [--split dev|held-out] [--seed 1] [--all]
+// Run: npm run eval -- --sample 500 [--split dev|held-out] [--seed 1] [--source swiss_dwellings] [--all]
 // Scores bimp on the challenge questions with the official rules: counts exact; areas, lengths and volumes within 2 %.
 // Text answers are not scored here (they are free-form and need review).
 //
@@ -17,9 +17,11 @@ type Result = Question & { source: string; template: string | null; got: number 
 const args = process.argv.slice(2);
 const flag = (name: string, fallback: string) => { const i = args.indexOf(`--${name}`); return i >= 0 ? args[i + 1] : fallback; };
 const SPLIT = flag('split', 'dev'), SEED = flag('seed', '1'), SAMPLE = args.includes('--all') ? Infinity : Number(flag('sample', '500'));
+const SOURCE = flag('source', ''); // optional: only one source, e.g. swiss_dwellings
 const CACHE = join(process.cwd(), 'evals', '.cache'), REPORTS = join(process.cwd(), 'evals', 'reports');
 const INGEST = (process.env.INGEST_URL ?? 'http://127.0.0.1:8090').replace(/\/$/, '');
 const HELD_OUT = 0.2;
+const ANALYSIS_VERSION = 'v2'; // bump when ingest/service.py reads more, so cached analyses are redone
 
 const hash = (s: string) => createHash('sha256').update(s).digest('hex');
 const frac = (s: string) => parseInt(hash(s).slice(0, 8), 16) / 0x100000000;
@@ -57,16 +59,29 @@ async function datasetFile(rel: string): Promise<Buffer> {
 
 const MIME: Record<string, string> = { png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', pdf: 'application/pdf', dxf: 'application/dxf' };
 
-/** What the ingestion service measured on a drawing (no language model), cached by drawing and detector model. */
-async function evidence(path: string): Promise<Evidence> {
+async function analyzed(path: string): Promise<Evidence & { error?: string }> {
   const mime = MIME[path.split('.').pop()!.toLowerCase()];
-  if (!mime) throw new Error('format not read yet');
-  const file = join(CACHE, 'analysis', `${hash(path).slice(0, 16)}.json`);
-  if (existsSync(file)) return JSON.parse(readFileSync(file, 'utf8'));
   const res = await fetch(`${INGEST}/analyze`, { method: 'POST', headers: { 'content-type': mime }, body: await datasetFile(path) });
-  const json = (await res.json().catch(() => ({ error: `ingestion service returned ${res.status}` }))) as Evidence & { error?: string; texts?: unknown };
+  const json = (await res.json().catch(() => ({ error: `ingestion service returned ${res.status}` }))) as Evidence & { error?: string };
   if (!res.ok || json.error) throw new Error(json.error ?? `ingestion service returned ${res.status}`);
-  const ev = { kind: json.kind, detections: json.detections ?? null, texts: json.texts };
+  return json;
+}
+
+/**
+ * What the ingestion service measured on a drawing (no language model), cached by drawing. A vector PDF gives the
+ * rooms and units; its DXF twin (same name, the same drawing in another format) gives doors, windows and fittings.
+ */
+async function evidence(path: string): Promise<Evidence> {
+  if (!MIME[path.split('.').pop()!.toLowerCase()]) throw new Error('format not read yet');
+  const file = join(CACHE, 'analysis', `${ANALYSIS_VERSION}-${hash(path).slice(0, 16)}.json`);
+  if (existsSync(file)) return JSON.parse(readFileSync(file, 'utf8'));
+  const main = await analyzed(path);
+  let layered = main.layered ?? null;
+  if (main.kind === 'pdf-vector') {
+    const twin = await analyzed(path.replace(/\.pdf$/i, '.dxf')).catch(() => null);
+    if (twin?.layered) layered = { ...twin.layered, ...(layered ?? {}) };
+  }
+  const ev = { kind: main.kind, detections: main.detections ?? null, layered };
   mkdirSync(dirname(file), { recursive: true });
   writeFileSync(file, JSON.stringify(ev));
   return ev;
@@ -101,7 +116,7 @@ function table(title: string, rows: Result[], key: (r: Result) => string) {
 
 async function main() {
   const all = (await datasetFile('questions.jsonl')).toString('utf8').split('\n').filter(Boolean).map((l) => JSON.parse(l) as Question);
-  const pool = all.filter((q) => splitOf(q.path) === SPLIT);
+  const pool = all.filter((q) => splitOf(q.path) === SPLIT && (!SOURCE || sourceOf(q.path) === SOURCE));
   const picked = sample(pool, SAMPLE);
   const drawings = [...new Set(picked.map((q) => q.path))];
   console.log(`${all.length} questions; ${SPLIT} split: ${pool.length} questions on ${new Set(pool.map((q) => q.path)).size} drawings; scoring ${picked.length} on ${drawings.length} drawings (seed ${SEED})`);
@@ -137,7 +152,7 @@ async function main() {
   const errors = results.filter((r) => r.error);
   if (errors.length) console.log(`\n${errors.length} questions on drawings that could not be read, e.g. ${errors[0].path}: ${errors[0].error}`);
   mkdirSync(REPORTS, { recursive: true });
-  const name = `${SPLIT}-${results.length}-seed${SEED}`;
+  const name = `${SPLIT}${SOURCE ? `-${SOURCE}` : ''}-${results.length}-seed${SEED}`;
   writeFileSync(join(REPORTS, `${name}.txt`), `${report}\n`);
   writeFileSync(join(REPORTS, `${name}.jsonl`), results.map((r) => JSON.stringify(r)).join('\n') + '\n');
   console.log(`\nSaved evals/reports/${name}.txt and .jsonl`);
